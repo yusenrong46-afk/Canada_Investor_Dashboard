@@ -1,0 +1,280 @@
+{
+  "sourcePath": "/Users/thomas/Downloads/CanadaHousingData/data_bc.csv",
+  "rowCounts": {
+    "totalRows": 24382,
+    "vancouverRows": 3949,
+    "usableRowsBeforeOutlierRemoval": 3599,
+    "usableRows": 3518
+  },
+  "propertyTypeCounts": {
+    "Condo": 1992,
+    "Detached": 996,
+    "Duplex": 284,
+    "Townhouse": 246
+  },
+  "exportedColumns": [
+    "price",
+    "logPrice",
+    "pricePerSqft",
+    "propertyType",
+    "postalCode",
+    "postalFsa",
+    "submarketCluster",
+    "livingAreaSqft",
+    "bedrooms",
+    "bathrooms",
+    "latitude",
+    "longitude",
+    "lat_x_lon",
+    "lat_sq",
+    "lon_sq",
+    "propertyTax"
+  ],
+  "eda": {
+    "missingness": {
+      "price": {
+        "missingCount": 0.0,
+        "missingRate": 0.0
+      },
+      "livingAreaSqft": {
+        "missingCount": 45.0,
+        "missingRate": 0.01139528994682198
+      },
+      "bedrooms": {
+        "missingCount": 96.0,
+        "missingRate": 0.02430995188655356
+      },
+      "bathrooms": {
+        "missingCount": 2.0,
+        "missingRate": 0.0005064573309698658
+      },
+      "postalCode": {
+        "missingCount": 0.0,
+        "missingRate": 0.0
+      },
+      "latitude": {
+        "missingCount": 0.0,
+        "missingRate": 0.0
+      },
+      "longitude": {
+        "missingCount": 0.0,
+        "missingRate": 0.0
+      },
+      "propertyTax": {
+        "missingCount": 2126.0,
+        "missingRate": 0.5383641428209673
+      },
+      "propertyType": {
+        "missingCount": 236.0,
+        "missingRate": 0.059761965054444165
+      }
+    },
+    "missingnessByPropertyType": {
+      "Condo": {
+        "price": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "livingAreaSqft": {
+          "missingCount": 1.0,
+          "missingRate": 0.0004743833017077799
+        },
+        "bedrooms": {
+          "missingCount": 2.0,
+          "missingRate": 0.0009487666034155598
+        },
+        "bathrooms": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "postalCode": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "latitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "longitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "propertyTax": {
+          "missingCount": 1004.0,
+          "missingRate": 0.476280834914611
+        }
+      },
+      "Detached": {
+        "price": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "livingAreaSqft": {
+          "missingCount": 4.0,
+          "missingRate": 0.003805899143672693
+        },
+        "bedrooms": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "bathrooms": {
+          "missingCount": 2.0,
+          "missingRate": 0.0019029495718363464
+        },
+        "postalCode": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "latitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "longitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "propertyTax": {
+          "missingCount": 605.0,
+          "missingRate": 0.5756422454804948
+        }
+      },
+      "Duplex": {
+        "price": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "livingAreaSqft": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "bedrooms": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "bathrooms": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "postalCode": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "latitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "longitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "propertyTax": {
+          "missingCount": 186.0,
+          "missingRate": 0.6413793103448275
+        }
+      },
+      "Townhouse": {
+        "price": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "livingAreaSqft": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "bedrooms": {
+          "missingCount": 1.0,
+          "missingRate": 0.003787878787878788
+        },
+        "bathrooms": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "postalCode": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "latitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "longitude": {
+          "missingCount": 0.0,
+          "missingRate": 0.0
+        },
+        "propertyTax": {
+          "missingCount": 168.0,
+          "missingRate": 0.6363636363636364
+        }
+      }
+    },
+    "targetDistributionBeforeOutlierRemoval": {
+      "count": 3599.0,
+      "min": 289900.0,
+      "p05": 568990.0,
+      "p25": 848999.5,
+      "median": 1528000.0,
+      "p75": 2599000.0,
+      "p95": 6280799.999999999,
+      "max": 21000000.0,
+      "skew": 3.2163575861683342
+    },
+    "targetDistributionAfterOutlierRemoval": {
+      "count": 3518.0,
+      "min": 289900.0,
+      "p05": 567550.0000000001,
+      "p25": 838200.0,
+      "median": 1499000.0,
+      "p75": 2498000.0,
+      "p95": 5750000.0,
+      "max": 19800000.0,
+      "skew": 3.1255371490759463
+    },
+    "pricePerSqftDistributionAfterOutlierRemoval": {
+      "count": 3518.0,
+      "min": 306.29877369007806,
+      "p05": 790.9594822767644,
+      "p25": 1017.0575744265013,
+      "median": 1182.8969064302041,
+      "p75": 1412.9663119507384,
+      "p95": 1939.9431239439944,
+      "max": 3245.1923076923076,
+      "skew": 1.2852027154091148
+    },
+    "outlierRemoval": {
+      "removedRows": 81,
+      "keptRows": 3518,
+      "removedRate": 0.0225062517365935,
+      "byReason": {
+        "typePricePerSqft": 46,
+        "typeLivingArea": 34,
+        "localPricePerSqft": 20
+      },
+      "byPropertyType": {
+        "Detached": {
+          "before": 1018,
+          "removed": 22,
+          "kept": 996,
+          "removedRate": 0.021611001964636542
+        },
+        "Townhouse": {
+          "before": 246,
+          "removed": 0,
+          "kept": 246,
+          "removedRate": 0.0
+        },
+        "Condo": {
+          "before": 2047,
+          "removed": 55,
+          "kept": 1992,
+          "removedRate": 0.0268685881778212
+        },
+        "Duplex": {
+          "before": 288,
+          "removed": 4,
+          "kept": 284,
+          "removedRate": 0.013888888888888888
+        }
+      }
+    }
+  }
+}

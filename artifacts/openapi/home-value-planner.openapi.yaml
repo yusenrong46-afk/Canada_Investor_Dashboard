@@ -1,0 +1,525 @@
+openapi: 3.1.0
+info:
+  title: Vancouver Housing Price Prediction API
+  version: 0.3.0
+  description: >
+    Public API for the Vancouver housing price prediction demo. The app exposes a
+    base ML estimate endpoint plus rule-based uplift and planning endpoints. Request
+    validation is enforced server-side in Zod; this file mirrors the current
+    public contract for documentation.
+servers:
+  - url: http://127.0.0.1:4000
+paths:
+  /health:
+    get:
+      summary: API server health
+      operationId: getHealth
+      responses:
+        "200":
+          description: API server health payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiHealthResponse"
+  /api/estimate:
+    post:
+      summary: Estimate the current Vancouver list value for a home
+      operationId: postEstimate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyInput"
+      responses:
+        "200":
+          description: Base estimate response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimateResponse"
+        "400":
+          description: Request validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/simulate:
+    post:
+      summary: Simulate uplift for a selected set of homeowner-facing improvements
+      operationId: postSimulate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateRequest"
+      responses:
+        "200":
+          description: Uplift simulation response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulateResponse"
+        "400":
+          description: Request validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/plan:
+    post:
+      summary: Build a budget-aware sale plan from uplift scenarios
+      operationId: postPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanRequest"
+      responses:
+        "200":
+          description: Sale plan response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanResponse"
+        "400":
+          description: Request validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    ApiHealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+        mode:
+          type: string
+      required: [ok, service, mode]
+    ErrorIssue:
+      type: object
+      properties:
+        path:
+          type: string
+        message:
+          type: string
+      required: [path, message]
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorIssue"
+      required: [message]
+    PropertyType:
+      type: string
+      enum: [Detached, Townhouse, Condo, Duplex]
+    PlannedFlag:
+      type: string
+      enum:
+        - renovatedKitchen
+        - renovatedBathrooms
+        - legalSuiteAdded
+        - energyEfficient
+        - curbAppealImproved
+        - permitIssuesResolved
+        - deferredMaintenanceResolved
+        - roofIssueResolved
+    EvidenceLevel:
+      type: string
+      enum: [observed, hybrid, proxy-heavy, rule-based]
+    ModelFamily:
+      type: string
+      enum: [xgboost, random-forest, rule-based]
+    PropertyInput:
+      type: object
+      additionalProperties: false
+      properties:
+        postalCode:
+          type: string
+          pattern: "^V[56][A-Z]\\s?\\d[A-Z]\\d$"
+        propertyType:
+          $ref: "#/components/schemas/PropertyType"
+        livingAreaSqft:
+          type: number
+          minimum: 250
+          maximum: 10000
+        bedrooms:
+          type: number
+          minimum: 0
+          maximum: 10
+        bathrooms:
+          type: number
+          minimum: 0
+          maximum: 10
+        propertyTax:
+          type: number
+          exclusiveMinimum: 0
+        knownCurrentValue:
+          type: number
+          exclusiveMinimum: 0
+      required:
+        - postalCode
+        - propertyType
+        - livingAreaSqft
+        - bedrooms
+        - bathrooms
+    Driver:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: number
+      required: [label, value]
+    MarketContextResponse:
+      type: object
+      properties:
+        localAreaLabel:
+          type: string
+        localAreaScope:
+          type: string
+          enum: [postal-code, fsa, city-property-type, city]
+        localMedianValue:
+          type: number
+        localMedianPricePerSqft:
+          type: number
+        vancouverMedianValue:
+          type: number
+        vancouverMedianPricePerSqft:
+          type: number
+        percentileRank:
+          type: number
+        practicalCeiling:
+          type: number
+        premiumGap:
+          type: number
+        comparableCount:
+          type: integer
+      required:
+        - localAreaLabel
+        - localAreaScope
+        - localMedianValue
+        - localMedianPricePerSqft
+        - vancouverMedianValue
+        - vancouverMedianPricePerSqft
+        - percentileRank
+        - practicalCeiling
+        - premiumGap
+        - comparableCount
+    MetricRangeSummary:
+      type: object
+      properties:
+        mean:
+          type: number
+        p05:
+          type: number
+        p50:
+          type: number
+        p95:
+          type: number
+      required: [mean, p05, p50, p95]
+    ValidationSummary:
+      type: object
+      properties:
+        trainHoldoutSplit:
+          type: string
+        crossValidation:
+          type: string
+        bootstrap:
+          type: string
+        bootstrapRanges:
+          type: object
+          properties:
+            mae:
+              $ref: "#/components/schemas/MetricRangeSummary"
+            mape:
+              $ref: "#/components/schemas/MetricRangeSummary"
+            r2:
+              $ref: "#/components/schemas/MetricRangeSummary"
+          required: [mae, mape, r2]
+        missingnessNotes:
+          type: array
+          items:
+            type: string
+        locationFeatures:
+          type: string
+        clusterCount:
+          type: integer
+      required:
+        - trainHoldoutSplit
+        - crossValidation
+        - bootstrap
+        - bootstrapRanges
+        - missingnessNotes
+        - locationFeatures
+        - clusterCount
+    ModelQuality:
+      type: object
+      properties:
+        trainingRows:
+          type: integer
+        cvMae:
+          type: number
+        cvMape:
+          type: number
+        cvR2:
+          type: number
+        holdoutMae:
+          type: number
+        holdoutMape:
+          type: number
+        holdoutR2:
+          type: number
+        outlierRemovedRate:
+          type: number
+        validationSummary:
+          $ref: "#/components/schemas/ValidationSummary"
+      required:
+        - trainingRows
+        - cvMae
+        - cvMape
+        - cvR2
+        - holdoutMae
+        - holdoutMape
+        - holdoutR2
+        - outlierRemovedRate
+        - validationSummary
+    EstimateResponse:
+      type: object
+      properties:
+        modelVersion:
+          type: string
+        trainingMode:
+          type: string
+        modelFamily:
+          $ref: "#/components/schemas/ModelFamily"
+        modelScope:
+          $ref: "#/components/schemas/PropertyType"
+        baseValue:
+          type: number
+        confidenceLow:
+          type: number
+        confidenceHigh:
+          type: number
+        anchorValue:
+          type: number
+        pricePerSqft:
+          type: number
+        confidenceRatio:
+          type: number
+        modelQuality:
+          $ref: "#/components/schemas/ModelQuality"
+        drivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Driver"
+        marketContext:
+          $ref: "#/components/schemas/MarketContextResponse"
+      required:
+        - modelVersion
+        - trainingMode
+        - modelFamily
+        - modelScope
+        - baseValue
+        - confidenceLow
+        - confidenceHigh
+        - anchorValue
+        - pricePerSqft
+        - confidenceRatio
+        - modelQuality
+        - drivers
+        - marketContext
+    SimulateRequest:
+      allOf:
+        - $ref: "#/components/schemas/PropertyInput"
+        - type: object
+          additionalProperties: false
+          properties:
+            plannedFlags:
+              type: array
+              items:
+                $ref: "#/components/schemas/PlannedFlag"
+              default: []
+            horizonMonths:
+              type: number
+              minimum: 3
+              maximum: 18
+    UpliftDriver:
+      type: object
+      properties:
+        flag:
+          $ref: "#/components/schemas/PlannedFlag"
+        label:
+          type: string
+        value:
+          type: number
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        rationale:
+          type: string
+      required: [flag, label, value]
+    StringMap:
+      type: object
+      additionalProperties:
+        type: string
+    NumberMap:
+      type: object
+      additionalProperties:
+        type: number
+    SimulateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ready, data-missing]
+        message:
+          type: string
+        modelVersion:
+          type: string
+        trainingMode:
+          type: string
+        modelFamily:
+          $ref: "#/components/schemas/ModelFamily"
+        evidenceLevel:
+          $ref: "#/components/schemas/EvidenceLevel"
+        evidenceSummary:
+          type: string
+        baseValue:
+          type: number
+        upliftValue:
+          type: number
+        finalValueRaw:
+          type: number
+        finalValueGuardrailed:
+          type: number
+        upliftConfidenceLow:
+          type: number
+        upliftConfidenceHigh:
+          type: number
+        ceilingFlag:
+          type: boolean
+        plannedFlags:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlannedFlag"
+        topUpliftDrivers:
+          type: array
+          items:
+            $ref: "#/components/schemas/UpliftDriver"
+        observedShare:
+          type: number
+        dataSources:
+          $ref: "#/components/schemas/StringMap"
+        rowCounts:
+          $ref: "#/components/schemas/NumberMap"
+        methodNotes:
+          type: array
+          items:
+            type: string
+      required: [status]
+    PlanRequest:
+      allOf:
+        - $ref: "#/components/schemas/SimulateRequest"
+        - type: object
+          additionalProperties: false
+          properties:
+            targetPrice:
+              type: number
+              exclusiveMinimum: 0
+            budget:
+              type: number
+              exclusiveMinimum: 0
+            timelineMonths:
+              type: number
+              minimum: 3
+              maximum: 18
+          required: [targetPrice, budget, timelineMonths]
+    PlanLineItem:
+      type: object
+      properties:
+        flag:
+          $ref: "#/components/schemas/PlannedFlag"
+        label:
+          type: string
+        phase:
+          type: string
+        cost:
+          type: number
+        months:
+          type: number
+        projectedUplift:
+          type: number
+        projectedFinalValue:
+          type: number
+        valueRecoveryRate:
+          type: number
+      required:
+        - flag
+        - label
+        - phase
+        - cost
+        - months
+        - projectedUplift
+        - projectedFinalValue
+        - valueRecoveryRate
+    PlanPhase:
+      type: object
+      properties:
+        phase:
+          type: string
+        durationMonths:
+          type: number
+        plannedSpend:
+          type: number
+        plannedUplift:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanLineItem"
+      required: [phase, durationMonths, plannedSpend, plannedUplift, items]
+    PlanResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ready, data-missing]
+        message:
+          type: string
+        evidenceLevel:
+          $ref: "#/components/schemas/EvidenceLevel"
+        targetAssessment:
+          type: string
+          enum: [Likely, Stretch, Unlikely]
+        baseValue:
+          type: number
+        achievableValue:
+          type: number
+        targetPrice:
+          type: number
+        gapToTarget:
+          type: number
+        plannedSpend:
+          type: number
+        plannedMonths:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanLineItem"
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanPhase"
+      required: [status]

@@ -1,0 +1,1009 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vancouver Housing Price Prediction - Technical Development Guide</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7f8;
+        --panel: #ffffff;
+        --ink: #14252f;
+        --muted: #60717d;
+        --line: #dce5e9;
+        --teal: #0e7c7b;
+        --teal-dark: #075a5a;
+        --navy: #0d2638;
+        --amber: #af6b00;
+        --rose: #b4233c;
+        --green: #147a4a;
+        --code-bg: #102331;
+        --code-ink: #e7f6f4;
+        --shadow: 0 24px 80px rgba(15, 39, 52, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at top left, rgba(14, 124, 123, 0.14), transparent 34rem),
+          linear-gradient(180deg, #f9fbfb 0%, var(--bg) 42%, #eef3f4 100%);
+        color: var(--ink);
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        line-height: 1.6;
+      }
+
+      a {
+        color: var(--teal-dark);
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      aside {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow: auto;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--navy);
+        color: #ecf7f6;
+        padding: 28px 22px;
+      }
+
+      aside h1 {
+        margin: 0 0 10px;
+        font-size: 22px;
+        line-height: 1.15;
+      }
+
+      aside p {
+        margin: 0 0 24px;
+        color: rgba(236, 247, 246, 0.7);
+        font-size: 13px;
+      }
+
+      nav {
+        display: grid;
+        gap: 8px;
+      }
+
+      nav a {
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 14px;
+        color: #ecf7f6;
+        display: block;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 10px 12px;
+        text-decoration: none;
+      }
+
+      nav a:hover {
+        background: rgba(255, 255, 255, 0.08);
+        text-decoration: none;
+      }
+
+      main {
+        padding: 48px min(6vw, 72px);
+      }
+
+      .hero {
+        background: linear-gradient(135deg, rgba(14, 124, 123, 0.98), #0b3448);
+        border-radius: 34px;
+        box-shadow: var(--shadow);
+        color: #ffffff;
+        padding: 42px;
+      }
+
+      .eyebrow {
+        color: var(--teal);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .hero .eyebrow {
+        color: #a8fff5;
+      }
+
+      h2,
+      h3,
+      h4 {
+        line-height: 1.2;
+      }
+
+      h2 {
+        font-size: 30px;
+        margin: 0 0 18px;
+      }
+
+      h3 {
+        font-size: 22px;
+        margin: 0 0 12px;
+      }
+
+      h4 {
+        font-size: 17px;
+        margin: 0 0 8px;
+      }
+
+      .hero h2 {
+        font-size: clamp(34px, 5vw, 58px);
+        margin: 10px 0 16px;
+        max-width: 980px;
+      }
+
+      .hero p {
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 17px;
+        max-width: 900px;
+      }
+
+      section {
+        margin-top: 28px;
+      }
+
+      .card {
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: 0 14px 40px rgba(16, 35, 49, 0.06);
+        padding: 28px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .pill {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 999px;
+        color: #ffffff;
+        display: inline-flex;
+        font-size: 13px;
+        font-weight: 800;
+        padding: 9px 12px;
+      }
+
+      .note {
+        border-left: 4px solid var(--teal);
+        background: #eef8f7;
+        border-radius: 16px;
+        color: #25515a;
+        padding: 16px 18px;
+      }
+
+      .warning {
+        border-left-color: var(--amber);
+        background: #fff7e7;
+        color: #6c4400;
+      }
+
+      .risk {
+        border-left-color: var(--rose);
+        background: #fff1f3;
+        color: #7a1023;
+      }
+
+      .success {
+        border-left-color: var(--green);
+        background: #edf9f2;
+        color: #0f5132;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      td {
+        font-size: 14px;
+      }
+
+      code {
+        background: rgba(13, 38, 56, 0.08);
+        border-radius: 8px;
+        color: #0d4050;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.92em;
+        padding: 2px 6px;
+      }
+
+      pre {
+        background: var(--code-bg);
+        border-radius: 22px;
+        color: var(--code-ink);
+        overflow: auto;
+        padding: 18px 20px;
+      }
+
+      pre code {
+        background: transparent;
+        color: inherit;
+        padding: 0;
+      }
+
+      .diagram {
+        background: #f8fbfb;
+        border: 1px dashed #bdd4d8;
+        border-radius: 24px;
+        overflow: auto;
+        padding: 22px;
+      }
+
+      .flow {
+        display: grid;
+        gap: 12px;
+        min-width: 760px;
+      }
+
+      .flow-row {
+        align-items: stretch;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(5, minmax(120px, 1fr));
+      }
+
+      .flow-box {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 14px;
+      }
+
+      .arrow {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 900;
+        text-align: center;
+      }
+
+      .tag {
+        border-radius: 999px;
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 900;
+        margin: 0 6px 6px 0;
+        padding: 5px 9px;
+      }
+
+      .tag.swe {
+        background: #e8f3ff;
+        color: #174f89;
+      }
+
+      .tag.ds {
+        background: #e9f8ef;
+        color: #12623b;
+      }
+
+      .tag.warn {
+        background: #fff3cf;
+        color: #795000;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .toc-small {
+        color: rgba(236, 247, 246, 0.55);
+        font-size: 12px;
+        margin-top: 24px;
+      }
+
+      @media (max-width: 980px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        aside {
+          height: auto;
+          position: relative;
+        }
+
+        main {
+          padding: 28px 18px;
+        }
+
+        .grid.two,
+        .grid.three {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <h1>Vancouver Housing Price Prediction</h1>
+        <p>Technical guide for software engineering and data science review.</p>
+        <nav>
+          <a href="#purpose">1. Purpose</a>
+          <a href="#architecture">2. Architecture</a>
+          <a href="#runtime-flow">3. Runtime Flow</a>
+          <a href="#structure">4. File Structure</a>
+          <a href="#frontend">5. Frontend</a>
+          <a href="#api">6. API Server</a>
+          <a href="#model-service">7. Model Service</a>
+          <a href="#data-science">8. Data Science</a>
+          <a href="#contracts">9. Contracts</a>
+          <a href="#development">10. Development Workflow</a>
+          <a href="#limitations">11. Limitations</a>
+          <a href="#next">12. Next Improvements</a>
+        </nav>
+        <p class="toc-small">Standalone guide for reviewing the project without starting the app.</p>
+      </aside>
+
+      <main>
+        <header class="hero" id="purpose">
+          <div class="eyebrow">Project Guide</div>
+          <h2>How the Vancouver housing prediction project works</h2>
+          <p>
+            This document explains the project from both perspectives: how a software engineer should understand the runtime,
+            API, and code organization, and how a data scientist should understand the dataset, model choices, validation,
+            and current limitations.
+          </p>
+          <div class="pill-row">
+            <span class="pill">React + Vite + Tailwind</span>
+            <span class="pill">Express 5 + Zod</span>
+            <span class="pill">Python Flask model service</span>
+            <span class="pill">XGBoost / Random Forest</span>
+            <span class="pill">Vancouver only</span>
+          </div>
+        </header>
+
+        <section class="grid two">
+          <article class="card">
+            <div class="eyebrow">Current Project</div>
+            <h3>What this demonstrates</h3>
+            <p>
+              The project estimates Vancouver home listing prices with property-type-specific ML models, then shows how the
+              prediction can be wrapped in a small user-facing app. The renovation section is intentionally rule-based because
+              the available dataset does not support causal uplift modeling.
+            </p>
+            <div>
+              <span class="tag swe">SWE</span>
+              <span class="tag ds">DS</span>
+              <span class="tag warn">Prototype</span>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="eyebrow">Truthfulness Boundary</div>
+            <h3>What it should not claim yet</h3>
+            <p>
+              The base model currently predicts listing price, not verified sale price. The live uplift layer is rule-based,
+              not a trained causal renovation model. A true ML uplift model still requires licensed, property-level before/after
+              resale data.
+            </p>
+            <div class="note warning">
+              Treat outputs as directional planning estimates, not guarantees or investment advice.
+            </div>
+          </article>
+        </section>
+
+        <section class="card" id="architecture">
+          <div class="eyebrow">Architecture</div>
+          <h2>Three-tier runtime shape</h2>
+          <p>
+            The project is intentionally split into a web client, a public API layer, and a Python model service. This keeps
+            frontend UX, API validation/orchestration, and ML code independent enough to evolve separately.
+          </p>
+
+          <div class="diagram">
+            <div class="flow">
+              <div class="flow-row">
+                <div class="flow-box"><strong>Browser</strong><br />User edits property and improvement choices.</div>
+                <div class="flow-box"><strong>React app</strong><br />Routes, state, forms, and result views.</div>
+                <div class="flow-box"><strong>Express API</strong><br />Zod validation and orchestration.</div>
+                <div class="flow-box"><strong>Flask service</strong><br />Model inference and training artifacts.</div>
+                <div class="flow-box"><strong>Models/data</strong><br />Base-price bundle and rule assumptions.</div>
+              </div>
+              <div class="arrow">Browser -> React -> Express API -> Flask /estimate for ML, or Express rule engine for simulate/plan</div>
+            </div>
+          </div>
+
+          <pre><code>artifacts/home-value-planner  -> website
+artifacts/api-server          -> API facade and planner orchestration
+artifacts/model-service       -> Python model runtime
+artifacts/openapi             -> API documentation snapshot
+src + assets                  -> archived Dash prototype</code></pre>
+        </section>
+
+        <section class="card" id="runtime-flow">
+          <div class="eyebrow">Runtime Flow</div>
+          <h2>How requests move through the system</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Flow</th>
+                <th>What happens</th>
+                <th>Main files</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Estimate</strong></td>
+                <td>
+                  The user enters postal code, property type, square footage, beds, baths, optional property tax, and optional
+                  known value. React calls <code>POST /api/estimate</code>. Express validates the shape and proxies to Flask
+                  <code>/estimate</code>. Python loads the base model bundle and returns current list-value estimate plus trust metrics.
+                </td>
+                <td>
+                  <code>App.tsx</code>, <code>EstimatePage.tsx</code>, <code>generated.ts</code>, <code>index.ts</code>,
+                  <code>model.ts</code>, <code>service.py</code>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Simulate</strong></td>
+                <td>
+                  The user toggles improvements. React calls <code>POST /api/simulate</code>. Express validates, refreshes the
+                  base estimate, and runs the rule-based uplift engine to return uplift, confidence range, final guardrailed
+                  value, and rule explanations.
+                </td>
+                <td>
+                  <code>SimulatePage.tsx</code>, <code>ImprovementFlagPicker.tsx</code>, <code>schemas.ts</code>,
+                  <code>model.ts</code>, <code>ruleBasedUplift.ts</code>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Plan</strong></td>
+                <td>
+                  The user sets target price, budget, and timeline. Express scores candidate improvements through the same
+                  rule-based uplift engine, chooses actions that fit budget/time, and returns phases plus target realism status.
+                </td>
+                <td>
+                  <code>PlanPage.tsx</code>, <code>model.ts</code>, <code>data.ts</code>,
+                  <code>ruleBasedUplift.ts</code>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card" id="structure">
+          <div class="eyebrow">File Structure</div>
+          <h2>What each major file does</h2>
+
+          <h3>Workspace and docs</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Role</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>README.md</code></td>
+                <td>Primary Vancouver app documentation.</td>
+                <td>Explains architecture, environment, run commands, model state, and caveats.</td>
+              </tr>
+              <tr>
+                <td><code>package.json</code></td>
+                <td>Monorepo workspace scripts.</td>
+                <td>Uses pnpm workspaces for API and frontend scripts.</td>
+              </tr>
+              <tr>
+                <td><code>.env.example</code></td>
+                <td>Environment template.</td>
+                <td>Documents model-service, API, Vite, dataset, and optional sales extract variables.</td>
+              </tr>
+              <tr>
+                <td><code>docs/model-card.md</code></td>
+                <td>Data science model card.</td>
+                <td>Summarizes target, features, validation, limitations, and why uplift is not ML yet.</td>
+              </tr>
+              <tr>
+                <td><code>pnpm-workspace.yaml</code></td>
+                <td>Workspace package registration.</td>
+                <td>Connects API and frontend packages.</td>
+              </tr>
+              <tr>
+                <td><code>requirements.txt</code></td>
+                <td>Python model-service dependencies.</td>
+                <td>Needed for Flask, pandas, sklearn, xgboost fallback behavior, and model runtime.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>API server</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Role</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>artifacts/api-server/src/index.ts</code></td>
+                <td>Express app entrypoint.</td>
+                <td>Defines <code>/health</code>, <code>/api/estimate</code>, <code>/api/simulate</code>, and <code>/api/plan</code>.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/api-server/src/schemas.ts</code></td>
+                <td>Runtime request validation.</td>
+                <td>Zod is the live source of truth for request shapes.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/api-server/src/model.ts</code></td>
+                <td>Model-service client and planner logic.</td>
+                <td>Proxies to Flask and builds plan recommendations. This is a key future refactor target.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/api-server/src/data.ts</code></td>
+                <td>Shared enums and improvement catalog.</td>
+                <td>Defines property types, improvement flags, default costs, months, and phases.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/api-server/src/db/*</code></td>
+                <td>Dormant Postgres/Drizzle layer.</td>
+                <td>Currently not part of the live runtime; reserved for future persistence.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Frontend app</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Role</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>artifacts/home-value-planner/src/App.tsx</code></td>
+                <td>Top-level React state and routes.</td>
+                <td>Owns property state, planned flags, estimate fetch, loading state, and routing.</td>
+              </tr>
+              <tr>
+                <td><code>src/api/client.ts</code></td>
+                <td>Frontend API client.</td>
+                <td>Explicit wrapper for estimate, simulate, and plan calls.</td>
+              </tr>
+              <tr>
+                <td><code>src/api/http.ts</code></td>
+                <td>Shared fetch helper.</td>
+                <td>Handles JSON headers and clearer API error messages.</td>
+              </tr>
+              <tr>
+                <td><code>src/types.ts</code></td>
+                <td>Frontend request/response types.</td>
+                <td>Should stay aligned with Zod schemas and OpenAPI docs.</td>
+              </tr>
+              <tr>
+                <td><code>src/pages/EstimatePage.tsx</code></td>
+                <td>Base estimate experience.</td>
+                <td>Strongest page today: one primary result, trust panel, local position, and value drivers.</td>
+              </tr>
+              <tr>
+                <td><code>src/pages/SimulatePage.tsx</code></td>
+                <td>Uplift simulation experience.</td>
+                <td>Shows current value, uplift, guardrailed final value, confidence, evidence, and drivers.</td>
+              </tr>
+              <tr>
+                <td><code>src/pages/PlanPage.tsx</code></td>
+                <td>Sale plan experience.</td>
+                <td>Shows budget/time planner, target status, planned spend, selected actions, and warnings.</td>
+              </tr>
+              <tr>
+                <td><code>src/components/*</code></td>
+                <td>Reusable UI components.</td>
+                <td>Includes site layout, property form, improvement picker, metric cards, status pill, and section shell.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Model service</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Role</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>artifacts/model-service/app.py</code></td>
+                <td>Flask entrypoint.</td>
+                <td>Loads local <code>.env</code> and exposes <code>/health</code>, <code>/estimate</code>, and an archived research <code>/uplift</code> endpoint.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/model-service/service.py</code></td>
+                <td>Base-price training and inference.</td>
+                <td>Loads Vancouver listing data, cleans features, trains per-property-type models, and returns estimates.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/model-service/uplift_service.py</code></td>
+                <td>Archived uplift research service.</td>
+                <td>Explores permit/tax/sales ingestion and evidence labels, but the live website no longer depends on it.</td>
+              </tr>
+              <tr>
+                <td><code>artifacts/model-service/models/*.pkl</code></td>
+                <td>Cached model artifacts.</td>
+                <td>Useful locally, but should not be treated as the long-term source of truth.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card" id="frontend">
+          <div class="eyebrow">SWE View</div>
+          <h2>Frontend architecture</h2>
+          <p>
+            The frontend is a small React website with three product routes. It keeps state local and simple: one persisted
+            property profile, one persisted improvement-flag list, and live estimate state.
+          </p>
+          <div class="grid two">
+            <div>
+              <h3>State model</h3>
+              <ul>
+                <li><code>property</code>: postal code, type, sqft, beds, baths, tax, known value.</li>
+                <li><code>plannedFlags</code>: selected improvement toggles.</li>
+                <li><code>estimate</code>: current base model response.</li>
+                <li><code>requestError</code>: API/model-service error surfaced to the user.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>Routes</h3>
+              <ul>
+                <li><code>/</code>: product landing page.</li>
+                <li><code>/estimate</code>: current listing-value estimate.</li>
+                <li><code>/simulate</code>: rule-based uplift simulation.</li>
+                <li><code>/plan</code>: target, budget, timeline, and recommendations.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="note">
+            SWE tip: if request shapes change, update <code>schemas.ts</code>, <code>types.ts</code>, <code>client.ts</code>,
+            and <code>home-value-planner.openapi.yaml</code> in the same commit.
+          </div>
+        </section>
+
+        <section class="card" id="api">
+          <div class="eyebrow">SWE View</div>
+          <h2>API server responsibilities</h2>
+          <p>
+            The Express server is intentionally thin but important. It protects the Python service from malformed input,
+            hides model-service URLs from the browser, and centralizes sale-plan orchestration.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Input</th>
+                <th>Output</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GET /health</code></td>
+                <td>none</td>
+                <td>API status and mode.</td>
+              </tr>
+              <tr>
+                <td><code>POST /api/estimate</code></td>
+                <td><code>PropertyInput</code></td>
+                <td>Base estimate, confidence range, model quality, drivers, market context.</td>
+              </tr>
+              <tr>
+                <td><code>POST /api/simulate</code></td>
+                <td><code>PropertyInput + plannedFlags + horizonMonths</code></td>
+                <td>Uplift, final value, evidence level, confidence range, top uplift drivers.</td>
+              </tr>
+              <tr>
+                <td><code>POST /api/plan</code></td>
+                <td><code>SimulateRequest + targetPrice + budget + timelineMonths</code></td>
+                <td>Target status, achievable value, chosen recommendations, phases.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card" id="model-service">
+          <div class="eyebrow">DS + SWE View</div>
+          <h2>Python model service</h2>
+          <p>
+            The Python service handles model loading, training, feature engineering, inference, and health payloads. It is
+            the live runtime for the base estimate. The older Python uplift path remains as research scaffolding, while
+            simulate and plan now use the Express rule-based uplift engine.
+          </p>
+          <div class="grid two">
+            <article class="note success">
+              <h3>Base model</h3>
+              <p>
+                Trains on the Vancouver subset of <code>data_bc.csv</code>. It filters to supported property types, engineers
+                postal/FSA and location features, trains on <code>log(price)</code>, compares XGBoost and Random Forest, and
+                selects the best model per property type by CV MAE.
+              </p>
+            </article>
+            <article class="note warning">
+              <h3>Rule-based uplift</h3>
+              <p>
+                Uses deterministic cost-recovery, feasibility, property-type, timeline, and local ceiling rules. It is explainable and useful
+                for scenario planning, but it is not trained on observed renovation resale outcomes yet.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="card" id="data-science">
+          <div class="eyebrow">DS View</div>
+          <h2>Data science understanding</h2>
+
+          <h3>Layer 1: base listing-value model</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Concept</th>
+                <th>Current implementation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Target</td>
+                <td>Listing price from Vancouver rows in <code>data_bc.csv</code>.</td>
+              </tr>
+              <tr>
+                <td>Scope</td>
+                <td>Vancouver only; property types are <code>Condo</code>, <code>Detached</code>, <code>Townhouse</code>, and <code>Duplex</code>.</td>
+              </tr>
+              <tr>
+                <td>Features</td>
+                <td>
+                  Living area, bedrooms, bathrooms, property tax, latitude, longitude, polynomial lat/lon features, postal FSA,
+                  and KMeans submarket cluster.
+                </td>
+              </tr>
+              <tr>
+                <td>Models</td>
+                <td>XGBoost and Random Forest candidates, trained per property type.</td>
+              </tr>
+              <tr>
+                <td>Validation</td>
+                <td>Outlier removal, train/holdout split, adaptive cross-validation, bootstrap intervals.</td>
+              </tr>
+              <tr>
+                <td>Output</td>
+                <td>Base value, confidence range, price per sqft, market context, drivers, and model-quality payload.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Layer 2: rule-based uplift</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Concept</th>
+                <th>Current implementation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Target</td>
+                <td>Estimated value added from selected improvements using published cost-recovery assumptions, Vancouver feasibility rules, and market headroom.</td>
+              </tr>
+              <tr>
+                <td>Improvement flags</td>
+                <td>
+                  Kitchen, bathrooms, legal suite, energy upgrades, curb appeal, permit issues, deferred maintenance, roof/systems.
+                </td>
+              </tr>
+              <tr>
+                <td>Evidence levels</td>
+                <td><code>rule-based</code> in the live product. <code>observed</code>, <code>hybrid</code>, and <code>proxy-heavy</code> are reserved for future/archived uplift experiments.</td>
+              </tr>
+              <tr>
+                <td>Guardrail</td>
+                <td>Final value is guardrailed against a practical market ceiling.</td>
+              </tr>
+              <tr>
+                <td>Known weakness</td>
+                <td>Rule-based uplift is not equivalent to a true causal renovation value model.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="note risk">
+            DS priority: the biggest next leap is acquiring actual transaction sale data and rebuilding both Layer 1 and Layer
+            2 around sale outcomes instead of listing/proxy outcomes.
+          </div>
+        </section>
+
+        <section class="card" id="contracts">
+          <div class="eyebrow">Contracts</div>
+          <h2>How to keep interfaces aligned</h2>
+          <p>
+            Contract drift was one of the biggest project risks. The current runtime source of truth is the Zod schema in
+            <code>artifacts/api-server/src/schemas.ts</code>. The TypeScript frontend types and OpenAPI snapshot should mirror it.
+          </p>
+          <pre><code>Update order for API changes:
+1. artifacts/api-server/src/schemas.ts
+2. artifacts/api-server/src/model.ts response types
+3. artifacts/home-value-planner/src/types.ts
+4. artifacts/home-value-planner/src/api/client.ts
+5. artifacts/openapi/home-value-planner.openapi.yaml
+6. affected React pages</code></pre>
+        </section>
+
+        <section class="card" id="development">
+          <div class="eyebrow">Development Workflow</div>
+          <h2>How to run and verify locally</h2>
+
+          <h3>Start the stack</h3>
+          <pre><code>cd /Users/thomas/Documents/JournalPulse/canadian-investor-dashboard
+
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+corepack enable
+pnpm install
+
+pnpm dev:model
+pnpm dev:api
+pnpm dev:web</code></pre>
+
+          <h3>Verify changes</h3>
+          <pre><code>pnpm --filter @vvl/api-server typecheck
+pnpm --filter @vvl/home-value-planner typecheck
+PYTHONPYCACHEPREFIX=/tmp/vvl_pycache .venv/bin/python -m py_compile artifacts/model-service/app.py artifacts/model-service/service.py artifacts/model-service/uplift_service.py</code></pre>
+
+          <h3>Local URLs</h3>
+          <ul>
+            <li>Website: <code>http://127.0.0.1:5173</code> or the next Vite port if 5173 is busy.</li>
+            <li>API: <code>http://127.0.0.1:4000</code>.</li>
+            <li>Model service: <code>http://127.0.0.1:5001/health</code>.</li>
+          </ul>
+        </section>
+
+        <section class="card" id="limitations">
+          <div class="eyebrow">Known Limitations</div>
+          <h2>What still needs caution</h2>
+          <div class="grid two">
+            <div class="note warning">
+              <h3>Modeling limitations</h3>
+              <ul>
+                <li>Base estimate predicts listing price, not actual sale price.</li>
+                <li>Uplift is rule-based and not trained on observed resale outcomes yet.</li>
+                <li>Renovation rules cannot guarantee completion quality, buyer taste, or permit outcomes.</li>
+                <li>Property tax is highly missing in the listing dataset.</li>
+              </ul>
+            </div>
+            <div class="note warning">
+              <h3>Engineering limitations</h3>
+              <ul>
+                <li><code>model.ts</code> mixes transport and planner orchestration.</li>
+                <li>The archived <code>uplift_service.py</code> research module is too large and should be split if revived.</li>
+                <li>The DB layer is provisioned but unused.</li>
+                <li>Model artifacts are local pickle files, not a robust registry.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="next">
+          <div class="eyebrow">Roadmap</div>
+          <h2>Recommended next improvements</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>Improvement</th>
+                <th>Why it matters</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td>Acquire and integrate BC Assessment actual sales data.</td>
+                <td>Turns the base model from listing-price prediction into sale-price prediction.</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td>Build true before/after resale uplift labels.</td>
+                <td>Moves uplift from transparent rules to observed or hybrid evidence.</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td>Split <code>uplift_service.py</code> into ingestion, features, training, inference, and evidence modules.</td>
+                <td>Reduces risk and makes DS work easier to test.</td>
+              </tr>
+              <tr>
+                <td>4</td>
+                <td>Split <code>model.ts</code> into model-service client and planner orchestration modules.</td>
+                <td>Makes the API easier to maintain and test.</td>
+              </tr>
+              <tr>
+                <td>5</td>
+                <td>Add unit tests for schemas, planner scoring, flag mapping, and error handling.</td>
+                <td>Protects the app from regressions as the model evolves.</td>
+              </tr>
+              <tr>
+                <td>6</td>
+                <td>Add persistent saved scenarios with the dormant Drizzle/Postgres layer.</td>
+                <td>Turns the demo into a more complete product workflow.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <div class="eyebrow">Bottom Line</div>
+          <h2>How to describe the project today</h2>
+          <p>
+            This is a Vancouver-only data science project with a real React/Express/Python demo layer, a validated base
+            listing-price model, and a transparent non-ML uplift planner. The strongest resume story is the base predictive
+            modeling workflow plus the decision not to overclaim uplift modeling without the right labels.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply m-0 bg-fog font-sans text-slate-700 antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-sound-400 focus:ring-4 focus:ring-sound-100;
+  }
+
+  .label {
+    @apply text-xs font-extrabold uppercase tracking-[0.24em] text-sound-600;
+  }
+
+  .range-field {
+    @apply h-2 w-full cursor-pointer appearance-none rounded-full bg-sound-100 accent-sound-600;
+  }
+}
