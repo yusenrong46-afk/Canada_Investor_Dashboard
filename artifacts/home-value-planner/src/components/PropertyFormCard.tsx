@@ -23,12 +23,12 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft xl:sticky xl:top-24">
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft xl:sticky xl:top-24">
       <div className="mb-5">
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-sound-600">Home profile</div>
-        <h2 className="mt-1 font-display text-xl text-cedar">Enter the current listing profile</h2>
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">Home profile</div>
+        <h2 className="mt-1 font-display text-xl text-cedar">Enter the home details</h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          This form stays narrow on purpose: postal code, property type, size, beds, baths, and optional tax or anchor value.
+          Use the current condition of the home. The optional value field is only for your own comparison.
         </p>
       </div>
 

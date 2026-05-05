@@ -86,11 +86,6 @@ export interface EstimateResponse {
   marketContext: MarketContextResponse;
 }
 
-export interface ComingSoonResponse {
-  status: "ready" | "data-missing";
-  message?: string;
-}
-
 export interface UpliftDriver {
   flag: PlannedFlag;
   label: string;
@@ -99,7 +94,7 @@ export interface UpliftDriver {
   rationale?: string;
 }
 
-export interface SimulateResponse {
+export interface ImproveValueResponse {
   status: "ready" | "data-missing";
   message?: string;
   modelVersion?: string;
@@ -154,4 +149,39 @@ export interface PlanResponse {
   plannedMonths?: number;
   items?: PlanLineItem[];
   phases?: PlanPhase[];
+}
+
+export type DealLabel = "Strong lead" | "Worth review" | "Needs caution" | "Pass for now";
+export type RiskLevel = "info" | "warning" | "danger";
+
+export interface DealRiskFlag {
+  level: RiskLevel;
+  label: string;
+  detail: string;
+}
+
+export interface DealAnalyzeResponse {
+  dealLabel: DealLabel;
+  modeledValueGap: number;
+  valueGapPercent: number;
+  afterPlanValue: number;
+  estimatedGrossUpside: number;
+  grossUpsidePercent: number;
+  riskFlags: DealRiskFlag[];
+  estimate: EstimateResponse;
+  plan: PlanResponse;
+}
+
+export interface AssistantCitation {
+  title: string;
+  source: string;
+  snippet: string;
+  score: number;
+}
+
+export interface AssistantQueryResponse {
+  answer: string;
+  confidence: "high" | "medium" | "low";
+  citations: AssistantCitation[];
+  suggestedQuestions: string[];
 }

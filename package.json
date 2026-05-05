@@ -8,8 +8,10 @@
   },
   "scripts": {
     "build": "pnpm -r build",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "test": "pnpm -r test && .venv/bin/python -m pytest",
     "typecheck": "pnpm -r typecheck",
-    "dev:model": "python artifacts/model-service/app.py",
+    "dev:model": ".venv/bin/python artifacts/model-service/app.py",
     "dev:api": "pnpm --filter @vvl/api-server dev",
     "dev:web": "pnpm --filter @vvl/home-value-planner dev"
   }

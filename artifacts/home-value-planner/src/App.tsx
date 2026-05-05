@@ -1,14 +1,13 @@
-import { startTransition, useDeferredValue, useEffect, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { postEstimate } from "./api/client";
 import { SiteLayout } from "./components/SiteLayout";
 import { defaultProperty } from "./lib/defaults";
 import { useLocalStorageState } from "./lib/useLocalStorageState";
 import { EstimatePage } from "./pages/EstimatePage";
-import { LandingPage } from "./pages/LandingPage";
+import { ImproveValuePage } from "./pages/ImproveValuePage";
 import { PlanPage } from "./pages/PlanPage";
-import { SimulatePage } from "./pages/SimulatePage";
 import type { EstimateResponse, PlannedFlag, PropertyInput } from "./types";
 
 export default function App() {
@@ -18,23 +17,19 @@ export default function App() {
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  const deferredProperty = useDeferredValue(property);
-
   useEffect(() => {
     let active = true;
     setEstimateLoading(true);
     setRequestError(null);
 
-    postEstimate(deferredProperty)
+    postEstimate(property)
       .then((result) => {
         if (!active) {
           return;
         }
 
-        startTransition(() => {
-          setEstimate(result);
-          setRequestError(null);
-        });
+        setEstimate(result);
+        setRequestError(null);
       })
       .catch((error: Error) => {
         if (active) {
@@ -50,14 +45,14 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [deferredProperty]);
+  }, [property]);
 
   const loadingBanner = requestError ? (
-    <div className="mx-auto mb-6 max-w-7xl rounded-[24px] border border-amber-100 bg-amber-50 px-5 py-4 text-sm text-amber-700 shadow-soft">
+    <div className="mx-auto mb-6 max-w-7xl rounded-lg border border-amber-100 bg-amber-50 px-5 py-4 text-sm text-amber-700 shadow-soft">
       {requestError}
     </div>
   ) : estimateLoading ? (
-    <div className="mx-auto mb-6 max-w-7xl rounded-[24px] border border-white/70 bg-white/80 px-5 py-4 text-sm text-slate-500 shadow-soft">
+    <div className="mx-auto mb-6 max-w-7xl rounded-lg border border-white/70 bg-white/80 px-5 py-4 text-sm text-slate-500 shadow-soft">
       Loading the Vancouver base-price model...
     </div>
   ) : null;
@@ -67,19 +62,22 @@ export default function App() {
       <SiteLayout property={property} estimate={estimate}>
         {loadingBanner}
         <Routes>
-          <Route path="/" element={<LandingPage />} />
           <Route
-            path="/estimate"
+            path="/"
             element={<EstimatePage property={property} estimate={estimate} onPropertyChange={setProperty} loading={estimateLoading} />}
           />
+          <Route path="/estimate" element={<Navigate to="/" replace />} />
           <Route
-            path="/simulate"
-            element={<SimulatePage property={property} estimate={estimate} plannedFlags={plannedFlags} onPlannedFlagsChange={setPlannedFlags} />}
+            path="/improve"
+            element={<ImproveValuePage property={property} estimate={estimate} plannedFlags={plannedFlags} onPlannedFlagsChange={setPlannedFlags} />}
           />
+          <Route path="/simulate" element={<Navigate to="/improve" replace />} />
           <Route
             path="/plan"
             element={<PlanPage property={property} estimate={estimate} plannedFlags={plannedFlags} onPlannedFlagsChange={setPlannedFlags} />}
           />
+          <Route path="/model-story" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </SiteLayout>
     </BrowserRouter>

@@ -90,6 +90,52 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/deal/analyze:
+    post:
+      summary: Analyze one investor deal from asking price, base value, and renovation plan
+      operationId: postDealAnalyze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealAnalyzeRequest"
+      responses:
+        "200":
+          description: Investor deal analysis response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealAnalyzeResponse"
+        "400":
+          description: Request validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/assistant/query:
+    post:
+      summary: Ask a cited project explainer question over local documentation
+      operationId: postAssistantQuery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantQueryRequest"
+      responses:
+        "200":
+          description: Cited project explainer response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantQueryResponse"
+        "400":
+          description: Request validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     ApiHealthResponse:
@@ -523,3 +569,107 @@ components:
           items:
             $ref: "#/components/schemas/PlanPhase"
       required: [status]
+    DealAnalyzeRequest:
+      allOf:
+        - $ref: "#/components/schemas/SimulateRequest"
+        - type: object
+          additionalProperties: false
+          properties:
+            askingPrice:
+              type: number
+              exclusiveMinimum: 0
+            budget:
+              type: number
+              exclusiveMinimum: 0
+            timelineMonths:
+              type: number
+              minimum: 3
+              maximum: 18
+          required: [askingPrice, budget, timelineMonths]
+    DealRiskFlag:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [info, warning, danger]
+        label:
+          type: string
+        detail:
+          type: string
+      required: [level, label, detail]
+    DealAnalyzeResponse:
+      type: object
+      properties:
+        dealLabel:
+          type: string
+          enum: [Strong lead, Worth review, Needs caution, Pass for now]
+        modeledValueGap:
+          type: number
+        valueGapPercent:
+          type: number
+        afterPlanValue:
+          type: number
+        estimatedGrossUpside:
+          type: number
+        grossUpsidePercent:
+          type: number
+        riskFlags:
+          type: array
+          items:
+            $ref: "#/components/schemas/DealRiskFlag"
+        estimate:
+          $ref: "#/components/schemas/EstimateResponse"
+        plan:
+          $ref: "#/components/schemas/PlanResponse"
+      required:
+        - dealLabel
+        - modeledValueGap
+        - valueGapPercent
+        - afterPlanValue
+        - estimatedGrossUpside
+        - grossUpsidePercent
+        - riskFlags
+        - estimate
+        - plan
+    AssistantQueryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+          minLength: 3
+          maxLength: 500
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 8
+      required: [question]
+    AssistantCitation:
+      type: object
+      properties:
+        title:
+          type: string
+        source:
+          type: string
+        snippet:
+          type: string
+        score:
+          type: number
+      required: [title, source, snippet, score]
+    AssistantQueryResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantCitation"
+        suggestedQuestions:
+          type: array
+          items:
+            type: string
+      required: [answer, confidence, citations, suggestedQuestions]

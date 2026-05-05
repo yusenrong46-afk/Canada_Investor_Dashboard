@@ -1,8 +1,8 @@
 # Vancouver Housing Price Prediction
 
-This is an applied data science project about estimating Vancouver home listing prices and explaining what would be needed to build a true renovation-uplift model.
+This is an applied data science project about estimating Vancouver home listing prices and turning the estimate into an investor-facing deal analyzer.
 
-The project has a working web app, but the main story is the modeling workflow: data cleaning, feature engineering, model comparison, validation, and honest communication about where the available data is not enough.
+The project has a working web app, but the main story is the full dashboard workflow: data cleaning, feature engineering, model comparison, validation, investor decision support, and honest communication about where the available data is not enough.
 
 ## Project Question
 
@@ -18,6 +18,7 @@ Can we estimate renovation uplift? Not with the current dataset in a defensible 
 - Property types: `Condo`, `Detached`, `Townhouse`, `Duplex`
 - Target for the ML model: listing price
 - Inputs: postal code, property type, living area, bedrooms, bathrooms, optional property tax
+- Investor workflow: asking-price comparison, value gap, renovation budget, timeline, risk flags, and gross upside before transaction costs
 - Uplift/planning: deterministic rules based on published renovation cost-recovery patterns, property-type fit, timeline, and local price ceilings
 
 Important limitations:
@@ -25,6 +26,7 @@ Important limitations:
 - The base model predicts listing price, not verified sale price.
 - The uplift calculator is not a causal ML model.
 - Outputs are for portfolio/demo and planning exploration, not financial advice.
+- Deal verdicts are screening aids, not buy/sell recommendations.
 
 ## Data Science Work
 
@@ -101,7 +103,7 @@ React website -> Express API -> Python model service
 ```
 
 - `artifacts/home-value-planner/`: React + Vite + Tailwind website
-- `artifacts/api-server/`: Express 5 API, validation, rule-based uplift, planner logic
+- `artifacts/api-server/`: Express 5 API, validation, deal analysis, rule-based uplift, planner logic, project explainer
 - `artifacts/model-service/`: Python model training and inference for the base price model
 - `artifacts/openapi/`: API documentation snapshot
 - `docs/`: technical guide and uplift dataset research notes
@@ -109,11 +111,15 @@ React website -> Express API -> Python model service
 
 Important files:
 
-- [`artifacts/model-service/service.py`](/Users/thomas/Documents/JournalPulse/canadian-investor-dashboard/artifacts/model-service/service.py): data cleaning, feature engineering, model training, evaluation, and inference
-- [`artifacts/api-server/src/ruleBasedUplift.ts`](/Users/thomas/Documents/JournalPulse/canadian-investor-dashboard/artifacts/api-server/src/ruleBasedUplift.ts): transparent renovation-uplift rule engine
-- [`artifacts/api-server/src/model.ts`](/Users/thomas/Documents/JournalPulse/canadian-investor-dashboard/artifacts/api-server/src/model.ts): API orchestration between estimate, simulate, and plan
-- [`artifacts/home-value-planner/src/pages/EstimatePage.tsx`](/Users/thomas/Documents/JournalPulse/canadian-investor-dashboard/artifacts/home-value-planner/src/pages/EstimatePage.tsx): homeowner-facing model result and trust summary
-- [`docs/model-card.md`](/Users/thomas/Documents/JournalPulse/canadian-investor-dashboard/docs/model-card.md): concise data science summary for the base model and uplift limitation
+- [`artifacts/model-service/service.py`](artifacts/model-service/service.py): data cleaning, feature engineering, model training, evaluation, and inference
+- [`artifacts/api-server/src/ruleBasedUplift.ts`](artifacts/api-server/src/ruleBasedUplift.ts): transparent renovation-uplift rule engine
+- [`artifacts/api-server/src/model.ts`](artifacts/api-server/src/model.ts): API orchestration between estimate, simulate, and plan
+- [`artifacts/api-server/src/dealAnalysis.ts`](artifacts/api-server/src/dealAnalysis.ts): investor deal math and risk labels
+- [`artifacts/api-server/src/assistant.ts`](artifacts/api-server/src/assistant.ts): cited project explainer over local docs
+- [`artifacts/home-value-planner/src/pages/EstimatePage.tsx`](artifacts/home-value-planner/src/pages/EstimatePage.tsx): homeowner-facing model result and trust summary
+- [`artifacts/home-value-planner/src/pages/DealAnalyzerPage.tsx`](artifacts/home-value-planner/src/pages/DealAnalyzerPage.tsx): investor-facing dashboard homepage
+- [`docs/model-card.md`](docs/model-card.md): concise data science summary for the base model and uplift limitation
+- [`docs/portfolio-case-study.md`](docs/portfolio-case-study.md): resume/interview case-study narrative
 
 ## Run Locally
 
@@ -128,7 +134,7 @@ Install Python and Node dependencies:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 corepack enable
 pnpm install
 ```
@@ -162,6 +168,10 @@ If `xgboost` cannot load because `libomp` is missing, the Python service can fal
 - `POST /api/estimate`
 - `POST /api/simulate`
 - `POST /api/plan`
+- `POST /api/deal/analyze`
+- `POST /api/assistant/query`
+
+The assistant endpoint is retrieval-first. By default it uses a lightweight local fallback over project docs. Set `PROJECT_ASSISTANT_USE_SENTENCE_BERT=1` after installing Python requirements to query with `sentence-transformers/all-MiniLM-L6-v2`.
 
 ## How I Would Present This Project
 

@@ -4,8 +4,10 @@ import cors from "cors";
 import express from "express";
 import { ZodError } from "zod/v4";
 
+import { answerProjectQuestion } from "./assistant";
+import { analyzeDeal } from "./dealAnalysis";
 import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
-import { estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
+import { assistantQuerySchema, dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
 
 const app = express();
 const host = process.env.API_HOST ?? "127.0.0.1";
@@ -42,6 +44,26 @@ app.post("/api/plan", async (req, res, next) => {
   try {
     const request = planRequestSchema.parse(req.body);
     const response = await buildSalePlan(request);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/deal/analyze", async (req, res, next) => {
+  try {
+    const request = dealAnalyzeRequestSchema.parse(req.body);
+    const response = await analyzeDeal(request);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/assistant/query", (req, res, next) => {
+  try {
+    const request = assistantQuerySchema.parse(req.body);
+    const response = answerProjectQuestion(request);
     res.json(response);
   } catch (error) {
     next(error);

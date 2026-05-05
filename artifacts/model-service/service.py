@@ -180,12 +180,12 @@ def _normalize_property_type(property_type: Any, type_value: Any) -> str | None:
         return None
     if "vacant" in merged or "land" in merged or "multi" in merged:
         return None
-    if "single family" in merged or "detached" in merged or "house" in merged:
-        return "Detached"
     if "townhome" in merged or "townhouse" in merged:
         return "Townhouse"
     if "duplex" in merged:
         return "Duplex"
+    if "single family" in merged or "detached" in merged or "house" in merged:
+        return "Detached"
     if "condo" in merged or "apartment" in merged:
         return "Condo"
 

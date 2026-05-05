@@ -10,7 +10,7 @@ interface SectionCardProps extends PropsWithChildren {
 
 export function SectionCard({ title, eyebrow, description, aside, className = "", children }: SectionCardProps) {
   return (
-    <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-soft ${className}`}>
+    <section className={`rounded-lg border border-slate-200 bg-white p-5 shadow-soft ${className}`}>
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="space-y-1.5">
           {eyebrow ? <div className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-sound-600">{eyebrow}</div> : null}

@@ -30,7 +30,20 @@ export const planRequestSchema = simulateRequestSchema.extend({
   timelineMonths: z.number().min(3).max(18),
 });
 
+export const dealAnalyzeRequestSchema = simulateRequestSchema.extend({
+  askingPrice: z.number().positive(),
+  budget: z.number().positive(),
+  timelineMonths: z.number().min(3).max(18),
+});
+
+export const assistantQuerySchema = z.object({
+  question: z.string().trim().min(3).max(500),
+  topK: z.number().int().min(1).max(8).optional(),
+});
+
 export type PropertyInput = z.infer<typeof propertyInputSchema>;
 export type EstimateRequest = z.infer<typeof estimateRequestSchema>;
 export type SimulateRequest = z.infer<typeof simulateRequestSchema>;
 export type PlanRequest = z.infer<typeof planRequestSchema>;
+export type DealAnalyzeRequest = z.infer<typeof dealAnalyzeRequestSchema>;
+export type AssistantQueryRequest = z.infer<typeof assistantQuerySchema>;

@@ -9,6 +9,7 @@ build
 .env.local
 coverage
 .vite
+*.tsbuildinfo
 __pycache__
 *.py[cod]
 artifacts/home-value-planner/node_modules

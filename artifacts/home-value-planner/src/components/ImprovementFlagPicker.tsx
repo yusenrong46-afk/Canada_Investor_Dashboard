@@ -36,7 +36,7 @@ export function ImprovementFlagPicker({ plannedFlags, onChange }: ImprovementFla
             key={option.flag}
             type="button"
             onClick={() => toggle(option.flag)}
-            className={`rounded-2xl border px-4 py-4 text-left transition ${
+            className={`rounded-lg border px-4 py-4 text-left transition ${
               active
                 ? "border-sound-400 bg-sound-50 shadow-soft"
                 : "border-slate-200 bg-white hover:border-slate-300"
