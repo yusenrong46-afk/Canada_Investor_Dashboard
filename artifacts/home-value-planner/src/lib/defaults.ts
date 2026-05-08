@@ -6,6 +6,6 @@ export const defaultProperty: PropertyInput = {
   livingAreaSqft: 708,
   bedrooms: 1,
   bathrooms: 1,
-  propertyTax: 2327,
+  yearBuilt: 2006,
   knownCurrentValue: undefined,
 };

@@ -42,6 +42,31 @@ function dealTone(label: string): string {
   return "bg-amber-50 text-amber-800 border-amber-200";
 }
 
+function updateNumberDraft(
+  value: string,
+  setDraft: (value: string) => void,
+  setNumber: (value: number) => void,
+  min: number,
+  max?: number,
+) {
+  setDraft(value);
+
+  if (value.trim() === "") {
+    return;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+
+  if (parsed < min || (max != null && parsed > max)) {
+    return;
+  }
+
+  setNumber(parsed);
+}
+
 export function DealAnalyzerPage({
   property,
   estimate,
@@ -52,6 +77,9 @@ export function DealAnalyzerPage({
   const [askingPrice, setAskingPrice] = useState(735_000);
   const [budget, setBudget] = useState(85_000);
   const [timelineMonths, setTimelineMonths] = useState(9);
+  const [askingPriceDraft, setAskingPriceDraft] = useState(String(askingPrice));
+  const [budgetDraft, setBudgetDraft] = useState(String(budget));
+  const [timelineDraft, setTimelineDraft] = useState(String(timelineMonths));
   const [askingTouched, setAskingTouched] = useState(false);
   const [result, setResult] = useState<DealAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +90,18 @@ export function DealAnalyzerPage({
       setAskingPrice(Math.round(estimate.baseValue * 0.97));
     }
   }, [askingTouched, estimate?.baseValue]);
+
+  useEffect(() => {
+    setAskingPriceDraft(String(askingPrice));
+  }, [askingPrice]);
+
+  useEffect(() => {
+    setBudgetDraft(String(budget));
+  }, [budget]);
+
+  useEffect(() => {
+    setTimelineDraft(String(timelineMonths));
+  }, [timelineMonths]);
 
   useEffect(() => {
     let active = true;
@@ -130,16 +170,24 @@ export function DealAnalyzerPage({
                   className="field"
                   type="number"
                   min={100000}
-                  value={askingPrice}
+                  value={askingPriceDraft}
                   onChange={(event) => {
                     setAskingTouched(true);
-                    setAskingPrice(Number(event.target.value));
+                    updateNumberDraft(event.target.value, setAskingPriceDraft, setAskingPrice, 100_000);
                   }}
+                  onBlur={() => setAskingPriceDraft(String(askingPrice))}
                 />
               </label>
               <label className="space-y-2">
                 <span className="label">Renovation budget</span>
-                <input className="field" type="number" min={1000} value={budget} onChange={(event) => setBudget(Number(event.target.value))} />
+                <input
+                  className="field"
+                  type="number"
+                  min={1}
+                  value={budgetDraft}
+                  onChange={(event) => updateNumberDraft(event.target.value, setBudgetDraft, setBudget, 1)}
+                  onBlur={() => setBudgetDraft(String(budget))}
+                />
               </label>
               <label className="space-y-2">
                 <span className="label">Timeline months</span>
@@ -148,8 +196,9 @@ export function DealAnalyzerPage({
                   type="number"
                   min={3}
                   max={18}
-                  value={timelineMonths}
-                  onChange={(event) => setTimelineMonths(Number(event.target.value))}
+                  value={timelineDraft}
+                  onChange={(event) => updateNumberDraft(event.target.value, setTimelineDraft, setTimelineMonths, 3, 18)}
+                  onBlur={() => setTimelineDraft(String(timelineMonths))}
                 />
               </label>
             </div>

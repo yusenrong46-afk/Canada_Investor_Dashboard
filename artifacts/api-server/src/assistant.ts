@@ -236,9 +236,9 @@ export function answerProjectQuestion(request: AssistantQueryRequest): Assistant
 
 function suggestedQuestions(): string[] {
   return [
-    "Why is the renovation uplift layer rule-based?",
+    "How does Seattle uplift translate to Vancouver?",
     "What data does the base price model use?",
     "How should I interpret the model confidence range?",
-    "What would make this a true uplift model?",
+    "What would make this a Vancouver-specific uplift model?",
   ];
 }

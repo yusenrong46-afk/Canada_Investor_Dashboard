@@ -5,7 +5,7 @@ import { postImproveValue } from "../api/client";
 import { ImprovementFlagPicker } from "../components/ImprovementFlagPicker";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
-import { formatCurrency } from "../lib/format";
+import { formatCurrency, formatPercent } from "../lib/format";
 import type { EstimateResponse, ImproveValueResponse, PlannedFlag, PropertyInput } from "../types";
 
 interface ImproveValuePageProps {
@@ -13,6 +13,18 @@ interface ImproveValuePageProps {
   estimate: EstimateResponse | null;
   plannedFlags: PlannedFlag[];
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
+}
+
+const dataSourceLabels: Record<string, string> = {
+  seattlePermits: "Seattle building permits",
+  kingCountySales: "King County sales",
+  kingCountyResidentialBuildings: "King County residential buildings",
+};
+
+function shortDataPath(path: string): string {
+  const marker = "/data/raw/";
+  const markerIndex = path.indexOf(marker);
+  return markerIndex >= 0 ? `data/raw/${path.slice(markerIndex + marker.length)}` : path;
 }
 
 export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFlagsChange }: ImproveValuePageProps) {
@@ -53,6 +65,8 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
 
   const drivers = result?.topUpliftDrivers ?? [];
   const hasResult = result?.status === "ready";
+  const dataMissing = result?.status === "data-missing";
+  const dataSources = Object.entries(result?.dataSources ?? {});
 
   return (
     <div className="space-y-6">
@@ -82,8 +96,14 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
             <MetricCard label="Current as-is value" value={estimate ? formatCurrency(estimate.baseValue) : "Loading"} hint="From the live base model" />
             <MetricCard
               label="Added value"
-              value={hasResult && result.upliftValue != null ? formatCurrency(result.upliftValue) : loading ? "Updating" : "Unavailable"}
-              hint="Estimated value from selected work"
+              value={hasResult && result.upliftValue != null ? formatCurrency(result.upliftValue) : loading ? "Updating" : dataMissing ? "Data needed" : "Choose work"}
+              hint={
+                hasResult && result.upliftPercent != null
+                  ? `${formatPercent(result.upliftPercent * 100)} estimated uplift`
+                  : dataMissing
+                    ? "Waiting for real Seattle/King County CSVs"
+                    : "Estimated value from selected work"
+              }
             />
             <MetricCard
               label="After improvements"
@@ -92,9 +112,11 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
                   ? formatCurrency(result.finalValueGuardrailed)
                   : loading
                     ? "Updating"
-                    : "Unavailable"
+                    : dataMissing
+                      ? "Pending data"
+                      : "Choose work"
               }
-              hint="Capped by local market headroom"
+              hint={dataMissing ? "No fake uplift is shown" : "Capped by local market headroom"}
             />
           </div>
 
@@ -106,7 +128,7 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
             {hasResult ? (
               <div className="space-y-4">
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-                  Renovation upside is rule-based, so use it for planning and compare it with real contractor quotes before acting.
+                  Uplift is trained from real Seattle permit and repeat-sale records, then applied as a percentage to this Vancouver estimate.
                 </p>
                 <div className="grid gap-3">
                   {drivers.length ? (
@@ -117,7 +139,10 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
                             <div className="text-sm font-semibold text-cedar">{driver.label}</div>
                             {driver.rationale ? <div className="mt-1 text-xs leading-5 text-slate-500">{driver.rationale}</div> : null}
                           </div>
-                          <div className="text-sm font-semibold text-sound-700">{formatCurrency(driver.value)}</div>
+                          <div className="text-right text-sm font-semibold text-sound-700">
+                            <div>{formatCurrency(driver.value)}</div>
+                            {driver.upliftPercent != null ? <div className="mt-1 text-xs text-slate-500">{formatPercent(driver.upliftPercent * 100)}</div> : null}
+                          </div>
                         </div>
                       </div>
                     ))
@@ -127,8 +152,34 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                {result?.message ?? "Select improvements to estimate value impact."}
+              <div className="space-y-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                  <div className="font-semibold">{dataMissing ? "Real uplift data is not loaded yet." : "Choose improvements to estimate value impact."}</div>
+                  <p className="mt-2">
+                    {result?.message ?? "Select improvements to estimate value impact from the Seattle observed uplift model."}
+                  </p>
+                </div>
+
+                {dataMissing ? (
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="text-sm font-semibold text-cedar">Files needed for added value</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      The base price estimate still works. The added-value model needs these real local files before it can calculate uplift.
+                    </p>
+                    <div className="mt-4 space-y-2">
+                      {dataSources.map(([key, path]) => (
+                        <div key={key} className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-sm font-medium text-slate-700">{dataSourceLabels[key] ?? key}</div>
+                          <div className="mt-1 font-mono text-xs text-slate-500">{shortDataPath(path)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-4 text-sm leading-6 text-slate-500">
+                      This is intentional: the project now uses observed repeat-sale uplift only, so it shows no added value until the real
+                      Seattle/King County data exists locally.
+                    </p>
+                  </div>
+                ) : null}
               </div>
             )}
           </SectionCard>

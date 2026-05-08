@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import type { PropertyInput, PropertyType } from "../types";
 
 interface PropertyFormCardProps {
@@ -6,20 +8,68 @@ interface PropertyFormCardProps {
 }
 
 const propertyTypeOptions: PropertyType[] = ["Detached", "Townhouse", "Condo", "Duplex"];
+const currentYear = new Date().getFullYear();
+type NumberFieldKey = keyof Pick<
+  PropertyInput,
+  "livingAreaSqft" | "bedrooms" | "bathrooms" | "yearBuilt" | "knownCurrentValue"
+>;
+
+const numberFieldRanges: Record<NumberFieldKey, { min: number; max?: number; optional?: boolean; integer?: boolean }> = {
+  livingAreaSqft: { min: 250, max: 10_000, integer: true },
+  bedrooms: { min: 0, max: 10, integer: true },
+  bathrooms: { min: 0, max: 10 },
+  yearBuilt: { min: 1800, max: currentYear, optional: true, integer: true },
+  knownCurrentValue: { min: 1, optional: true, integer: true },
+};
+
+function toDraft(value: number | undefined): string {
+  return value == null ? "" : String(value);
+}
 
 export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) {
-  const updateNumber = (key: keyof Pick<PropertyInput, "livingAreaSqft" | "bedrooms" | "bathrooms" | "propertyTax" | "knownCurrentValue">, value: string) => {
-    const parsed = value === "" ? undefined : Number(value);
+  const [numberDrafts, setNumberDrafts] = useState<Record<NumberFieldKey, string>>({
+    livingAreaSqft: toDraft(property.livingAreaSqft),
+    bedrooms: toDraft(property.bedrooms),
+    bathrooms: toDraft(property.bathrooms),
+    yearBuilt: toDraft(property.yearBuilt),
+    knownCurrentValue: toDraft(property.knownCurrentValue),
+  });
 
-    onChange({
-      ...property,
-      [key]:
-        parsed === undefined
-          ? key === "propertyTax" || key === "knownCurrentValue"
-            ? undefined
-            : property[key]
-          : parsed,
+  useEffect(() => {
+    setNumberDrafts({
+      livingAreaSqft: toDraft(property.livingAreaSqft),
+      bedrooms: toDraft(property.bedrooms),
+      bathrooms: toDraft(property.bathrooms),
+      yearBuilt: toDraft(property.yearBuilt),
+      knownCurrentValue: toDraft(property.knownCurrentValue),
     });
+  }, [property.bathrooms, property.bedrooms, property.knownCurrentValue, property.livingAreaSqft, property.yearBuilt]);
+
+  const updateNumber = (key: NumberFieldKey, value: string) => {
+    setNumberDrafts((current) => ({ ...current, [key]: value }));
+
+    const range = numberFieldRanges[key];
+    if (value.trim() === "") {
+      if (range.optional) {
+        onChange({ ...property, [key]: undefined });
+      }
+      return;
+    }
+
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    if (parsed < range.min || (range.max != null && parsed > range.max) || (range.integer && !Number.isInteger(parsed))) {
+      return;
+    }
+
+    onChange({ ...property, [key]: parsed });
+  };
+
+  const resetNumber = (key: NumberFieldKey) => {
+    setNumberDrafts((current) => ({ ...current, [key]: toDraft(property[key]) }));
   };
 
   return (
@@ -66,8 +116,9 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
             className="field"
             type="number"
             min={250}
-            value={property.livingAreaSqft}
+            value={numberDrafts.livingAreaSqft}
             onChange={(event) => updateNumber("livingAreaSqft", event.target.value)}
+            onBlur={() => resetNumber("livingAreaSqft")}
           />
         </label>
 
@@ -77,8 +128,9 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
             className="field"
             type="number"
             min={0}
-            value={property.bedrooms}
+            value={numberDrafts.bedrooms}
             onChange={(event) => updateNumber("bedrooms", event.target.value)}
+            onBlur={() => resetNumber("bedrooms")}
           />
         </label>
 
@@ -89,20 +141,23 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
             type="number"
             min={0}
             step="0.5"
-            value={property.bathrooms}
+            value={numberDrafts.bathrooms}
             onChange={(event) => updateNumber("bathrooms", event.target.value)}
+            onBlur={() => resetNumber("bathrooms")}
           />
         </label>
 
         <label className="space-y-2">
-          <span className="label">Property tax</span>
+          <span className="label">Year built</span>
           <input
             className="field"
             type="number"
-            min={0}
+            min={1800}
+            max={currentYear}
             placeholder="Optional"
-            value={property.propertyTax ?? ""}
-            onChange={(event) => updateNumber("propertyTax", event.target.value)}
+            value={numberDrafts.yearBuilt}
+            onChange={(event) => updateNumber("yearBuilt", event.target.value)}
+            onBlur={() => resetNumber("yearBuilt")}
           />
         </label>
 
@@ -111,10 +166,11 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
           <input
             className="field"
             type="number"
-            min={0}
+            min={1}
             placeholder="Optional"
-            value={property.knownCurrentValue ?? ""}
+            value={numberDrafts.knownCurrentValue}
             onChange={(event) => updateNumber("knownCurrentValue", event.target.value)}
+            onBlur={() => resetNumber("knownCurrentValue")}
           />
         </label>
       </div>

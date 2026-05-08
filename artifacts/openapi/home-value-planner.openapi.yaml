@@ -4,7 +4,7 @@ info:
   version: 0.3.0
   description: >
     Public API for the Vancouver housing price prediction demo. The app exposes a
-    base ML estimate endpoint plus rule-based uplift and planning endpoints. Request
+    base ML estimate endpoint plus Seattle observed uplift and planning endpoints. Request
     validation is enforced server-side in Zod; this file mirrors the current
     public contract for documentation.
 servers:
@@ -176,16 +176,14 @@ components:
         - renovatedBathrooms
         - legalSuiteAdded
         - energyEfficient
-        - curbAppealImproved
-        - permitIssuesResolved
         - deferredMaintenanceResolved
         - roofIssueResolved
     EvidenceLevel:
       type: string
-      enum: [observed, hybrid, proxy-heavy, rule-based]
+      enum: [observed]
     ModelFamily:
       type: string
-      enum: [xgboost, random-forest, rule-based]
+      enum: [xgboost, random-forest]
     PropertyInput:
       type: object
       additionalProperties: false
@@ -207,9 +205,10 @@ components:
           type: number
           minimum: 0
           maximum: 10
-        propertyTax:
-          type: number
-          exclusiveMinimum: 0
+        yearBuilt:
+          type: integer
+          minimum: 1800
+          maximum: 2026
         knownCurrentValue:
           type: number
           exclusiveMinimum: 0
@@ -262,6 +261,23 @@ components:
         - practicalCeiling
         - premiumGap
         - comparableCount
+    MarketFreshness:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [adjusted, not-applied]
+        message:
+          type: string
+        multiplier:
+          type: number
+        baselinePeriod:
+          type: string
+        latestPeriod:
+          type: string
+        dataSource:
+          type: string
+      required: [status, message]
     MetricRangeSummary:
       type: object
       properties:
@@ -371,6 +387,8 @@ components:
             $ref: "#/components/schemas/Driver"
         marketContext:
           $ref: "#/components/schemas/MarketContextResponse"
+        marketFreshness:
+          $ref: "#/components/schemas/MarketFreshness"
       required:
         - modelVersion
         - trainingMode
@@ -409,6 +427,8 @@ components:
           type: string
         value:
           type: number
+        upliftPercent:
+          type: number
         confidence:
           type: string
           enum: [high, medium, low]
@@ -442,6 +462,12 @@ components:
         evidenceSummary:
           type: string
         baseValue:
+          type: number
+        upliftPercent:
+          type: number
+        upliftPercentConfidenceLow:
+          type: number
+        upliftPercentConfidenceHigh:
           type: number
         upliftValue:
           type: number
@@ -505,6 +531,8 @@ components:
         months:
           type: number
         projectedUplift:
+          type: number
+        projectedUpliftPercent:
           type: number
         projectedFinalValue:
           type: number

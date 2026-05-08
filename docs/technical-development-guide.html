@@ -418,8 +418,8 @@
             <h3>What this demonstrates</h3>
             <p>
               The project estimates Vancouver home listing prices with property-type-specific ML models, then shows how the
-              prediction can be wrapped in a small user-facing app. The renovation section is intentionally rule-based because
-              the available dataset does not support causal uplift modeling.
+              prediction can be wrapped in a small user-facing app. The renovation section uses real Seattle/King County
+              repeat-sale records to learn uplift percentages without fake labels.
             </p>
             <div>
               <span class="tag swe">SWE</span>
@@ -432,9 +432,9 @@
             <div class="eyebrow">Truthfulness Boundary</div>
             <h3>What it should not claim yet</h3>
             <p>
-              The base model currently predicts listing price, not verified sale price. The live uplift layer is rule-based,
-              not a trained causal renovation model. A true ML uplift model still requires licensed, property-level before/after
-              resale data.
+              The base model currently predicts listing price, not verified sale price. The live uplift layer transfers
+              Seattle observed percentage uplift to Vancouver estimates. A Vancouver-specific uplift model still requires
+              licensed, property-level before/after resale data.
             </p>
             <div class="note warning">
               Treat outputs as directional planning estimates, not guarantees or investment advice.
@@ -485,9 +485,10 @@ src + assets                  -> archived Dash prototype</code></pre>
               <tr>
                 <td><strong>Estimate</strong></td>
                 <td>
-                  The user enters postal code, property type, square footage, beds, baths, optional property tax, and optional
+                  The user enters postal code, property type, square footage, beds, baths, optional year built, and optional
                   known value. React calls <code>POST /api/estimate</code>. Express validates the shape and proxies to Flask
                   <code>/estimate</code>. Python loads the base model bundle and returns current list-value estimate plus trust metrics.
+                  If a real market index CSV exists locally, the service can apply that current-market multiplier; otherwise it reports no adjustment.
                 </td>
                 <td>
                   <code>App.tsx</code>, <code>EstimatePage.tsx</code>, <code>generated.ts</code>, <code>index.ts</code>,
@@ -498,23 +499,23 @@ src + assets                  -> archived Dash prototype</code></pre>
                 <td><strong>Simulate</strong></td>
                 <td>
                   The user toggles improvements. React calls <code>POST /api/simulate</code>. Express validates, refreshes the
-                  base estimate, and runs the rule-based uplift engine to return uplift, confidence range, final guardrailed
-                  value, and rule explanations.
+                  base estimate, and calls the Python Seattle observed uplift model to return uplift percent, confidence range,
+                  final guardrailed value, and top drivers.
                 </td>
                 <td>
                   <code>SimulatePage.tsx</code>, <code>ImprovementFlagPicker.tsx</code>, <code>schemas.ts</code>,
-                  <code>model.ts</code>, <code>ruleBasedUplift.ts</code>
+                  <code>model.ts</code>, <code>uplift_service.py</code>
                 </td>
               </tr>
               <tr>
                 <td><strong>Plan</strong></td>
                 <td>
                   The user sets target price, budget, and timeline. Express scores candidate improvements through the same
-                  rule-based uplift engine, chooses actions that fit budget/time, and returns phases plus target realism status.
+                  Seattle observed uplift model, chooses actions that fit budget/time, and returns phases plus target realism status.
                 </td>
                 <td>
                   <code>PlanPage.tsx</code>, <code>model.ts</code>, <code>data.ts</code>,
-                  <code>ruleBasedUplift.ts</code>
+                  <code>uplift_service.py</code>
                 </td>
               </tr>
             </tbody>
@@ -553,7 +554,7 @@ src + assets                  -> archived Dash prototype</code></pre>
               <tr>
                 <td><code>docs/model-card.md</code></td>
                 <td>Data science model card.</td>
-                <td>Summarizes target, features, validation, limitations, and why uplift is not ML yet.</td>
+                <td>Summarizes target, features, validation, limitations, and why uplift uses observed Seattle repeat-sale ML.</td>
               </tr>
               <tr>
                 <td><code>pnpm-workspace.yaml</code></td>
@@ -715,7 +716,7 @@ src + assets                  -> archived Dash prototype</code></pre>
               <ul>
                 <li><code>/</code>: product landing page.</li>
                 <li><code>/estimate</code>: current listing-value estimate.</li>
-                <li><code>/simulate</code>: rule-based uplift simulation.</li>
+                <li><code>/simulate</code>: Seattle observed uplift simulation.</li>
                 <li><code>/plan</code>: target, budget, timeline, and recommendations.</li>
               </ul>
             </div>
@@ -772,8 +773,7 @@ src + assets                  -> archived Dash prototype</code></pre>
           <h2>Python model service</h2>
           <p>
             The Python service handles model loading, training, feature engineering, inference, and health payloads. It is
-            the live runtime for the base estimate. The older Python uplift path remains as research scaffolding, while
-            simulate and plan now use the Express rule-based uplift engine.
+            the live runtime for the base estimate and the Seattle observed uplift model.
           </p>
           <div class="grid two">
             <article class="note success">
@@ -785,10 +785,10 @@ src + assets                  -> archived Dash prototype</code></pre>
               </p>
             </article>
             <article class="note warning">
-              <h3>Rule-based uplift</h3>
+              <h3>Seattle observed uplift</h3>
               <p>
-                Uses deterministic cost-recovery, feasibility, property-type, timeline, and local ceiling rules. It is explainable and useful
-                for scenario planning, but it is not trained on observed renovation resale outcomes yet.
+                Uses observed Seattle/King County repeat-sale examples joined to permit signals. If the real CSV files are missing or too thin,
+                the service returns <code>data-missing</code> instead of inventing uplift rows.
               </p>
             </article>
           </div>
@@ -818,7 +818,7 @@ src + assets                  -> archived Dash prototype</code></pre>
               <tr>
                 <td>Features</td>
                 <td>
-                  Living area, bedrooms, bathrooms, property tax, latitude, longitude, polynomial lat/lon features, postal FSA,
+                  Living area, bedrooms, bathrooms, home age, latitude, longitude, polynomial lat/lon features, postal FSA,
                   and KMeans submarket cluster.
                 </td>
               </tr>
@@ -837,7 +837,7 @@ src + assets                  -> archived Dash prototype</code></pre>
             </tbody>
           </table>
 
-          <h3>Layer 2: rule-based uplift</h3>
+          <h3>Layer 2: Seattle observed uplift</h3>
           <table>
             <thead>
               <tr>
@@ -848,7 +848,7 @@ src + assets                  -> archived Dash prototype</code></pre>
             <tbody>
               <tr>
                 <td>Target</td>
-                <td>Estimated value added from selected improvements using published cost-recovery assumptions, Vancouver feasibility rules, and market headroom.</td>
+                <td>Market-adjusted uplift percentage from real Seattle repeat sales, applied to the Vancouver base estimate.</td>
               </tr>
               <tr>
                 <td>Improvement flags</td>
@@ -858,7 +858,7 @@ src + assets                  -> archived Dash prototype</code></pre>
               </tr>
               <tr>
                 <td>Evidence levels</td>
-                <td><code>rule-based</code> in the live product. <code>observed</code>, <code>hybrid</code>, and <code>proxy-heavy</code> are reserved for future/archived uplift experiments.</td>
+                <td><code>observed</code> in the live product. Missing real CSVs return <code>data-missing</code>.</td>
               </tr>
               <tr>
                 <td>Guardrail</td>
@@ -866,14 +866,14 @@ src + assets                  -> archived Dash prototype</code></pre>
               </tr>
               <tr>
                 <td>Known weakness</td>
-                <td>Rule-based uplift is not equivalent to a true causal renovation value model.</td>
+                <td>Seattle percentage patterns may not perfectly match Vancouver buyer behavior.</td>
               </tr>
             </tbody>
           </table>
 
           <div class="note risk">
-            DS priority: the biggest next leap is acquiring actual transaction sale data and rebuilding both Layer 1 and Layer
-            2 around sale outcomes instead of listing/proxy outcomes.
+            DS priority: the biggest next leap is acquiring Vancouver transaction sale data and rebuilding both Layer 1 and Layer
+            2 around local sale outcomes.
           </div>
         </section>
 
@@ -931,9 +931,9 @@ PYTHONPYCACHEPREFIX=/tmp/vvl_pycache .venv/bin/python -m py_compile artifacts/mo
               <h3>Modeling limitations</h3>
               <ul>
                 <li>Base estimate predicts listing price, not actual sale price.</li>
-                <li>Uplift is rule-based and not trained on observed resale outcomes yet.</li>
-                <li>Renovation rules cannot guarantee completion quality, buyer taste, or permit outcomes.</li>
-                <li>Property tax is highly missing in the listing dataset.</li>
+                <li>Uplift uses Seattle observed resale outcomes, not Vancouver transaction records yet.</li>
+                <li>Renovation predictions cannot guarantee completion quality, buyer taste, or permit outcomes.</li>
+                <li>Year built or age is often missing in the listing dataset and must be imputed.</li>
               </ul>
             </div>
             <div class="note warning">

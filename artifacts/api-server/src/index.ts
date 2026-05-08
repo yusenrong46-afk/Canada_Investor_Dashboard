@@ -10,14 +10,14 @@ import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
 import { assistantQuerySchema, dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
 
 const app = express();
-const host = process.env.API_HOST ?? "127.0.0.1";
-const port = Number(process.env.API_PORT ?? 4000);
+const host = process.env.API_HOST ?? (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
+const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
 
 app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "api-server", mode: "vancouver-estimate-plus-rule-uplift" });
+  res.json({ ok: true, service: "api-server", mode: "vancouver-estimate-plus-seattle-observed-uplift" });
 });
 
 app.post("/api/estimate", async (req, res, next) => {

@@ -5,8 +5,6 @@ export const improvementFlagValues = [
   "renovatedBathrooms",
   "legalSuiteAdded",
   "energyEfficient",
-  "curbAppealImproved",
-  "permitIssuesResolved",
   "deferredMaintenanceResolved",
   "roofIssueResolved",
 ] as const;
@@ -35,18 +33,6 @@ export const improvementCatalog = {
     defaultCost: 22_000,
     months: 2,
     phase: "Efficiency",
-  },
-  curbAppealImproved: {
-    label: "Curb appeal",
-    defaultCost: 18_000,
-    months: 1,
-    phase: "Exterior",
-  },
-  permitIssuesResolved: {
-    label: "Permit issues resolved",
-    defaultCost: 12_000,
-    months: 1,
-    phase: "Compliance",
   },
   deferredMaintenanceResolved: {
     label: "Deferred maintenance resolved",

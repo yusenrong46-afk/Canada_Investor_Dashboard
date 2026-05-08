@@ -5,8 +5,6 @@ const improvementOptions: Array<{ flag: PlannedFlag; label: string; hint: string
   { flag: "renovatedBathrooms", label: "Renovated bathrooms", hint: "Fixtures, tile, vanity, plumbing refresh." },
   { flag: "legalSuiteAdded", label: "Legal suite added", hint: "Secondary suite or lock-off income space." },
   { flag: "energyEfficient", label: "Energy upgrades", hint: "Windows, insulation, HVAC, heat pump." },
-  { flag: "curbAppealImproved", label: "Curb appeal", hint: "Facade, entry, paint, landscaping, deck." },
-  { flag: "permitIssuesResolved", label: "Permit issues resolved", hint: "Compliance cleanup before listing." },
   { flag: "deferredMaintenanceResolved", label: "Deferred maintenance", hint: "Repairs buyers would notice quickly." },
   { flag: "roofIssueResolved", label: "Roof and systems", hint: "Roofing, furnace, boiler, electrical." },
 ];

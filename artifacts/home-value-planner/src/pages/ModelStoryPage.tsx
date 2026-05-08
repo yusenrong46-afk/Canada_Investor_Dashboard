@@ -27,7 +27,7 @@ export function ModelStoryPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {[
           ["Real product value", "A buyer can sanity-check one Vancouver deal before spending time on deeper diligence."],
-          ["Data science judgment", "The app predicts listing price, while renovation uplift remains rule-based until real resale labels exist."],
+          ["Data science judgment", "The app predicts listing price, while renovation uplift uses observed Seattle repeat-sale percentages instead of fake labels."],
           ["Engineering breadth", "React dashboard, Express API, Python model service, validation, docs, tests, and an explainer assistant."],
         ].map(([title, body]) => (
           <div key={title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
@@ -45,11 +45,11 @@ export function ModelStoryPage() {
         <div className="space-y-3 text-sm leading-6 text-slate-600">
           <p>
             Built a Vancouver real-estate investor dashboard using Python, scikit-learn/XGBoost, Express, and React. The system estimates as-is
-            listing value, compares asking price to model value, simulates renovation upside with transparent rules, and flags investor risk.
+            listing value, compares asking price to model value, simulates renovation upside from observed Seattle repeat-sale percentages, and flags investor risk.
           </p>
           <p>
-            The project separates a trained base-price model from a rule-based uplift calculator because the available dataset does not contain
-            before/after resale outcomes. That decision is visible in the UI, API, docs, and assistant answers.
+            The project separates the Vancouver base-price model from the Seattle-trained uplift layer because Vancouver public data does not expose
+            enough property-level before/after resale outcomes. That decision is visible in the UI, API, docs, and assistant answers.
           </p>
         </div>
       </SectionCard>

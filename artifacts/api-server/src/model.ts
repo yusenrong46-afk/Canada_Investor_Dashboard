@@ -1,5 +1,4 @@
 import { improvementCatalog } from "./data";
-import { simulateRuleBasedUplift } from "./ruleBasedUplift";
 import type { PlanRequest, PropertyInput, SimulateRequest } from "./schemas";
 
 const modelServiceBaseUrl = (process.env.MODEL_SERVICE_URL ?? "http://127.0.0.1:5001").replace(/\/$/, "");
@@ -71,12 +70,21 @@ export interface EstimateResponse {
   modelQuality: ModelQuality;
   drivers: Driver[];
   marketContext: MarketContextResponse;
+  marketFreshness?: {
+    status: "adjusted" | "not-applied";
+    message: string;
+    multiplier?: number;
+    baselinePeriod?: string;
+    latestPeriod?: string;
+    dataSource?: string;
+  };
 }
 
 export interface UpliftDriver {
   flag: PlannedFlag;
   label: string;
   value: number;
+  upliftPercent?: number;
   confidence?: "high" | "medium" | "low";
   rationale?: string;
 }
@@ -86,10 +94,13 @@ export interface SimulateResponse {
   message?: string;
   modelVersion?: string;
   trainingMode?: string;
-  modelFamily?: "xgboost" | "random-forest" | "rule-based";
-  evidenceLevel?: "observed" | "hybrid" | "proxy-heavy" | "rule-based";
+  modelFamily?: "xgboost" | "random-forest";
+  evidenceLevel?: "observed";
   evidenceSummary?: string;
   baseValue?: number;
+  upliftPercent?: number;
+  upliftPercentConfidenceLow?: number;
+  upliftPercentConfidenceHigh?: number;
   upliftValue?: number;
   finalValueRaw?: number;
   finalValueGuardrailed?: number;
@@ -111,6 +122,7 @@ export interface PlanLineItem {
   cost: number;
   months: number;
   projectedUplift: number;
+  projectedUpliftPercent?: number;
   projectedFinalValue: number;
   valueRecoveryRate: number;
 }
@@ -118,7 +130,9 @@ export interface PlanLineItem {
 export interface PlanResponse {
   status: "ready" | "data-missing";
   message?: string;
-  evidenceLevel?: "observed" | "hybrid" | "proxy-heavy" | "rule-based";
+  evidenceLevel?: "observed";
+  dataSources?: Record<string, string>;
+  methodNotes?: string[];
   targetAssessment?: "Likely" | "Stretch" | "Unlikely";
   baseValue?: number;
   achievableValue?: number;
@@ -169,8 +183,7 @@ export async function estimateProperty(property: PropertyInput): Promise<Estimat
 }
 
 export async function simulateScenario(request: SimulateRequest): Promise<SimulateResponse> {
-  const estimate = await estimateProperty(request);
-  return simulateRuleBasedUplift(request, estimate);
+  return requestModelService<SimulateResponse>("/uplift", request);
 }
 
 function byValueDescending(items: PlanLineItem[]): PlanLineItem[] {
@@ -222,12 +235,15 @@ export async function buildSalePlan(request: PlanRequest): Promise<PlanResponse>
   if (baseline.status !== "ready") {
     return {
       status: "data-missing",
-      message: baseline.message ?? "The rule-based uplift calculator did not return a ready result.",
+      message: baseline.message ?? "The Seattle observed uplift model did not return a ready result.",
+      dataSources: baseline.dataSources,
+      methodNotes: baseline.methodNotes,
     };
   }
 
   const selectedFlags = new Set<PlannedFlag>((request.plannedFlags ?? []) as PlannedFlag[]);
   const candidates = (Object.keys(improvementCatalog) as PlannedFlag[]).filter((flag) => !selectedFlags.has(flag));
+  let candidateDataMissing: SimulateResponse | undefined;
   const candidateRows = (
     await Promise.all(
       candidates.map(async (flag): Promise<PlanLineItem | null> => {
@@ -238,8 +254,12 @@ export async function buildSalePlan(request: PlanRequest): Promise<PlanResponse>
           horizonMonths: request.timelineMonths,
         });
 
+        if (scenario.status === "data-missing") {
+          candidateDataMissing = candidateDataMissing ?? scenario;
+          return null;
+        }
+
         if (
-          scenario.status !== "ready" ||
           scenario.upliftValue == null ||
           scenario.finalValueGuardrailed == null ||
           baseline.upliftValue == null
@@ -248,6 +268,7 @@ export async function buildSalePlan(request: PlanRequest): Promise<PlanResponse>
         }
 
         const incrementalUplift = scenario.upliftValue - baseline.upliftValue;
+        const incrementalUpliftPercent = scenario.upliftPercent != null && baseline.upliftPercent != null ? scenario.upliftPercent - baseline.upliftPercent : undefined;
         const valueRecoveryRate = catalogItem.defaultCost > 0 ? incrementalUplift / catalogItem.defaultCost : 0;
 
         return {
@@ -257,12 +278,22 @@ export async function buildSalePlan(request: PlanRequest): Promise<PlanResponse>
           cost: catalogItem.defaultCost,
           months: catalogItem.months,
           projectedUplift: Math.round(incrementalUplift),
+          projectedUpliftPercent: incrementalUpliftPercent,
           projectedFinalValue: scenario.finalValueGuardrailed,
           valueRecoveryRate,
         };
       }),
     )
   ).filter((item): item is PlanLineItem => item != null);
+
+  if (!candidateRows.length && candidateDataMissing) {
+    return {
+      status: "data-missing",
+      message: candidateDataMissing.message,
+      dataSources: candidateDataMissing.dataSources,
+      methodNotes: candidateDataMissing.methodNotes,
+    };
+  }
 
   const chosen: PlanLineItem[] = [];
   let remainingBudget = request.budget;

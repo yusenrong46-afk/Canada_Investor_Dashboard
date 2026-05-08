@@ -66,7 +66,7 @@ export function SiteLayout({ children, property, estimate }: SiteLayoutProps) {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-5 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
-          <div>Vancouver-only listing-value estimate plus rule-based uplift. Outputs are directional planning aids, not guarantees.</div>
+          <div>Vancouver listing-value estimate plus Seattle observed uplift percentages. Outputs are planning aids, not guarantees.</div>
           <div>React + Vite + Tailwind · Express 5 API · Python model service</div>
         </div>
       </footer>

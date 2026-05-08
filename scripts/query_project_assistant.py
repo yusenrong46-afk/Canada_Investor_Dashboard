@@ -117,10 +117,10 @@ def answer_question(question: str, top_k: int) -> dict[str, Any]:
         "confidence": confidence,
         "citations": citations,
         "suggestedQuestions": [
-            "Why is the renovation uplift layer rule-based?",
+            "How does Seattle uplift translate to Vancouver?",
             "What data does the base price model use?",
             "How should I interpret the model confidence range?",
-            "What would make this a true uplift model?",
+            "What would make this a Vancouver-specific uplift model?",
         ],
         "retriever": MODEL_NAME,
     }

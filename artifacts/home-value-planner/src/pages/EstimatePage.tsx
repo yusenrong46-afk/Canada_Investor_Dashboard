@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { PropertyFormCard } from "../components/PropertyFormCard";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
-import { formatCurrency, formatSignedCurrency } from "../lib/format";
+import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
 import type { EstimateResponse, PropertyInput } from "../types";
 
 interface EstimatePageProps {
@@ -109,8 +109,17 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading }: 
                     <span className="text-sm font-medium text-slate-600">Practical ceiling</span>
                     <span className="text-sm font-semibold text-cedar">{formatCurrency(estimate.marketContext.practicalCeiling)}</span>
                   </div>
+                  <div className="flex items-center justify-between gap-4 rounded-lg bg-slate-50 px-4 py-3">
+                    <span className="text-sm font-medium text-slate-600">Current market index</span>
+                    <span className="text-right text-sm font-semibold text-cedar">
+                      {estimate.marketFreshness?.status === "adjusted" && estimate.marketFreshness.multiplier != null
+                        ? formatPercent((estimate.marketFreshness.multiplier - 1) * 100, 1)
+                        : "Not applied"}
+                    </span>
+                  </div>
                   <p className="text-sm leading-6 text-slate-500">
-                    This is a listing-price model, so treat it as a planning estimate rather than an appraisal.
+                    {estimate.marketFreshness?.message ??
+                      "This is a listing-price model, so treat it as a planning estimate rather than an appraisal."}
                   </p>
                 </div>
               ) : (

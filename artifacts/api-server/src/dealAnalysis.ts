@@ -81,7 +81,7 @@ function buildRiskFlags(
     flags.push({
       level: "warning",
       label: "Target looks difficult",
-      detail: "The rule-based plan does not appear to reach the target price inside the current budget and timeline.",
+      detail: "The Seattle-observed uplift plan does not appear to reach the target price inside the current budget and timeline.",
     });
   }
 
@@ -103,8 +103,8 @@ function buildRiskFlags(
 
   flags.push({
     level: "info",
-    label: "Renovation upside is rule-based",
-    detail: "The uplift layer is a transparent planning calculator, not a trained causal renovation model.",
+    label: "Renovation upside uses observed Seattle resale data",
+    detail: "The uplift layer predicts a percentage from real Seattle repeat-sale and permit records, then applies it to the Vancouver base estimate.",
   });
 
   return flags;

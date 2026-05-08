@@ -4,7 +4,7 @@ import { answerProjectQuestion } from "./assistant";
 
 describe("answerProjectQuestion", () => {
   it("answers project questions with citations", () => {
-    const response = answerProjectQuestion({ question: "Why is renovation uplift rule based?", topK: 3 });
+    const response = answerProjectQuestion({ question: "How does Seattle uplift translate to Vancouver?", topK: 3 });
 
     expect(response.confidence).not.toBe("low");
     expect(response.citations.length).toBeGreaterThan(0);

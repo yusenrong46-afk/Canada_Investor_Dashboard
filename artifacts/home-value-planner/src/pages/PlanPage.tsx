@@ -15,10 +15,50 @@ interface PlanPageProps {
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
 }
 
+const dataSourceLabels: Record<string, string> = {
+  seattlePermits: "Seattle building permits",
+  kingCountySales: "King County sales",
+  kingCountyResidentialBuildings: "King County residential buildings",
+};
+
+function shortDataPath(path: string): string {
+  const marker = "/data/raw/";
+  const markerIndex = path.indexOf(marker);
+  return markerIndex >= 0 ? `data/raw/${path.slice(markerIndex + marker.length)}` : path;
+}
+
+function updateNumberDraft(
+  value: string,
+  setDraft: (value: string) => void,
+  setNumber: (value: number) => void,
+  min: number,
+  max?: number,
+) {
+  setDraft(value);
+
+  if (value.trim() === "") {
+    return;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+
+  if (parsed < min || (max != null && parsed > max)) {
+    return;
+  }
+
+  setNumber(parsed);
+}
+
 export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChange }: PlanPageProps) {
   const [targetPrice, setTargetPrice] = useState<number>(Math.max(1_400_000, estimate?.baseValue ?? 1_400_000));
   const [budget, setBudget] = useState<number>(120_000);
   const [timelineMonths, setTimelineMonths] = useState<number>(9);
+  const [targetPriceDraft, setTargetPriceDraft] = useState(String(targetPrice));
+  const [budgetDraft, setBudgetDraft] = useState(String(budget));
+  const [timelineDraft, setTimelineDraft] = useState(String(timelineMonths));
   const [result, setResult] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +68,18 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
       setTargetPrice((currentTarget) => Math.max(estimate.baseValue + 100_000, currentTarget));
     }
   }, [estimate?.baseValue]);
+
+  useEffect(() => {
+    setTargetPriceDraft(String(targetPrice));
+  }, [targetPrice]);
+
+  useEffect(() => {
+    setBudgetDraft(String(budget));
+  }, [budget]);
+
+  useEffect(() => {
+    setTimelineDraft(String(timelineMonths));
+  }, [timelineMonths]);
 
   useEffect(() => {
     let active = true;
@@ -62,6 +114,9 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
     };
   }, [budget, plannedFlags, property, targetPrice, timelineMonths]);
 
+  const dataMissing = result?.status === "data-missing";
+  const dataSources = Object.entries(result?.dataSources ?? {});
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -85,15 +140,37 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
           <div className="grid gap-4">
             <label className="space-y-2">
               <span className="label">Target sale price</span>
-              <input className="field" type="number" min={100000} value={targetPrice} onChange={(event) => setTargetPrice(Number(event.target.value))} />
+              <input
+                className="field"
+                type="number"
+                min={100000}
+                value={targetPriceDraft}
+                onChange={(event) => updateNumberDraft(event.target.value, setTargetPriceDraft, setTargetPrice, 100_000)}
+                onBlur={() => setTargetPriceDraft(String(targetPrice))}
+              />
             </label>
             <label className="space-y-2">
               <span className="label">Budget</span>
-              <input className="field" type="number" min={0} value={budget} onChange={(event) => setBudget(Number(event.target.value))} />
+              <input
+                className="field"
+                type="number"
+                min={1}
+                value={budgetDraft}
+                onChange={(event) => updateNumberDraft(event.target.value, setBudgetDraft, setBudget, 1)}
+                onBlur={() => setBudgetDraft(String(budget))}
+              />
             </label>
             <label className="space-y-2">
               <span className="label">Timeline (months)</span>
-              <input className="field" type="number" min={3} max={18} value={timelineMonths} onChange={(event) => setTimelineMonths(Number(event.target.value))} />
+              <input
+                className="field"
+                type="number"
+                min={3}
+                max={18}
+                value={timelineDraft}
+                onChange={(event) => updateNumberDraft(event.target.value, setTimelineDraft, setTimelineMonths, 3, 18)}
+                onBlur={() => setTimelineDraft(String(timelineMonths))}
+              />
             </label>
           </div>
 
@@ -108,18 +185,18 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
             <MetricCard label="Current as-is value" value={estimate ? formatCurrency(estimate.baseValue) : "Loading"} hint="The starting point" />
             <MetricCard
               label="Achievable value"
-              value={result?.status === "ready" && result.achievableValue != null ? formatCurrency(result.achievableValue) : loading ? "Updating" : "Unavailable"}
-              hint="After the selected plan and guardrails"
+              value={result?.status === "ready" && result.achievableValue != null ? formatCurrency(result.achievableValue) : loading ? "Updating" : dataMissing ? "Data needed" : "Set goal"}
+              hint={dataMissing ? "Waiting for real uplift CSVs" : "After the selected plan and guardrails"}
             />
             <MetricCard
               label="Gap to target"
-              value={result?.status === "ready" && result.gapToTarget != null ? formatSignedCurrency(-result.gapToTarget) : loading ? "Updating" : "Unavailable"}
-              hint="Positive means the modeled plan reaches or beats the target"
+              value={result?.status === "ready" && result.gapToTarget != null ? formatSignedCurrency(-result.gapToTarget) : loading ? "Updating" : dataMissing ? "Pending data" : "Set goal"}
+              hint={dataMissing ? "No fake plan value is shown" : "Positive means the modeled plan reaches or beats the target"}
             />
             <MetricCard
               label="Planned spend"
-              value={result?.status === "ready" && result.plannedSpend != null ? formatCurrency(result.plannedSpend) : loading ? "Updating" : "Unavailable"}
-              hint="Sum of the recommended actions"
+              value={result?.status === "ready" && result.plannedSpend != null ? formatCurrency(result.plannedSpend) : loading ? "Updating" : dataMissing ? "Pending data" : "Set goal"}
+              hint={dataMissing ? "Plan waits for observed uplift data" : "Sum of the recommended actions"}
             />
           </div>
 
@@ -142,7 +219,7 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
                     {result.targetPrice != null ? formatCurrency(result.targetPrice) : "your target"}.
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Uplift is rule-based, so use this as a prioritization tool before getting quotes or permits.
+                    Uplift uses a Seattle-trained observed repeat-sale percentage, then applies that percentage to this Vancouver estimate.
                   </p>
                 </div>
 
@@ -160,6 +237,9 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-sound-700">{formatCurrency(item.projectedUplift)}</div>
+                            {item.projectedUpliftPercent != null ? (
+                              <div className="mt-1 text-xs text-slate-500">{formatPercent(item.projectedUpliftPercent * 100)} uplift</div>
+                            ) : null}
                             <div className="mt-1 text-xs text-slate-500">{formatPercent(item.valueRecoveryRate * 100, 0)} value recovery</div>
                           </div>
                         </div>
@@ -178,8 +258,28 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
                 </div>
               </div>
             ) : (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                {result?.message ?? "Enter a target, budget, and timeline to run the rule-based planner."}
+              <div className="space-y-4">
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                  <div className="font-semibold">{dataMissing ? "Plan recommendations need real uplift data." : "Enter a target, budget, and timeline."}</div>
+                  <p className="mt-2">{result?.message ?? "Enter a target, budget, and timeline to run the Seattle observed uplift planner."}</p>
+                </div>
+
+                {dataMissing ? (
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
+                    <div className="text-sm font-semibold text-cedar">Files needed for recommendations</div>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      The plan chooses actions by estimated observed uplift. Until the real local CSVs exist, the app will not guess.
+                    </p>
+                    <div className="mt-4 space-y-2">
+                      {dataSources.map(([key, path]) => (
+                        <div key={key} className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-sm font-medium text-slate-700">{dataSourceLabels[key] ?? key}</div>
+                          <div className="mt-1 font-mono text-xs text-slate-500">{shortDataPath(path)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </SectionCard>

@@ -4,7 +4,7 @@ import { postAssistantQuery } from "../api/client";
 import type { AssistantQueryResponse } from "../types";
 
 const starterQuestions = [
-  "Why is renovation uplift rule-based?",
+  "How does Seattle uplift translate to Vancouver?",
   "What does the base model use?",
   "How should I read the confidence range?",
 ];

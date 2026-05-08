@@ -23,7 +23,8 @@ User-facing inputs:
 - living area in square feet
 - bedrooms
 - bathrooms
-- optional property tax
+- optional year built
+- optional known current value for user-side comparison
 
 Engineered features:
 
@@ -62,7 +63,8 @@ The pipeline:
 - removes records missing core pricing fields
 - removes implausible values for price, square footage, beds, baths, and coordinates
 - applies property-type-aware outlier removal using price-per-square-foot and living-area checks
-- imputes optional property tax with medians where missing
+- derives home age from year built or approximate age when available
+- imputes age with property-type medians where missing
 
 ## Validation
 
@@ -79,27 +81,30 @@ The validation strategy is designed to be understandable and realistic for a sma
 
 - The model predicts listing price, not final sale price.
 - The dataset is relatively small after filtering to Vancouver and supported property types.
-- Property tax is often missing and must be imputed.
+- Year built or approximate age is often missing and must be imputed.
 - Postal-code centroid features are useful, but they are not as precise as parcel-level geospatial features.
 - The model does not know renovation quality, view, floor level, exact building condition, strata rules, or seller motivation.
+- A current-market index adjustment is only applied from a real local CSV; if the CSV is absent or too thin, the service reports that no adjustment was applied.
 
 ## Uplift Modeling Status
 
-The renovation uplift layer is not a trained ML model.
+The renovation uplift layer is a separate observed-data model trained from Seattle/King County records.
 
 Reason:
 
-The current dataset does not contain the labels needed for causal uplift learning. A real uplift model would need property-level examples where the same home has:
+The Vancouver listing dataset does not contain the labels needed for causal uplift learning. A local Vancouver uplift model would need property-level examples where the same home has:
 
 ```text
 pre-renovation state -> renovation event -> resale price within a defined time window
 ```
 
-Until that dataset exists, the app uses a transparent rule-based calculator for renovation scenarios. This is more honest than training a model on weak proxy labels and presenting it as causal.
+Until that Vancouver dataset exists, the app uses Seattle building permits, King County sale records, and King County residential building records to train on real observed repeat-sale examples. The target is market-adjusted uplift percentage, not raw dollars, so the result can be applied to the Vancouver base estimate.
+
+The uplift layer refuses to train if the real CSV files are missing or if too few repeat-sale rows are found. It does not generate synthetic rows or train on proxy labels.
 
 ## Next Data Science Step
 
-Acquire or license property-level transaction data, then join it with renovation permit and assessment history to create before/after resale labels.
+Acquire or license Vancouver property-level transaction data, then join it with renovation permit and assessment history to create local before/after resale labels.
 
 The target for a future uplift model would be:
 

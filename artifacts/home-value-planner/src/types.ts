@@ -4,8 +4,6 @@ export type PlannedFlag =
   | "renovatedBathrooms"
   | "legalSuiteAdded"
   | "energyEfficient"
-  | "curbAppealImproved"
-  | "permitIssuesResolved"
   | "deferredMaintenanceResolved"
   | "roofIssueResolved";
 
@@ -15,7 +13,7 @@ export interface PropertyInput {
   livingAreaSqft: number;
   bedrooms: number;
   bathrooms: number;
-  propertyTax?: number;
+  yearBuilt?: number;
   knownCurrentValue?: number;
 }
 
@@ -84,12 +82,21 @@ export interface EstimateResponse {
   modelQuality: ModelQuality;
   drivers: Driver[];
   marketContext: MarketContextResponse;
+  marketFreshness?: {
+    status: "adjusted" | "not-applied";
+    message: string;
+    multiplier?: number;
+    baselinePeriod?: string;
+    latestPeriod?: string;
+    dataSource?: string;
+  };
 }
 
 export interface UpliftDriver {
   flag: PlannedFlag;
   label: string;
   value: number;
+  upliftPercent?: number;
   confidence?: "high" | "medium" | "low";
   rationale?: string;
 }
@@ -99,10 +106,13 @@ export interface ImproveValueResponse {
   message?: string;
   modelVersion?: string;
   trainingMode?: string;
-  modelFamily?: "xgboost" | "random-forest" | "rule-based";
-  evidenceLevel?: "observed" | "hybrid" | "proxy-heavy" | "rule-based";
+  modelFamily?: "xgboost" | "random-forest";
+  evidenceLevel?: "observed";
   evidenceSummary?: string;
   baseValue?: number;
+  upliftPercent?: number;
+  upliftPercentConfidenceLow?: number;
+  upliftPercentConfidenceHigh?: number;
   upliftValue?: number;
   finalValueRaw?: number;
   finalValueGuardrailed?: number;
@@ -124,6 +134,7 @@ export interface PlanLineItem {
   cost: number;
   months: number;
   projectedUplift: number;
+  projectedUpliftPercent?: number;
   projectedFinalValue: number;
   valueRecoveryRate: number;
 }
@@ -139,7 +150,9 @@ export interface PlanPhase {
 export interface PlanResponse {
   status: "ready" | "data-missing";
   message?: string;
-  evidenceLevel?: "observed" | "hybrid" | "proxy-heavy" | "rule-based";
+  evidenceLevel?: "observed";
+  dataSources?: Record<string, string>;
+  methodNotes?: string[];
   targetAssessment?: "Likely" | "Stretch" | "Unlikely";
   baseValue?: number;
   achievableValue?: number;

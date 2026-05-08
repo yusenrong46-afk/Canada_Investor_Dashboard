@@ -31,9 +31,10 @@ except Exception as exc:  # pragma: no cover - depends on local OpenMP runtime
     XGBOOST_AVAILABLE = False
     XGBOOST_IMPORT_ERROR = str(exc)
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_DIR = Path(__file__).resolve().parent / "models"
-ARTIFACT_PATH = ARTIFACT_DIR / "vancouver_base_price_bundle_v2.pkl"
-MODEL_VERSION = "vancouver-base-price-v2"
+ARTIFACT_PATH = ARTIFACT_DIR / "vancouver_base_price_bundle_v4.pkl"
+MODEL_VERSION = "vancouver-base-price-v4"
 TRAINING_MODE = "vancouver-real-listings"
 LOCATION_FEATURE_VERSION = "latlon-polynomial-cluster-v1"
 CLUSTER_COUNT = 12
@@ -41,6 +42,10 @@ BOOTSTRAP_REPEATS = 400
 DEFAULT_DATA_PATH = os.environ.get(
     "VANCOUVER_LISTINGS_CSV_PATH",
     "/Users/thomas/Downloads/CanadaHousingData/data_bc.csv",
+)
+DEFAULT_MARKET_INDEX_PATH = os.environ.get(
+    "VANCOUVER_MARKET_INDEX_CSV_PATH",
+    str(REPO_ROOT / "data" / "raw" / "market" / "vancouver_market_index.csv"),
 )
 
 PROPERTY_TYPES = ["Detached", "Townhouse", "Condo", "Duplex"]
@@ -53,7 +58,7 @@ NUMERIC_FEATURES = [
     "lat_x_lon",
     "lat_sq",
     "lon_sq",
-    "propertyTax",
+    "ageYears",
 ]
 CATEGORICAL_FEATURES = ["postalFsa", "submarketCluster"]
 POSTAL_CODE_PATTERN = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
@@ -78,7 +83,7 @@ class VancouverModelBundle:
     full_postal_centroids: dict[str, tuple[float, float]]
     fsa_centroids: dict[str, tuple[float, float]]
     vancouver_centroid: tuple[float, float]
-    property_tax_medians: dict[str, float]
+    age_medians: dict[str, float]
     numeric_medians: dict[str, float]
     type_feature_medians: dict[str, dict[str, float]]
     type_price_medians: dict[str, float]
@@ -86,6 +91,8 @@ class VancouverModelBundle:
     fsa_stats: dict[tuple[str, str], dict[str, Any]]
     type_stats: dict[str, dict[str, Any]]
     city_stats: dict[str, Any]
+    training_date_range: dict[str, str | None]
+    market_index_path: str
     xgboost_available: bool
     xgboost_import_error: str | None
 
@@ -117,6 +124,59 @@ def _parse_numeric(value: Any) -> float | None:
         return None
 
     return float(match.group())
+
+
+def _parse_date(value: Any) -> pd.Timestamp | None:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return None
+
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return None
+
+    return pd.Timestamp(parsed).tz_localize(None)
+
+
+def _numeric_column(frame: pd.DataFrame, names: list[str]) -> pd.Series:
+    for name in names:
+        if name in frame.columns:
+            return frame[name].map(_parse_numeric)
+    return pd.Series(np.nan, index=frame.index, dtype=float)
+
+
+def _first_existing_name(frame: pd.DataFrame, names: list[str]) -> str | None:
+    for name in names:
+        if name in frame.columns:
+            return name
+    return None
+
+
+def _date_column(frame: pd.DataFrame, names: list[str]) -> pd.Series:
+    for name in names:
+        if name in frame.columns:
+            return frame[name].map(_parse_date)
+    return pd.Series(pd.NaT, index=frame.index, dtype="datetime64[ns]")
+
+
+def _age_from_year_built(year_built: Any) -> float | None:
+    parsed = _parse_numeric(year_built)
+    if parsed is None:
+        return None
+
+    current_year = datetime.utcnow().year
+    if parsed < 1800 or parsed > current_year:
+        return None
+
+    return float(np.clip(current_year - parsed, 0, 225))
+
+
+def _derive_age_years(year_built: pd.Series, approx_age: pd.Series) -> pd.Series:
+    current_year = datetime.utcnow().year
+    year_based_age = current_year - year_built.astype(float)
+    year_based_age = year_based_age.where(year_built.between(1800, current_year))
+    clean_approx_age = approx_age.where(approx_age.between(0, 225))
+    age_years = clean_approx_age.combine_first(year_based_age)
+    return age_years.where(age_years.between(0, 225))
 
 
 def _distribution_summary(series: pd.Series) -> dict[str, float]:
@@ -321,7 +381,10 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
     vancouver["livingAreaSqft"] = vancouver["property-sqft"].map(_parse_numeric)
     vancouver["bedrooms"] = vancouver["property-beds"].map(_parse_numeric)
     vancouver["bathrooms"] = vancouver["property-baths"].map(_parse_numeric)
-    vancouver["propertyTax"] = vancouver["Property Tax"].map(_parse_numeric)
+    vancouver["yearBuilt"] = _numeric_column(vancouver, ["Year Built", "yearBuilt", "year_built"])
+    vancouver["approxAge"] = _numeric_column(vancouver, ["Approx Age", "ApproxAge", "approxAge"])
+    vancouver["ageYears"] = _derive_age_years(vancouver["yearBuilt"], vancouver["approxAge"])
+    vancouver["listingDate"] = _date_column(vancouver, ["Date Listed", "Last Updated", "dateListed", "lastUpdated"])
     vancouver["latitude"] = vancouver["latitude"].map(_parse_numeric)
     vancouver["longitude"] = vancouver["longitude"].map(_parse_numeric)
     vancouver["postalCode"] = vancouver["postalCode"].map(_normalize_postal_code)
@@ -335,7 +398,7 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
         "postalCode",
         "latitude",
         "longitude",
-        "propertyTax",
+        "ageYears",
         "propertyType",
     ]
     typed_rows = vancouver[vancouver["propertyType"].isin(PROPERTY_TYPES)].copy()
@@ -351,7 +414,7 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
                 "postalCode",
                 "latitude",
                 "longitude",
-                "propertyTax",
+                "ageYears",
             ],
         )
         for property_type, group in typed_rows.groupby("propertyType")
@@ -378,11 +441,15 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
         & usable_pre_outlier["postalFsa"].fillna("").str.startswith(VANCOUVER_PREFIXES)
     ].copy()
 
-    usable_pre_outlier["propertyTax"] = usable_pre_outlier["propertyTax"].where(usable_pre_outlier["propertyTax"] > 0)
+    usable_pre_outlier["ageYears"] = usable_pre_outlier["ageYears"].where(usable_pre_outlier["ageYears"].between(0, 225))
+    if usable_pre_outlier["ageYears"].notna().sum() == 0:
+        usable_pre_outlier["ageYears"] = 0.0
     usable_pre_outlier["pricePerSqft"] = usable_pre_outlier["price"] / usable_pre_outlier["livingAreaSqft"]
 
     usable, outlier_summary = _remove_segment_outliers(usable_pre_outlier)
-    usable["propertyTax"] = usable["propertyTax"].where(usable["propertyTax"] > 0)
+    usable["ageYears"] = usable["ageYears"].where(usable["ageYears"].between(0, 225))
+    if usable["ageYears"].notna().sum() == 0:
+        usable["ageYears"] = 0.0
     usable["pricePerSqft"] = usable["price"] / usable["livingAreaSqft"]
     usable["logPrice"] = np.log(usable["price"])
     usable, clusterer = _engineer_location_features(usable)
@@ -393,10 +460,16 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
         "usableRowsBeforeOutlierRemoval": int(len(usable_pre_outlier)),
         "usableRows": int(len(usable)),
     }
+    listing_dates = usable["listingDate"].dropna()
+    training_date_range = {
+        "firstListingDate": listing_dates.min().date().isoformat() if not listing_dates.empty else None,
+        "latestListingDate": listing_dates.max().date().isoformat() if not listing_dates.empty else None,
+    }
 
     eda_summary = {
         "missingness": missingness,
         "missingnessByPropertyType": missingness_by_property_type,
+        "trainingDateRange": training_date_range,
         "targetDistributionBeforeOutlierRemoval": _distribution_summary(usable_pre_outlier["price"]),
         "targetDistributionAfterOutlierRemoval": _distribution_summary(usable["price"]),
         "pricePerSqftDistributionAfterOutlierRemoval": _distribution_summary(usable["pricePerSqft"]),
@@ -718,7 +791,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
 
         missingness_for_type = eda_summary["missingnessByPropertyType"].get(property_type, {})
         outlier_for_type = eda_summary["outlierRemoval"]["byPropertyType"].get(property_type, {})
-        evaluation["propertyTaxMissingRate"] = float(missingness_for_type.get("propertyTax", {}).get("missingRate", 0.0))
+        evaluation["ageYearsMissingRate"] = float(missingness_for_type.get("ageYears", {}).get("missingRate", 0.0))
         evaluation["outlierRemovedRate"] = float(outlier_for_type.get("removedRate", 0.0))
         evaluation["outlierRemovedRows"] = int(outlier_for_type.get("removed", 0))
         per_type_summary[property_type] = evaluation
@@ -756,11 +829,11 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         "eda": eda_summary,
     }
 
-    global_property_tax_median = _safe_median(usable["propertyTax"], 0.0)
-    property_tax_medians = (
-        usable.groupby("propertyType")["propertyTax"]
+    global_age_median = _safe_median(usable["ageYears"], 0.0)
+    age_medians = (
+        usable.groupby("propertyType")["ageYears"]
         .median()
-        .fillna(global_property_tax_median)
+        .fillna(global_age_median)
         .to_dict()
     )
     numeric_medians = usable[NUMERIC_FEATURES].median(numeric_only=True).fillna(0).to_dict()
@@ -769,7 +842,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
             "livingAreaSqft": float(frame["livingAreaSqft"].median()),
             "bedrooms": float(frame["bedrooms"].median()),
             "bathrooms": float(frame["bathrooms"].median()),
-            "propertyTax": _safe_median(frame["propertyTax"], numeric_medians["propertyTax"]),
+            "ageYears": _safe_median(frame["ageYears"], numeric_medians["ageYears"]),
         }
         for property_type, frame in usable.groupby("propertyType")
     }
@@ -812,7 +885,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
             float(usable["latitude"].median()),
             float(usable["longitude"].median()),
         ),
-        property_tax_medians={key: float(value) for key, value in property_tax_medians.items()},
+        age_medians={key: float(value) for key, value in age_medians.items()},
         numeric_medians={key: float(value) for key, value in numeric_medians.items()},
         type_feature_medians=type_feature_medians,
         type_price_medians=type_price_medians,
@@ -820,6 +893,8 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         fsa_stats=fsa_stats,
         type_stats=type_stats,
         city_stats=city_stats,
+        training_date_range=eda_summary["trainingDateRange"],
+        market_index_path=DEFAULT_MARKET_INDEX_PATH,
         xgboost_available=XGBOOST_AVAILABLE,
         xgboost_import_error=XGBOOST_IMPORT_ERROR,
     )
@@ -835,6 +910,7 @@ def load_bundle(force_retrain: bool = False, data_path: str = DEFAULT_DATA_PATH)
     global _BUNDLE
 
     if _BUNDLE is not None and not force_retrain and _BUNDLE.data_path == data_path:
+        _BUNDLE.market_index_path = DEFAULT_MARKET_INDEX_PATH
         return _BUNDLE
 
     if not force_retrain and ARTIFACT_PATH.exists():
@@ -842,6 +918,7 @@ def load_bundle(force_retrain: bool = False, data_path: str = DEFAULT_DATA_PATH)
             with ARTIFACT_PATH.open("rb") as artifact_file:
                 bundle = pickle.load(artifact_file)
             if isinstance(bundle, VancouverModelBundle) and bundle.data_path == data_path:
+                bundle.market_index_path = DEFAULT_MARKET_INDEX_PATH
                 _BUNDLE = bundle
                 return bundle
         except Exception:
@@ -892,6 +969,123 @@ def _choose_market_stats(bundle: VancouverModelBundle, postal_code: str, propert
     return "city", "Vancouver", bundle.city_stats
 
 
+def _normalize_market_property_type(value: Any) -> str | None:
+    normalized = _normalize_property_type(value, "")
+    if normalized:
+        return normalized
+
+    text = str(value or "").strip().casefold()
+    if not text or any(term in text for term in ["all", "total", "composite", "aggregate", "benchmark"]):
+        return "All"
+
+    return None
+
+
+def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) -> dict[str, Any]:
+    path = Path(bundle.market_index_path)
+    if not path.exists():
+        return {
+            "status": "not-applied",
+            "message": f"No real current-market index CSV found at {path}. Base estimate uses the Vancouver listing data only.",
+            "dataSource": str(path),
+        }
+
+    try:
+        source = pd.read_csv(path, low_memory=False)
+    except Exception as exc:
+        return {
+            "status": "not-applied",
+            "message": f"Could not read the real market index CSV: {exc}",
+            "dataSource": str(path),
+        }
+
+    date_column = _first_existing_name(source, ["date", "Date", "month", "Month", "period", "Period", "reportDate", "Report Date"])
+    value_column = _first_existing_name(
+        source,
+        ["benchmarkPrice", "Benchmark Price", "benchmark_price", "price", "Price", "hpi", "HPI", "index", "Index"],
+    )
+
+    if date_column is None or value_column is None:
+        return {
+            "status": "not-applied",
+            "message": "Market index CSV must include a date/month/period column and a benchmark price, HPI, or index column.",
+            "dataSource": str(path),
+        }
+
+    market = pd.DataFrame(
+        {
+            "period": source[date_column].map(_parse_date),
+            "value": source[value_column].map(_parse_numeric),
+        },
+    )
+
+    region_column = _first_existing_name(source, ["region", "Region", "area", "Area", "market", "Market", "name", "Name"])
+    if region_column is not None:
+        region_mask = source[region_column].fillna("").astype(str).str.contains("vancouver", case=False, na=False)
+        if region_mask.any():
+            market = market.loc[region_mask].copy()
+
+    type_column = _first_existing_name(source, ["propertyType", "Property Type", "type", "Type", "homeType", "Home Type"])
+    if type_column is not None:
+        market["propertyType"] = source.loc[market.index, type_column].map(_normalize_market_property_type)
+        exact_type_rows = market[market["propertyType"] == property_type]
+        all_type_rows = market[market["propertyType"] == "All"]
+        if not exact_type_rows.empty:
+            market = exact_type_rows.copy()
+        elif not all_type_rows.empty:
+            market = all_type_rows.copy()
+
+    market = market.dropna(subset=["period", "value"])
+    market = market[market["value"] > 0]
+    if len(market) < 2:
+        return {
+            "status": "not-applied",
+            "message": "Market index CSV did not contain enough usable real rows to calculate a current adjustment.",
+            "dataSource": str(path),
+        }
+
+    market = market.groupby("period", as_index=False)["value"].mean().sort_values("period")
+    baseline_period = _parse_date(bundle.training_date_range.get("latestListingDate"))
+    if baseline_period is None:
+        return {
+            "status": "not-applied",
+            "message": "Training listing dates were not available, so no current-market adjustment was applied.",
+            "dataSource": str(path),
+        }
+
+    baseline_candidates = market[market["period"] <= baseline_period]
+    baseline_row = baseline_candidates.iloc[-1] if not baseline_candidates.empty else market.iloc[0]
+    latest_row = market.iloc[-1]
+
+    if latest_row["period"] <= baseline_row["period"]:
+        return {
+            "status": "not-applied",
+            "message": "Market index CSV is not newer than the training listing data, so no current adjustment was needed.",
+            "baselinePeriod": baseline_row["period"].date().isoformat(),
+            "latestPeriod": latest_row["period"].date().isoformat(),
+            "dataSource": str(path),
+        }
+
+    multiplier = float(latest_row["value"] / baseline_row["value"])
+    if not np.isfinite(multiplier) or multiplier < 0.5 or multiplier > 2.0:
+        return {
+            "status": "not-applied",
+            "message": "Market index multiplier looked outside a safe range, so the real-data adjustment was not applied.",
+            "baselinePeriod": baseline_row["period"].date().isoformat(),
+            "latestPeriod": latest_row["period"].date().isoformat(),
+            "dataSource": str(path),
+        }
+
+    return {
+        "status": "adjusted",
+        "message": "Applied a real current-market index multiplier to move the Vancouver listing model closer to today's market.",
+        "multiplier": round(multiplier, 4),
+        "baselinePeriod": baseline_row["period"].date().isoformat(),
+        "latestPeriod": latest_row["period"].date().isoformat(),
+        "dataSource": str(path),
+    }
+
+
 def _percentile_rank(value: float, sorted_prices: np.ndarray) -> float:
     if len(sorted_prices) == 0:
         return 50.0
@@ -900,19 +1094,27 @@ def _percentile_rank(value: float, sorted_prices: np.ndarray) -> float:
     return float(np.clip(rank * 100, 1, 99))
 
 
-def _driver_candidates(property_data: dict[str, Any], bundle: VancouverModelBundle, local_stats: dict[str, Any]) -> list[dict[str, Any]]:
+def _driver_candidates(
+    property_data: dict[str, Any],
+    bundle: VancouverModelBundle,
+    local_stats: dict[str, Any],
+    market_multiplier: float,
+) -> list[dict[str, Any]]:
     property_type = property_data["propertyType"]
     medians = bundle.type_feature_medians.get(property_type, {})
-    local_psf = local_stats["medianPricePerSqft"] or bundle.city_stats["medianPricePerSqft"]
+    local_psf = (local_stats["medianPricePerSqft"] or bundle.city_stats["medianPricePerSqft"]) * market_multiplier
 
     drivers = [
         {
             "label": "Local area pricing",
-            "value": local_stats["medianPrice"] - bundle.city_stats["medianPrice"],
+            "value": (local_stats["medianPrice"] - bundle.city_stats["medianPrice"]) * market_multiplier,
         },
         {
             "label": "Property type profile",
-            "value": bundle.type_price_medians.get(property_type, bundle.city_stats["medianPrice"]) - bundle.city_stats["medianPrice"],
+            "value": (
+                bundle.type_price_medians.get(property_type, bundle.city_stats["medianPrice"]) - bundle.city_stats["medianPrice"]
+            )
+            * market_multiplier,
         },
         {
             "label": "Living area vs typical",
@@ -928,12 +1130,13 @@ def _driver_candidates(property_data: dict[str, Any], bundle: VancouverModelBund
         },
     ]
 
-    property_tax = property_data.get("propertyTax")
-    if property_tax is not None:
+    age_years = property_data.get("ageYears")
+    age_missing_rate = float(bundle.evaluation_summary["perType"].get(property_type, {}).get("ageYearsMissingRate", 1.0))
+    if age_years is not None and age_missing_rate < 0.95:
         drivers.append(
             {
-                "label": "Property tax signal",
-                "value": (property_tax - medians.get("propertyTax", property_tax)) * 12,
+                "label": "Age vs typical",
+                "value": (medians.get("ageYears", age_years) - age_years) * local_psf * 2.5,
             },
         )
 
@@ -954,7 +1157,7 @@ def _normalize_request(payload: dict[str, Any], bundle: VancouverModelBundle) ->
     living_area = _parse_numeric(payload.get("livingAreaSqft"))
     bedrooms = _parse_numeric(payload.get("bedrooms"))
     bathrooms = _parse_numeric(payload.get("bathrooms"))
-    property_tax = _parse_numeric(payload.get("propertyTax"))
+    age_years = _age_from_year_built(payload.get("yearBuilt"))
     known_current_value = _parse_numeric(payload.get("knownCurrentValue"))
 
     if living_area is None or living_area < 250:
@@ -965,8 +1168,8 @@ def _normalize_request(payload: dict[str, Any], bundle: VancouverModelBundle) ->
         raise ValueError("bathrooms must be zero or greater")
 
     latitude, longitude = _resolve_centroid(bundle, postal_code)
-    if property_tax is None:
-        property_tax = bundle.property_tax_medians.get(property_type, bundle.numeric_medians["propertyTax"])
+    if age_years is None:
+        age_years = bundle.age_medians.get(property_type, bundle.numeric_medians["ageYears"])
 
     return {
         "postalCode": postal_code,
@@ -975,7 +1178,7 @@ def _normalize_request(payload: dict[str, Any], bundle: VancouverModelBundle) ->
         "livingAreaSqft": float(living_area),
         "bedrooms": float(bedrooms),
         "bathrooms": float(bathrooms),
-        "propertyTax": float(property_tax) if property_tax is not None else None,
+        "ageYears": float(age_years) if age_years is not None else None,
         "knownCurrentValue": float(known_current_value) if known_current_value is not None else None,
         **_location_feature_payload(bundle, latitude, longitude),
     }
@@ -999,13 +1202,16 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
                 "lat_x_lon": property_data["lat_x_lon"],
                 "lat_sq": property_data["lat_sq"],
                 "lon_sq": property_data["lon_sq"],
-                "propertyTax": property_data["propertyTax"],
+                "ageYears": property_data["ageYears"],
             },
         ],
     )
 
     predicted_log_price = float(bundle.models[property_type].predict(feature_frame)[0])
-    base_value = round(float(np.exp(predicted_log_price)))
+    raw_base_value = round(float(np.exp(predicted_log_price)))
+    market_freshness = _market_freshness_payload(bundle, property_type)
+    market_multiplier = float(market_freshness.get("multiplier", 1.0)) if market_freshness["status"] == "adjusted" else 1.0
+    base_value = round(raw_base_value * market_multiplier)
     confidence_ratio = bundle.confidence_error_ratios[property_type]
     confidence_low = round(max(0, base_value * (1 - confidence_ratio)))
     confidence_high = round(base_value * (1 + confidence_ratio))
@@ -1013,11 +1219,11 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     price_per_sqft = round(base_value / max(property_data["livingAreaSqft"], 1), 2)
 
     local_scope, local_area_label, local_stats = _choose_market_stats(bundle, property_data["postalCode"], property_type)
-    percentile_rank = _percentile_rank(base_value, local_stats["pricesSorted"])
-    practical_ceiling = round(max(base_value, local_stats["practicalCeiling"]))
+    percentile_rank = _percentile_rank(raw_base_value, local_stats["pricesSorted"])
+    practical_ceiling = round(max(base_value, local_stats["practicalCeiling"] * market_multiplier))
 
     quality_summary = bundle.evaluation_summary["perType"][property_type]
-    property_tax_missing_rate = float(quality_summary["propertyTaxMissingRate"])
+    age_years_missing_rate = float(quality_summary["ageYearsMissingRate"])
     validation_summary = {
         "trainHoldoutSplit": quality_summary["validationStrategy"]["trainHoldoutSplit"],
         "crossValidation": quality_summary["validationStrategy"]["crossValidation"],
@@ -1028,7 +1234,7 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
             "r2": quality_summary["bootstrap"]["r2"],
         },
         "missingnessNotes": [
-            f"Property tax was missing in {property_tax_missing_rate * 100:.1f}% of Vancouver {property_type.lower()} listings and is median-imputed by property type when not provided."
+            f"Year built or age was missing in {age_years_missing_rate * 100:.1f}% of Vancouver {property_type.lower()} listings and is median-imputed by property type when not provided."
         ],
         "locationFeatures": f"{bundle.location_feature_version} with {bundle.cluster_count} Vancouver submarket clusters",
         "clusterCount": bundle.cluster_count,
@@ -1056,19 +1262,20 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
             "outlierRemovedRate": float(quality_summary["outlierRemovedRate"]),
             "validationSummary": validation_summary,
         },
-        "drivers": _driver_candidates(property_data, bundle, local_stats),
+        "drivers": _driver_candidates(property_data, bundle, local_stats, market_multiplier),
         "marketContext": {
             "localAreaLabel": local_area_label,
             "localAreaScope": local_scope,
-            "localMedianValue": round(local_stats["medianPrice"]),
-            "localMedianPricePerSqft": round(local_stats["medianPricePerSqft"], 2),
-            "vancouverMedianValue": round(bundle.city_stats["medianPrice"]),
-            "vancouverMedianPricePerSqft": round(bundle.city_stats["medianPricePerSqft"], 2),
+            "localMedianValue": round(local_stats["medianPrice"] * market_multiplier),
+            "localMedianPricePerSqft": round(local_stats["medianPricePerSqft"] * market_multiplier, 2),
+            "vancouverMedianValue": round(bundle.city_stats["medianPrice"] * market_multiplier),
+            "vancouverMedianPricePerSqft": round(bundle.city_stats["medianPricePerSqft"] * market_multiplier, 2),
             "percentileRank": round(percentile_rank, 1),
             "practicalCeiling": practical_ceiling,
-            "premiumGap": round(base_value - local_stats["medianPrice"]),
+            "premiumGap": round(base_value - local_stats["medianPrice"] * market_multiplier),
             "comparableCount": int(local_stats["count"]),
         },
+        "marketFreshness": market_freshness,
     }
 
 
@@ -1082,6 +1289,8 @@ def health_payload() -> dict[str, Any]:
         "dataPath": bundle.data_path,
         "trainedAt": bundle.trained_at,
         "rowCounts": bundle.row_counts,
+        "trainingDateRange": bundle.training_date_range,
+        "marketIndexPath": bundle.market_index_path,
         "modelFamilies": bundle.model_families,
         "perTypeCandidateMetrics": bundle.candidate_metrics,
         "overallWeightedMetrics": bundle.evaluation_summary["overallWeightedMetrics"],

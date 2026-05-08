@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { postEstimate } from "./api/client";
@@ -10,12 +10,42 @@ import { ImproveValuePage } from "./pages/ImproveValuePage";
 import { PlanPage } from "./pages/PlanPage";
 import type { EstimateResponse, PlannedFlag, PropertyInput } from "./types";
 
+const validPlannedFlags: PlannedFlag[] = [
+  "renovatedKitchen",
+  "renovatedBathrooms",
+  "legalSuiteAdded",
+  "energyEfficient",
+  "deferredMaintenanceResolved",
+  "roofIssueResolved",
+];
+const validPlannedFlagSet = new Set(validPlannedFlags);
+
+function cleanPlannedFlags(flags: PlannedFlag[]): PlannedFlag[] {
+  return flags.filter((flag) => validPlannedFlagSet.has(flag));
+}
+
+function cleanProperty(property: PropertyInput): PropertyInput {
+  return {
+    postalCode: property.postalCode ?? defaultProperty.postalCode,
+    propertyType: property.propertyType ?? defaultProperty.propertyType,
+    livingAreaSqft: property.livingAreaSqft ?? defaultProperty.livingAreaSqft,
+    bedrooms: property.bedrooms ?? defaultProperty.bedrooms,
+    bathrooms: property.bathrooms ?? defaultProperty.bathrooms,
+    yearBuilt: property.yearBuilt,
+    knownCurrentValue: property.knownCurrentValue,
+  };
+}
+
 export default function App() {
-  const [property, setProperty] = useLocalStorageState<PropertyInput>("vvl-base-price-property-v1", defaultProperty);
-  const [plannedFlags, setPlannedFlags] = useLocalStorageState<PlannedFlag[]>("vvl-uplift-flags-v1", []);
+  const [savedProperty, setSavedProperty] = useLocalStorageState<PropertyInput>("vvl-base-price-property-v1", defaultProperty);
+  const [savedPlannedFlags, setSavedPlannedFlags] = useLocalStorageState<PlannedFlag[]>("vvl-uplift-flags-v1", []);
+  const property = useMemo(() => cleanProperty(savedProperty), [savedProperty]);
+  const plannedFlags = useMemo(() => cleanPlannedFlags(savedPlannedFlags), [savedPlannedFlags]);
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const setProperty = (nextProperty: PropertyInput) => setSavedProperty(cleanProperty(nextProperty));
+  const setPlannedFlags = (nextFlags: PlannedFlag[]) => setSavedPlannedFlags(cleanPlannedFlags(nextFlags));
 
   useEffect(() => {
     let active = true;

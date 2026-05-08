@@ -8,162 +8,137 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-try:
-    from xgboost import XGBRegressor
+from service import PROPERTY_TYPES, _parse_numeric, estimate_property
 
-    XGBOOST_AVAILABLE = True
-    XGBOOST_IMPORT_ERROR = None
-except Exception as exc:  # pragma: no cover - depends on local OpenMP runtime
-    XGBRegressor = None
-    XGBOOST_AVAILABLE = False
-    XGBOOST_IMPORT_ERROR = str(exc)
-
-from service import (
-    PROPERTY_TYPES,
-    _format_postal_code,
-    _location_feature_payload,
-    _normalize_postal_code,
-    _parse_numeric,
-    _resolve_centroid,
-    estimate_property,
-    load_bundle,
-)
-
+REPO_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_DIR = Path(__file__).resolve().parent / "models"
-UPLIFT_ARTIFACT_PATH = ARTIFACT_DIR / "vancouver_uplift_bundle_v1.pkl"
-UPLIFT_MODEL_VERSION = "vancouver-uplift-hybrid-v1"
-UPLIFT_TRAINING_MODE = "vancouver-open-proxy-plus-optional-observed"
-DEFAULT_CITY_PERMITS_PATH = os.environ.get(
-    "VANCOUVER_CITY_PERMITS_PATH",
-    "https://opendata.vancouver.ca/api/explore/v2.1/catalog/datasets/issued-building-permits/exports/csv?select=permitnumber%2Cissuedate%2Cissueyear%2Cpermitelapseddays%2Cprojectvalue%2Ctypeofwork%2Caddress%2Cprojectdescription%2Cpermitcategory%2Cpropertyuse%2Cspecificusecategory%2Cgeolocalarea%2Cgeo_point_2d",
-)
-DEFAULT_PROPERTY_TAX_PATH = os.environ.get(
-    "VANCOUVER_PROPERTY_TAX_PATH",
-    "https://opendata.vancouver.ca/api/explore/v2.1/catalog/datasets/property-tax-report/exports/csv?select=report_year%2Ctax_assessment_year%2Ccurrent_land_value%2Ccurrent_improvement_value%2Cprevious_land_value%2Cprevious_improvement_value%2Ctax_levy%2Cyear_built%2Cbig_improvement_year%2Cproperty_postal_code%2Cfrom_civic_number%2Cstreet_name%2Czoning_district",
-)
-DEFAULT_OBSERVED_SALES_PATH = os.environ.get("VANCOUVER_BCA_SALES_PATH", "")
-PROXY_WEIGHT = 0.35
-OBSERVED_WEIGHT = 1.0
-UPLIFT_BOOTSTRAP_REPEATS = 250
-MIN_TYPE_ROWS = 40
-POSTAL_CODE_PATTERN = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
-ADDRESS_SPLIT_PATTERN = re.compile(r"^\s*(\d+)\s+(.+?)\s*$")
+UPLIFT_ARTIFACT_PATH = ARTIFACT_DIR / "seattle_observed_uplift_bundle_v2.pkl"
 
-UPLIFT_NUMERIC_FEATURES = [
-    "baseValue",
-    "propertyTax",
-    "latitude",
-    "longitude",
-    "lat_x_lon",
-    "lat_sq",
-    "lon_sq",
+UPLIFT_MODEL_VERSION = "seattle-observed-percent-uplift-v2"
+UPLIFT_TRAINING_MODE = "seattle-repeat-sale-observed-only"
+
+SEATTLE_DATA_DIR = REPO_ROOT / "data" / "raw" / "seattle"
+DEFAULT_PERMITS_PATH = os.environ.get("SEATTLE_PERMITS_PATH", str(SEATTLE_DATA_DIR / "building_permits.csv"))
+DEFAULT_SALES_PATH = os.environ.get("KING_COUNTY_SALES_PATH", str(SEATTLE_DATA_DIR / "rpsale_extr.csv"))
+DEFAULT_BUILDINGS_PATH = os.environ.get("KING_COUNTY_BUILDINGS_PATH", str(SEATTLE_DATA_DIR / "resbldg_extr.csv"))
+
+MIN_REPEAT_SALE_ROWS = int(os.environ.get("SEATTLE_UPLIFT_MIN_ROWS", "40"))
+PRE_SALE_MAX_DAYS = 3650
+POST_SALE_MIN_DAYS = 90
+POST_SALE_MAX_DAYS = 730
+MIN_SALE_PRICE = 50_000
+MIN_MARKET_ROWS = 25
+MIN_UPLIFT_PERCENT = -0.45
+MAX_UPLIFT_PERCENT = 0.85
+
+NUMERIC_FEATURES = [
+    "livingAreaSqft",
+    "bedrooms",
+    "bathrooms",
+    "ageAtPermit",
+    "projectCostRatio",
     "horizonMonths",
-    "permitProjectValue",
-    "permitElapsedDays",
-    "issueYear",
 ]
-UPLIFT_CATEGORICAL_FEATURES = ["postalFsa", "submarketCluster", "propertyType", "geoLocalArea", "zoningDistrict"]
-FLAG_FEATURES = [
-    "renovatedKitchen",
-    "renovatedBathrooms",
-    "legalSuiteAdded",
-    "energyEfficient",
-    "curbAppealImproved",
-    "permitIssuesResolved",
-    "deferredMaintenanceResolved",
-    "roofIssueResolved",
-]
+CATEGORICAL_FEATURES = ["propertyType"]
 
 IMPROVEMENT_CATALOG: dict[str, dict[str, Any]] = {
     "renovatedKitchen": {
         "label": "Renovated kitchen",
-        "defaultCost": 65000,
+        "defaultCost": 65_000,
         "months": 2,
         "phase": "Interior",
-        "keywords": ["kitchen", "cabinet", "counter", "millwork", "appliance"],
+        "keywords": ["kitchen", "cabinet", "counter", "appliance", "range hood"],
     },
     "renovatedBathrooms": {
         "label": "Renovated bathrooms",
-        "defaultCost": 35000,
+        "defaultCost": 35_000,
         "months": 2,
         "phase": "Interior",
-        "keywords": ["bathroom", "washroom", "ensuite", "fixture", "plumbing"],
+        "keywords": ["bathroom", "bath room", "shower", "tub", "fixture", "plumbing"],
     },
     "legalSuiteAdded": {
         "label": "Legal suite added",
-        "defaultCost": 90000,
+        "defaultCost": 90_000,
         "months": 4,
         "phase": "Income",
-        "keywords": ["suite", "secondary suite", "lock off", "basement suite", "laneway", "accessory dwelling"],
+        "keywords": ["adu", "dadu", "accessory dwelling", "basement unit", "mother in law", "second unit"],
     },
     "energyEfficient": {
         "label": "Energy upgrades",
-        "defaultCost": 22000,
+        "defaultCost": 22_000,
         "months": 2,
         "phase": "Efficiency",
-        "keywords": ["energy", "window", "insulation", "heat pump", "hvac", "mechanical", "envelope"],
-    },
-    "curbAppealImproved": {
-        "label": "Curb appeal",
-        "defaultCost": 18000,
-        "months": 1,
-        "phase": "Exterior",
-        "keywords": ["landscape", "facade", "exterior", "paint", "entry", "deck", "patio"],
-    },
-    "permitIssuesResolved": {
-        "label": "Permit issues resolved",
-        "defaultCost": 12000,
-        "months": 1,
-        "phase": "Compliance",
-        "keywords": ["field review", "permit", "occupancy", "code", "compliance"],
+        "keywords": ["heat pump", "hvac", "insulation", "window", "solar", "energy"],
     },
     "deferredMaintenanceResolved": {
         "label": "Deferred maintenance resolved",
-        "defaultCost": 28000,
+        "defaultCost": 28_000,
         "months": 2,
         "phase": "Readiness",
-        "keywords": ["repair", "replace", "maintenance", "structural", "foundation", "drainage"],
+        "keywords": ["repair", "replace", "structural", "foundation", "drainage", "water damage"],
     },
     "roofIssueResolved": {
         "label": "Roof and systems resolved",
-        "defaultCost": 24000,
+        "defaultCost": 24_000,
         "months": 1,
         "phase": "Readiness",
-        "keywords": ["roof", "roofing", "boiler", "furnace", "electrical", "rewire"],
+        "keywords": ["roof", "reroof", "roofing", "furnace", "boiler", "electrical panel", "rewire"],
     },
 }
+
+FLAG_FEATURES = list(IMPROVEMENT_CATALOG.keys())
+
+BAD_SALE_WARNING_CODES = {
+    "10",  # tear down
+    "14",  # sheriff / tax sale
+    "15",  # no market exposure
+    "23",  # forced sale
+    "31",  # exempt from excise tax
+    "32",  # very low sale amount
+    "45",  # multi-parcel sale
+    "46",  # non-representative sale
+    "51",  # related party
+    "54",  # affordable housing sale
+    "56",  # builder/developer sale
+    "59",  # bulk portfolio sale
+    "60",  # short sale
+    "61",  # financial institution resale
+    "62",  # auction sale
+}
+BAD_SALE_REASONS = {"4", "8", "10", "11", "12", "14", "15", "17", "18"}
+
+
+@dataclass(frozen=True)
+class UpliftDataPaths:
+    permits: Path
+    sales: Path
+    buildings: Path
 
 
 @dataclass
 class UpliftModelBundle:
     ready: bool
+    message: str
     model_version: str
     training_mode: str
     trained_at: str
     data_sources: dict[str, str]
     row_counts: dict[str, int]
-    models: dict[str, Pipeline]
-    model_families: dict[str, str]
-    confidence_error_ratios: dict[str, float]
+    model: Pipeline | None
+    confidence_error: float
     evaluation_summary: dict[str, Any]
-    evidence_level: str
-    observed_share: float
     available_flags: list[str]
-    xgboost_available: bool
-    xgboost_import_error: str | None
 
 
 _UPLIFT_BUNDLE: UpliftModelBundle | None = None
@@ -176,30 +151,135 @@ def _safe_ohe() -> OneHotEncoder:
         return OneHotEncoder(handle_unknown="ignore", sparse=False)
 
 
-def _read_table(path_or_url: str, columns: list[str] | None = None) -> pd.DataFrame:
-    if not path_or_url:
-        raise FileNotFoundError("Missing data path")
+def _data_paths() -> UpliftDataPaths:
+    return UpliftDataPaths(
+        permits=Path(DEFAULT_PERMITS_PATH).expanduser(),
+        sales=Path(DEFAULT_SALES_PATH).expanduser(),
+        buildings=Path(DEFAULT_BUILDINGS_PATH).expanduser(),
+    )
 
-    usecols = None
-    if columns:
-        wanted = {column.lower() for column in columns}
-        usecols = lambda column: str(column).strip().lower() in wanted
 
-    for separator in (";", ","):
-        try:
-            frame = pd.read_csv(path_or_url, sep=separator, low_memory=False, usecols=usecols)
-            if frame.shape[1] > 1:
-                return frame
-        except Exception:
-            continue
+def _data_sources(paths: UpliftDataPaths) -> dict[str, str]:
+    return {
+        "seattlePermits": str(paths.permits),
+        "kingCountySales": str(paths.sales),
+        "kingCountyResidentialBuildings": str(paths.buildings),
+    }
 
-    raise ValueError(f"Unable to read dataset: {path_or_url}")
+
+def _missing_bundle(message: str, paths: UpliftDataPaths, row_counts: dict[str, int] | None = None) -> UpliftModelBundle:
+    return UpliftModelBundle(
+        ready=False,
+        message=message,
+        model_version=UPLIFT_MODEL_VERSION,
+        training_mode=UPLIFT_TRAINING_MODE,
+        trained_at="",
+        data_sources=_data_sources(paths),
+        row_counts=row_counts or {"permitRows": 0, "saleRows": 0, "buildingRows": 0, "repeatSaleRows": 0},
+        model=None,
+        confidence_error=0.0,
+        evaluation_summary={"message": message},
+        available_flags=FLAG_FEATURES,
+    )
+
+
+def require_real_csv(path: str | Path, label: str) -> Path:
+    csv_path = Path(path).expanduser()
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Missing real {label} CSV at {csv_path}. Add the file locally or set the matching environment variable."
+        )
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"The configured real {label} CSV path is not a file: {csv_path}")
+    return csv_path
+
+
+def _read_real_csv(path: str | Path, label: str) -> pd.DataFrame:
+    csv_path = require_real_csv(path, label)
+    try:
+        frame = pd.read_csv(csv_path, low_memory=False)
+    except UnicodeDecodeError:
+        frame = pd.read_csv(csv_path, low_memory=False, encoding="latin1")
+    if frame.empty:
+        raise ValueError(f"The real {label} CSV is empty: {csv_path}")
+    return frame
+
+
+def _clean_column_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _find_column(frame: pd.DataFrame, aliases: list[str], required: bool = True) -> str | None:
+    columns = {_clean_column_name(str(column)): str(column) for column in frame.columns}
+    for alias in aliases:
+        column = columns.get(_clean_column_name(alias))
+        if column:
+            return column
+    if required:
+        raise ValueError(f"Missing required column. Expected one of: {', '.join(aliases)}")
+    return None
+
+
+def _optional_series(frame: pd.DataFrame, column: str | None) -> pd.Series:
+    if column and column in frame.columns:
+        return frame[column]
+    return pd.Series([None] * len(frame), index=frame.index)
 
 
 def _normalize_text(value: Any) -> str:
-    if value is None or (isinstance(value, float) and math.isnan(value)):
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, float) and math.isnan(value):
         return ""
     return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def _normalize_pin(value: Any) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    text = re.sub(r"\.0$", "", text)
+    digits = re.sub(r"\D", "", text)
+    if digits:
+        return digits.zfill(10)[-10:]
+    return re.sub(r"[^A-Z0-9]", "", text.upper()) or None
+
+
+def _pin_from_major_minor(major: Any, minor: Any) -> str | None:
+    major_text = re.sub(r"\D", "", _normalize_text(major))
+    minor_text = re.sub(r"\D", "", _normalize_text(minor))
+    if not major_text or not minor_text:
+        return None
+    return f"{major_text.zfill(6)[-6:]}{minor_text.zfill(4)[-4:]}"
+
+
+def _normalize_zip(value: Any) -> str | None:
+    text = _normalize_text(value)
+    matches = re.findall(r"\d{5}(?:-\d{4})?", text)
+    if not matches:
+        return None
+    return matches[-1][:5]
+
+
+def _parse_date(value: Any) -> pd.Timestamp | pd.NaT:
+    text = _normalize_text(value)
+    if not text:
+        return pd.NaT
+    text = re.sub(r"\.0$", "", text)
+    digits = re.sub(r"\D", "", text)
+    if re.fullmatch(r"\d{8}", digits):
+        ymd = pd.to_datetime(digits, format="%Y%m%d", errors="coerce")
+        if pd.notna(ymd):
+            return ymd
+        mdy = pd.to_datetime(digits, format="%m%d%Y", errors="coerce")
+        if pd.notna(mdy):
+            return mdy
+    return pd.to_datetime(text, errors="coerce")
 
 
 def _normalize_address(value: Any) -> str | None:
@@ -208,48 +288,33 @@ def _normalize_address(value: Any) -> str | None:
         return None
 
     text = text.split(",")[0]
-    text = text.replace(".", "")
-    text = re.sub(r"\s+", " ", text).strip()
-    match = ADDRESS_SPLIT_PATTERN.match(text)
-    if not match:
-        return text
-    civic, street = match.groups()
-    street = street.replace(" STREET", " ST")
-    street = street.replace(" AVENUE", " AVE")
-    street = street.replace(" BOULEVARD", " BLVD")
-    street = street.replace(" DRIVE", " DR")
-    street = street.replace(" ROAD", " RD")
-    return f"{int(civic)} {street}"
-
-
-def _parse_geo_point(value: Any) -> tuple[float | None, float | None]:
-    text = _normalize_text(value)
-    if not text:
-        return None, None
-
-    coords = re.findall(r"-?\d+\.\d+", text)
-    if len(coords) >= 2:
-        first = float(coords[0])
-        second = float(coords[1])
-        if -125 < first < -122 and 48 < second < 50:
-            return second, first
-        if 48 < first < 50 and -125 < second < -122:
-            return first, second
-
-    return None, None
-
-
-def _infer_property_type(text: str) -> str | None:
-    lowered = text.lower()
-    if "duplex" in lowered or "two family" in lowered or "two-family" in lowered:
-        return "Duplex"
-    if "townhouse" in lowered or "townhome" in lowered:
-        return "Townhouse"
-    if "condo" in lowered or "apartment" in lowered or "strata" in lowered:
-        return "Condo"
-    if "dwelling" in lowered or "house" in lowered or "single family" in lowered or "single-family" in lowered:
-        return "Detached"
-    return None
+    text = re.sub(r"\s+\d{5}(?:-\d{4})?\s*$", " ", text)
+    text = re.sub(r"#\s*\w+", " ", text)
+    text = re.sub(r"\b(APT|UNIT|STE|SUITE|ROOM|RM)\s+\w+\b", " ", text)
+    text = re.sub(r"[^A-Z0-9 ]", " ", text)
+    replacements = {
+        "NORTH": "N",
+        "SOUTH": "S",
+        "EAST": "E",
+        "WEST": "W",
+        "NORTHEAST": "NE",
+        "NORTHWEST": "NW",
+        "SOUTHEAST": "SE",
+        "SOUTHWEST": "SW",
+        "STREET": "ST",
+        "AVENUE": "AVE",
+        "BOULEVARD": "BLVD",
+        "DRIVE": "DR",
+        "ROAD": "RD",
+        "PLACE": "PL",
+        "COURT": "CT",
+        "LANE": "LN",
+        "TERRACE": "TER",
+    }
+    parts = [replacements.get(part, part) for part in text.split()]
+    normalized = " ".join(parts)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or None
 
 
 def _extract_flag_map(text: str) -> dict[str, int]:
@@ -261,343 +326,355 @@ def _extract_flag_map(text: str) -> dict[str, int]:
     return flags
 
 
-def _choose_property_type(text: str, fallback: str | None = None) -> str:
-    inferred = _infer_property_type(text)
-    if inferred in PROPERTY_TYPES:
-        return inferred
-    if fallback in PROPERTY_TYPES:
-        return fallback
+def _infer_property_type(text: str = "", living_units: Any = None) -> str:
+    lowered = text.lower()
+    units = _parse_numeric(living_units)
+    if "condo" in lowered or "apartment" in lowered:
+        return "Condo"
+    if "townhouse" in lowered or "townhome" in lowered or "rowhouse" in lowered or "row house" in lowered:
+        return "Townhouse"
+    if "duplex" in lowered or units == 2:
+        return "Duplex"
     return "Detached"
 
 
-def _load_city_permits(path_or_url: str = DEFAULT_CITY_PERMITS_PATH) -> pd.DataFrame:
-    permits = _read_table(
-        path_or_url,
-        columns=[
-            "permitnumber",
-            "issuedate",
-            "issueyear",
-            "permitelapseddays",
-            "projectvalue",
-            "typeofwork",
-            "address",
-            "projectdescription",
-            "permitcategory",
-            "propertyuse",
-            "specificusecategory",
-            "geolocalarea",
-            "geo_point_2d",
-        ],
-    )
+def _has_bad_warning(value: Any) -> bool:
+    codes = set(re.findall(r"\d+", _normalize_text(value)))
+    return bool(codes & BAD_SALE_WARNING_CODES)
+
+
+def _is_real_renovation_permit(text: str, permit_class: str) -> bool:
+    lowered = text.lower()
+    class_lower = permit_class.lower()
+
+    if "commercial" in class_lower and "residential" not in class_lower:
+        return False
+    if "industrial" in class_lower or "institutional" in class_lower:
+        return False
+
+    if "demolition" in lowered or "demolish" in lowered:
+        return False
+    if ("new construction" in lowered or "construct new" in lowered or "new building" in lowered) and "addition" not in lowered:
+        return False
+
+    work_words = ["addition", "alteration", "remodel", "renovation", "repair", "replace", "reroof", "change use"]
+    return any(word in lowered for word in work_words)
+
+
+def load_permits(path: str | Path = DEFAULT_PERMITS_PATH) -> pd.DataFrame:
+    permits = _read_real_csv(path, "Seattle building permits")
     permits.columns = [str(column).strip() for column in permits.columns]
-    permits["projectvalue"] = permits["projectvalue"].map(_parse_numeric)
-    permits["permitelapseddays"] = permits["permitelapseddays"].map(_parse_numeric).fillna(0)
-    permits["issuedate"] = pd.to_datetime(permits["issuedate"], errors="coerce")
-    permits["issueyear"] = permits["issueyear"].map(_parse_numeric).fillna(permits["issuedate"].dt.year)
-    permits["normalizedAddress"] = permits["address"].map(_normalize_address)
-    lat_lon = permits["geo_point_2d"].map(_parse_geo_point)
-    permits["latitude"] = [item[0] for item in lat_lon]
-    permits["longitude"] = [item[1] for item in lat_lon]
 
-    combined_text = (
-        permits["projectdescription"].map(_normalize_text)
-        + " "
-        + permits["permitcategory"].map(_normalize_text)
-        + " "
-        + permits["propertyuse"].map(_normalize_text)
-        + " "
-        + permits["specificusecategory"].map(_normalize_text)
-        + " "
-        + permits["typeofwork"].map(_normalize_text)
+    permit_id_col = _find_column(permits, ["permitnum", "permitnumber", "permit_number", "permit number"], required=False)
+    date_col = _find_column(permits, ["issueddate", "issued_date", "issue_date", "issuedate", "finaldate", "completeddate", "applicationdate"])
+    value_col = _find_column(permits, ["value", "projectvalue", "project_value", "estimatedprojectcost", "estprojectcost"], required=False)
+    address_col = _find_column(permits, ["originaladdress1", "address", "siteaddress", "propertyaddress", "addressline"], required=False)
+    zip_col = _find_column(permits, ["originalzip", "zip", "zipcode", "postalcode"], required=False)
+    class_col = _find_column(permits, ["permitclassmapped", "permitclass", "permit_class", "category", "permitcategory"], required=False)
+    type_col = _find_column(permits, ["permittype", "permittypedesc", "worktype", "type"], required=False)
+    desc_col = _find_column(permits, ["description", "projectdescription", "scopeofwork", "comments"], required=False)
+    pin_col = _find_column(permits, ["pin", "apn", "parcel", "parcelnumber", "propertyid"], required=False)
+
+    out = pd.DataFrame(
+        {
+            "permitId": _optional_series(permits, permit_id_col).map(_normalize_text),
+            "permitDate": _optional_series(permits, date_col).map(_parse_date),
+            "permitValue": _optional_series(permits, value_col).map(_parse_numeric),
+            "normalizedAddress": _optional_series(permits, address_col).map(_normalize_address),
+            "zipCode": _optional_series(permits, zip_col).map(_normalize_zip),
+            "permitClass": _optional_series(permits, class_col).map(_normalize_text),
+            "permitType": _optional_series(permits, type_col).map(_normalize_text),
+            "description": _optional_series(permits, desc_col).map(_normalize_text),
+            "pin": _optional_series(permits, pin_col).map(_normalize_pin),
+        }
     )
-    permits["propertyType"] = [
-        _choose_property_type(text)
-        for text in combined_text
-    ]
-    flag_rows = combined_text.map(_extract_flag_map)
+    out["combinedText"] = (out["permitClass"] + " " + out["permitType"] + " " + out["description"]).str.strip()
+
+    flag_rows = out["combinedText"].map(_extract_flag_map)
     for flag in FLAG_FEATURES:
-        permits[flag] = [row[flag] for row in flag_rows]
+        out[flag] = [row[flag] for row in flag_rows]
 
-    residential_mask = (
-        permits["typeofwork"].fillna("").astype(str).str.contains("Addition / Alteration", case=False, na=False)
-        & permits["normalizedAddress"].notna()
-        & permits["projectvalue"].fillna(0).gt(0)
-        & (permits[FLAG_FEATURES].sum(axis=1) > 0)
-        & permits["issueyear"].fillna(0).ge(2022)
+    out["propertyType"] = [_infer_property_type(text) for text in out["combinedText"]]
+    real_renovation_mask = pd.Series(
+        [_is_real_renovation_permit(text, permit_class) for text, permit_class in zip(out["combinedText"], out["permitClass"])],
+        index=out.index,
     )
-
-    return permits.loc[residential_mask].copy()
-
-
-def _load_property_tax(path_or_url: str = DEFAULT_PROPERTY_TAX_PATH) -> pd.DataFrame:
-    columns = [
-        "report_year",
-        "tax_assessment_year",
-        "current_land_value",
-        "current_improvement_value",
-        "previous_land_value",
-        "previous_improvement_value",
-        "tax_levy",
-        "year_built",
-        "big_improvement_year",
-        "property_postal_code",
-        "from_civic_number",
-        "street_name",
-        "zoning_district",
-    ]
-
-    if path_or_url.startswith("http"):
-        frames: list[pd.DataFrame] = []
-        current_year = datetime.utcnow().year
-        start_year = max(2022, current_year - 4)
-        for year in range(start_year, current_year + 1):
-            year_filter = quote(f"tax_assessment_year = '{year}'")
-            filtered_url = f"{path_or_url}&where={year_filter}"
-            year_frame = _read_table(filtered_url, columns=columns)
-            if not year_frame.empty:
-                frames.append(year_frame)
-        tax = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
-    else:
-        tax = _read_table(path_or_url, columns=columns)
-
-    tax.columns = [str(column).strip() for column in tax.columns]
-    tax["report_year"] = tax["report_year"].map(_parse_numeric)
-    tax["tax_assessment_year"] = tax["tax_assessment_year"].map(_parse_numeric)
-    tax["current_land_value"] = tax["current_land_value"].map(_parse_numeric).fillna(0)
-    tax["current_improvement_value"] = tax["current_improvement_value"].map(_parse_numeric).fillna(0)
-    tax["previous_land_value"] = tax["previous_land_value"].map(_parse_numeric).fillna(0)
-    tax["previous_improvement_value"] = tax["previous_improvement_value"].map(_parse_numeric).fillna(0)
-    tax["tax_levy"] = tax["tax_levy"].map(_parse_numeric)
-    tax["year_built"] = tax["year_built"].map(_parse_numeric)
-    tax["big_improvement_year"] = tax["big_improvement_year"].map(_parse_numeric)
-    tax["property_postal_code"] = tax["property_postal_code"].map(_normalize_postal_code)
-    tax["normalizedAddress"] = (
-        tax["from_civic_number"].map(_parse_numeric).fillna(0).astype(int).astype(str)
-        + " "
-        + tax["street_name"].map(_normalize_text).str.upper()
-    ).map(_normalize_address)
-    tax["baseAssessmentValue"] = tax["previous_land_value"] + tax["previous_improvement_value"]
-    tax["currentAssessmentValue"] = tax["current_land_value"] + tax["current_improvement_value"]
-    tax["proxyImprovementDelta"] = tax["current_improvement_value"] - tax["previous_improvement_value"]
-    return tax.loc[tax["report_year"].fillna(0).ge(2017)].copy()
+    mask = (
+        out["permitDate"].notna()
+        & (out["pin"].notna() | out["normalizedAddress"].notna())
+        & out[FLAG_FEATURES].sum(axis=1).gt(0)
+        & real_renovation_mask
+    )
+    out = out.loc[mask].copy()
+    out["permitRowId"] = np.arange(len(out))
+    return out
 
 
-def _resolve_alias(frame: pd.DataFrame, aliases: list[str], required: bool = True) -> str | None:
-    columns = {column.lower(): column for column in frame.columns}
-    for alias in aliases:
-        if alias.lower() in columns:
-            return columns[alias.lower()]
-    if required:
-        raise ValueError(f"Missing required column alias. Expected one of: {', '.join(aliases)}")
-    return None
-
-
-def _load_observed_sales(path_or_url: str) -> pd.DataFrame:
-    sales = _read_table(path_or_url)
+def load_sales(path: str | Path = DEFAULT_SALES_PATH) -> pd.DataFrame:
+    sales = _read_real_csv(path, "King County sales")
     sales.columns = [str(column).strip() for column in sales.columns]
 
-    mappings = {
-        "propertyId": _resolve_alias(sales, ["propertyId", "property_id", "pid", "folio", "folio_id"], required=False),
-        "address": _resolve_alias(sales, ["address", "streetAddress", "street_address", "property_address"]),
-        "postalCode": _resolve_alias(sales, ["postalCode", "postal_code", "property_postal_code"], required=False),
-        "saleDate": _resolve_alias(sales, ["saleDate", "sale_date", "transaction_date", "sale_created_date"]),
-        "salePrice": _resolve_alias(sales, ["salePrice", "sale_price", "price", "transaction_price"]),
-        "propertyType": _resolve_alias(sales, ["propertyType", "property_type", "type"], required=False),
-        "propertyTax": _resolve_alias(sales, ["propertyTax", "property_tax", "tax_levy"], required=False),
-        "latitude": _resolve_alias(sales, ["latitude", "lat"], required=False),
-        "longitude": _resolve_alias(sales, ["longitude", "lon", "lng"], required=False),
-    }
+    pin_col = _find_column(sales, ["pin"], required=False)
+    major_col = _find_column(sales, ["major"], required=False)
+    minor_col = _find_column(sales, ["minor"], required=False)
+    date_col = _find_column(sales, ["saledate", "sale_date", "sale date", "documentdate", "document_date", "document date"])
+    price_col = _find_column(sales, ["saleprice", "sale_price", "sale price"])
+    property_class_col = _find_column(sales, ["propertyclass", "property_class"], required=False)
+    principal_use_col = _find_column(sales, ["principaluse", "principal_use"], required=False)
+    property_type_col = _find_column(sales, ["propertytype", "property_type"], required=False)
+    sale_reason_col = _find_column(sales, ["salereason", "sale_reason"], required=False)
+    sale_warning_col = _find_column(sales, ["salewarning", "sale_warning"], required=False)
 
-    normalized = pd.DataFrame(
+    if pin_col:
+        pins = sales[pin_col].map(_normalize_pin)
+    elif major_col and minor_col:
+        pins = [_pin_from_major_minor(major, minor) for major, minor in zip(sales[major_col], sales[minor_col])]
+    else:
+        raise ValueError("King County sales CSV needs PIN, or MAJOR and MINOR columns.")
+
+    out = pd.DataFrame(
         {
-            "propertyId": sales[mappings["propertyId"]] if mappings["propertyId"] else pd.Series([None] * len(sales)),
-            "address": sales[mappings["address"]],
-            "postalCode": sales[mappings["postalCode"]] if mappings["postalCode"] else pd.Series([None] * len(sales)),
-            "saleDate": sales[mappings["saleDate"]],
-            "salePrice": sales[mappings["salePrice"]],
-            "propertyType": sales[mappings["propertyType"]] if mappings["propertyType"] else pd.Series([None] * len(sales)),
-            "propertyTax": sales[mappings["propertyTax"]] if mappings["propertyTax"] else pd.Series([None] * len(sales)),
-            "latitude": sales[mappings["latitude"]] if mappings["latitude"] else pd.Series([None] * len(sales)),
-            "longitude": sales[mappings["longitude"]] if mappings["longitude"] else pd.Series([None] * len(sales)),
+            "pin": pins,
+            "saleDate": sales[date_col].map(_parse_date),
+            "salePrice": sales[price_col].map(_parse_numeric),
+            "propertyClass": _optional_series(sales, property_class_col).map(_normalize_text),
+            "principalUse": _optional_series(sales, principal_use_col).map(_normalize_text),
+            "propertyTypeRaw": _optional_series(sales, property_type_col).map(_normalize_text),
+            "saleReason": _optional_series(sales, sale_reason_col).map(_normalize_text),
+            "saleWarning": _optional_series(sales, sale_warning_col).map(_normalize_text),
         }
     )
-    normalized["propertyId"] = normalized["propertyId"].map(_normalize_text).replace("", np.nan)
-    normalized["normalizedAddress"] = normalized["address"].map(_normalize_address)
-    normalized["postalCode"] = normalized["postalCode"].map(_normalize_postal_code)
-    normalized["saleDate"] = pd.to_datetime(normalized["saleDate"], errors="coerce")
-    normalized["salePrice"] = normalized["salePrice"].map(_parse_numeric)
-    normalized["propertyTax"] = normalized["propertyTax"].map(_parse_numeric)
-    normalized["latitude"] = normalized["latitude"].map(_parse_numeric)
-    normalized["longitude"] = normalized["longitude"].map(_parse_numeric)
-    normalized["propertyType"] = normalized["propertyType"].map(_normalize_text)
-    normalized["propertyType"] = [
-        _choose_property_type(value, fallback=_choose_property_type(value))
-        for value in normalized["propertyType"]
-    ]
-    return normalized.loc[
-        normalized["normalizedAddress"].notna()
-        & normalized["saleDate"].notna()
-        & normalized["salePrice"].notna()
-    ].copy()
+    out["propertyType"] = [_infer_property_type(text) for text in out["propertyTypeRaw"]]
+    out["saleReasonCode"] = out["saleReason"].str.extract(r"(\d+)")[0].fillna("")
+
+    residential_mask = out["principalUse"].isin(["", "2", "6"]) | out["propertyClass"].isin(["8", "9"])
+    good_sale_mask = (
+        out["pin"].notna()
+        & out["saleDate"].notna()
+        & out["salePrice"].gt(MIN_SALE_PRICE)
+        & residential_mask
+        & ~out["saleWarning"].map(_has_bad_warning)
+        & ~out["saleReasonCode"].isin(BAD_SALE_REASONS)
+    )
+    return out.loc[good_sale_mask].sort_values(["pin", "saleDate"]).copy()
 
 
-def _estimate_market_factor(sales: pd.DataFrame, property_type: str, earlier: pd.Timestamp, later: pd.Timestamp) -> float:
-    sales = sales.copy()
-    sales["saleYearMonth"] = sales["saleDate"].dt.to_period("M").astype(str)
+def load_buildings(path: str | Path = DEFAULT_BUILDINGS_PATH) -> pd.DataFrame:
+    buildings = _read_real_csv(path, "King County residential buildings")
+    buildings.columns = [str(column).strip() for column in buildings.columns]
+
+    pin_col = _find_column(buildings, ["pin"], required=False)
+    major_col = _find_column(buildings, ["major"], required=False)
+    minor_col = _find_column(buildings, ["minor"], required=False)
+    address_col = _find_column(buildings, ["situsaddress", "address", "siteaddress"], required=False)
+    zip_col = _find_column(buildings, ["zipcode", "zip", "postalcode"], required=False)
+    living_col = _find_column(buildings, ["sqfttotliving", "total_living_area", "living_area_sqft"], required=False)
+    bedrooms_col = _find_column(buildings, ["bedrooms"], required=False)
+    full_bath_col = _find_column(buildings, ["bathfullcount", "full_baths"], required=False)
+    threeq_bath_col = _find_column(buildings, ["bath3qtrcount", "three_quarter_baths"], required=False)
+    half_bath_col = _find_column(buildings, ["bathhalfcount", "half_baths"], required=False)
+    year_built_col = _find_column(buildings, ["yrbuilt", "yearbuilt", "year_built"], required=False)
+    units_col = _find_column(buildings, ["nbrlivingunits", "living_units"], required=False)
+
+    if pin_col:
+        pins = buildings[pin_col].map(_normalize_pin)
+    elif major_col and minor_col:
+        pins = [_pin_from_major_minor(major, minor) for major, minor in zip(buildings[major_col], buildings[minor_col])]
+    else:
+        raise ValueError("King County residential buildings CSV needs PIN, or MAJOR and MINOR columns.")
+
+    raw_address = _optional_series(buildings, address_col).map(_normalize_text)
+    out = pd.DataFrame(
+        {
+            "pin": pins,
+            "normalizedAddress": raw_address.map(_normalize_address),
+            "zipCode": _optional_series(buildings, zip_col).map(_normalize_zip),
+            "livingAreaSqft": _optional_series(buildings, living_col).map(_parse_numeric),
+            "bedrooms": _optional_series(buildings, bedrooms_col).map(_parse_numeric),
+            "fullBaths": _optional_series(buildings, full_bath_col).map(_parse_numeric),
+            "threeQuarterBaths": _optional_series(buildings, threeq_bath_col).map(_parse_numeric),
+            "halfBaths": _optional_series(buildings, half_bath_col).map(_parse_numeric),
+            "yearBuilt": _optional_series(buildings, year_built_col).map(_parse_numeric),
+            "livingUnits": _optional_series(buildings, units_col).map(_parse_numeric),
+        }
+    )
+    missing_zip = out["zipCode"].isna()
+    out.loc[missing_zip, "zipCode"] = raw_address.loc[missing_zip].map(_normalize_zip)
+    out["bathrooms"] = out["fullBaths"].fillna(0) + (out["threeQuarterBaths"].fillna(0) * 0.75) + (out["halfBaths"].fillna(0) * 0.5)
+    out["propertyType"] = [_infer_property_type("", units) for units in out["livingUnits"]]
+
+    out = out.loc[out["pin"].notna()].copy()
+    grouped = (
+        out.sort_values("livingAreaSqft", ascending=False)
+        .groupby("pin", as_index=False)
+        .agg(
+            {
+                "normalizedAddress": "first",
+                "zipCode": "first",
+                "livingAreaSqft": "sum",
+                "bedrooms": "sum",
+                "bathrooms": "sum",
+                "yearBuilt": "min",
+                "livingUnits": "sum",
+                "propertyType": "first",
+            }
+        )
+    )
+    grouped["propertyType"] = [_infer_property_type("", units) for units in grouped["livingUnits"]]
+    return grouped
+
+
+def _join_permits_to_buildings(permits: pd.DataFrame, buildings: pd.DataFrame) -> pd.DataFrame:
+    direct = permits.loc[permits["pin"].notna()].merge(buildings, on="pin", how="inner", suffixes=("", "Building"))
+
+    unmatched_ids = set(permits["permitRowId"]) - set(direct["permitRowId"])
+    address_candidates = permits.loc[permits["permitRowId"].isin(unmatched_ids) & permits["normalizedAddress"].notna()].copy()
+    address_join = address_candidates.merge(
+        buildings,
+        on=["normalizedAddress", "zipCode"],
+        how="inner",
+        suffixes=("", "Building"),
+    )
+
+    joined = pd.concat([direct, address_join], ignore_index=True)
+    if "pinBuilding" in joined.columns:
+        joined["pin"] = joined["pin"].where(joined["pin"].notna(), joined["pinBuilding"])
+    joined = joined.drop_duplicates(["permitRowId", "pin"])
+    joined["propertyType"] = joined["propertyTypeBuilding"].where(joined["propertyTypeBuilding"].isin(PROPERTY_TYPES), joined["propertyType"])
+    return joined
+
+
+def _quarter_value(series: pd.Series, date: pd.Timestamp) -> float | None:
+    if series.empty or pd.isna(date):
+        return None
+    target = date.to_period("Q")
+    if target in series.index:
+        value = series.loc[target]
+        return float(value) if pd.notna(value) and value > 0 else None
+
+    distances = [abs(period.ordinal - target.ordinal) for period in series.index]
+    nearest = series.index[int(np.argmin(distances))]
+    value = series.loc[nearest]
+    return float(value) if pd.notna(value) and value > 0 else None
+
+
+def _quarter_market_series(sales: pd.DataFrame) -> pd.Series:
+    return sales.groupby(sales["saleDate"].dt.to_period("Q"))["salePrice"].median().sort_index()
+
+
+def _market_factor_from_series(by_quarter: pd.Series, earlier: pd.Timestamp, later: pd.Timestamp) -> float | None:
+    if len(by_quarter) < 2:
+        return None
+
+    earlier_value = _quarter_value(by_quarter, earlier)
+    later_value = _quarter_value(by_quarter, later)
+    if earlier_value is None or later_value is None or earlier_value <= 0:
+        return None
+
+    factor = later_value / earlier_value
+    if not np.isfinite(factor) or factor < 0.5 or factor > 2.0:
+        return None
+    return float(factor)
+
+
+def estimate_market_factor(sales: pd.DataFrame, property_type: str, earlier: pd.Timestamp, later: pd.Timestamp) -> float | None:
     subset = sales.loc[sales["propertyType"].eq(property_type)].copy()
-    if subset.empty:
-        return 1.0
+    if len(subset) < MIN_MARKET_ROWS:
+        subset = sales.copy()
+    if len(subset) < MIN_MARKET_ROWS:
+        return None
 
-    by_month = subset.groupby("saleYearMonth")["salePrice"].median()
-    earlier_key = earlier.to_period("M").strftime("%Y-%m")
-    later_key = later.to_period("M").strftime("%Y-%m")
-    earlier_value = float(by_month.get(earlier_key, by_month.median()))
-    later_value = float(by_month.get(later_key, by_month.median()))
-    if earlier_value <= 0:
-        return 1.0
-    return float(np.clip(later_value / earlier_value, 0.7, 1.5))
+    return _market_factor_from_series(_quarter_market_series(subset), earlier, later)
 
 
-def _build_proxy_rows(permits: pd.DataFrame, tax: pd.DataFrame) -> pd.DataFrame:
+def calculate_uplift_percent(previous_price: float, next_price: float, market_factor: float) -> float:
+    expected_next_price = previous_price * market_factor
+    if expected_next_price <= 0:
+        raise ValueError("expected_next_price must be positive")
+    return float((next_price - expected_next_price) / expected_next_price)
+
+
+def build_repeat_sale_rows(permits: pd.DataFrame, sales: pd.DataFrame, buildings: pd.DataFrame) -> pd.DataFrame:
+    joined_permits = _join_permits_to_buildings(permits, buildings)
+    sales_by_pin = {pin: frame.sort_values("saleDate") for pin, frame in sales.groupby("pin")}
+    all_market_series = _quarter_market_series(sales)
+    market_series_by_type = {
+        property_type: _quarter_market_series(group)
+        for property_type, group in sales.groupby("propertyType")
+        if len(group) >= MIN_MARKET_ROWS
+    }
     rows: list[dict[str, Any]] = []
-    tax_groups = {key: frame.sort_values("report_year") for key, frame in tax.groupby("normalizedAddress")}
 
-    for _, permit in permits.iterrows():
-        address_key = permit["normalizedAddress"]
-        if address_key not in tax_groups:
+    for _, permit in joined_permits.iterrows():
+        pin = permit["pin"]
+        permit_date = permit["permitDate"]
+        if pin not in sales_by_pin or pd.isna(permit_date):
             continue
 
-        candidates = tax_groups[address_key]
-        issue_year = int(permit["issueyear"]) if pd.notna(permit["issueyear"]) else None
-        if issue_year is None:
+        sale_group = sales_by_pin[pin]
+        prior_sales = sale_group.loc[
+            (sale_group["saleDate"] < permit_date)
+            & ((permit_date - sale_group["saleDate"]).dt.days <= PRE_SALE_MAX_DAYS)
+        ]
+        future_sales = sale_group.loc[
+            sale_group["saleDate"].between(
+                permit_date + pd.Timedelta(days=POST_SALE_MIN_DAYS),
+                permit_date + pd.Timedelta(days=POST_SALE_MAX_DAYS),
+            )
+        ]
+        if prior_sales.empty or future_sales.empty:
             continue
 
-        match = candidates.loc[candidates["report_year"].between(issue_year, issue_year + 2)]
-        if match.empty:
-            continue
-        match = match.sort_values(["report_year", "proxyImprovementDelta"], ascending=[True, False]).iloc[0]
-        postal_code = match.get("property_postal_code") or None
-        if postal_code is None or not isinstance(postal_code, str):
-            continue
+        previous_sale = prior_sales.iloc[-1]
+        next_sale = future_sales.iloc[0]
+        property_type = str(permit.get("propertyType") or previous_sale.get("propertyType") or "Detached")
+        if property_type not in PROPERTY_TYPES:
+            property_type = "Detached"
 
-        latitude = permit["latitude"]
-        longitude = permit["longitude"]
-        if pd.isna(latitude) or pd.isna(longitude):
-            base_bundle = load_bundle()
-            latitude, longitude = _resolve_centroid(base_bundle, postal_code)
-
-        horizon_months = max(3.0, min(18.0, ((float(match["report_year"]) - float(issue_year)) * 12) + 6))
-        project_value = float(permit["projectvalue"] or 0.0)
-        uplift_value = float(match["proxyImprovementDelta"])
-        if not np.isfinite(uplift_value):
+        market_series = market_series_by_type.get(property_type, all_market_series)
+        market_factor = _market_factor_from_series(market_series, previous_sale["saleDate"], next_sale["saleDate"])
+        if market_factor is None:
             continue
 
-        location_payload = _location_feature_payload(load_bundle(), float(latitude), float(longitude))
-        feature_row = {
-            "propertyType": permit["propertyType"],
-            "baseValue": float(match["baseAssessmentValue"]),
-            "propertyTax": float(match["tax_levy"] or 0.0),
-            "postalFsa": postal_code[:3],
-            "geoLocalArea": _normalize_text(permit.get("geolocalarea")) or "Vancouver",
-            "zoningDistrict": _normalize_text(match.get("zoning_district")) or "Unknown",
-            "horizonMonths": float(horizon_months),
-            "permitProjectValue": project_value,
-            "permitElapsedDays": float(permit["permitelapseddays"] or 0.0),
-            "issueYear": float(issue_year),
-            "upliftValue": uplift_value,
-            "sampleWeight": PROXY_WEIGHT,
-            "evidenceSource": "proxy",
-            **location_payload,
+        uplift_percent = calculate_uplift_percent(
+            float(previous_sale["salePrice"]),
+            float(next_sale["salePrice"]),
+            market_factor,
+        )
+        if not np.isfinite(uplift_percent) or uplift_percent < MIN_UPLIFT_PERCENT or uplift_percent > MAX_UPLIFT_PERCENT:
+            continue
+
+        permit_value = _parse_numeric(permit.get("permitValue"))
+        expected_next_price = float(previous_sale["salePrice"]) * market_factor
+        year_built = _parse_numeric(permit.get("yearBuilt"))
+        age_at_permit = float(permit_date.year - year_built) if year_built and year_built > 0 else np.nan
+
+        row = {
+            "pin": pin,
+            "permitId": permit.get("permitId"),
+            "permitDate": permit_date,
+            "previousSaleDate": previous_sale["saleDate"],
+            "nextSaleDate": next_sale["saleDate"],
+            "previousSalePrice": float(previous_sale["salePrice"]),
+            "nextSalePrice": float(next_sale["salePrice"]),
+            "marketFactor": market_factor,
+            "upliftPercent": uplift_percent,
+            "propertyType": property_type,
+            "livingAreaSqft": _parse_numeric(permit.get("livingAreaSqft")),
+            "bedrooms": _parse_numeric(permit.get("bedrooms")),
+            "bathrooms": _parse_numeric(permit.get("bathrooms")),
+            "ageAtPermit": age_at_permit,
+            "projectCostRatio": (permit_value / expected_next_price) if permit_value and expected_next_price > 0 else np.nan,
+            "horizonMonths": max(1.0, (next_sale["saleDate"] - permit_date).days / 30.4),
         }
         for flag in FLAG_FEATURES:
-            feature_row[flag] = int(permit[flag])
-        rows.append(feature_row)
+            row[flag] = int(permit.get(flag) or 0)
+        rows.append(row)
 
-    frame = pd.DataFrame(rows)
-    if frame.empty:
-        return frame
-    return frame.loc[
-        frame["propertyType"].isin(PROPERTY_TYPES)
-        & frame["baseValue"].gt(50_000)
-        & frame["postalFsa"].fillna("").str.startswith(("V5", "V6"))
-    ].copy()
+    return pd.DataFrame(rows)
 
 
-def _build_observed_rows(permits: pd.DataFrame, sales: pd.DataFrame) -> pd.DataFrame:
-    rows: list[dict[str, Any]] = []
-    sales = sales.sort_values("saleDate").copy()
-    sales_groups = {key: frame for key, frame in sales.groupby("normalizedAddress")}
-
-    for address_key, permit_group in permits.groupby("normalizedAddress"):
-        if address_key not in sales_groups:
-            continue
-        sales_group = sales_groups[address_key]
-        for _, permit in permit_group.iterrows():
-            permit_date = permit["issuedate"]
-            if pd.isna(permit_date):
-                continue
-
-            prior_sales = sales_group.loc[sales_group["saleDate"] < permit_date]
-            future_sales = sales_group.loc[
-                sales_group["saleDate"].between(
-                    permit_date + pd.Timedelta(days=90),
-                    permit_date + pd.Timedelta(days=365),
-                )
-            ]
-            if prior_sales.empty or future_sales.empty:
-                continue
-
-            prev_sale = prior_sales.iloc[-1]
-            next_sale = future_sales.iloc[0]
-            property_type = _choose_property_type(
-                _normalize_text(next_sale.get("propertyType")) or _normalize_text(prev_sale.get("propertyType")),
-                fallback="Detached",
-            )
-            if property_type not in PROPERTY_TYPES:
-                continue
-
-            postal_code = next_sale.get("postalCode") or prev_sale.get("postalCode")
-            if not postal_code or not isinstance(postal_code, str):
-                continue
-
-            market_factor = _estimate_market_factor(sales, property_type, prev_sale["saleDate"], next_sale["saleDate"])
-            base_value = float(prev_sale["salePrice"]) * market_factor
-            uplift_value = float(next_sale["salePrice"]) - base_value
-
-            latitude = _parse_numeric(next_sale.get("latitude"))
-            longitude = _parse_numeric(next_sale.get("longitude"))
-            if latitude is None or longitude is None:
-                base_bundle = load_bundle()
-                latitude, longitude = _resolve_centroid(base_bundle, postal_code)
-
-            location_payload = _location_feature_payload(load_bundle(), float(latitude), float(longitude))
-            row = {
-                "propertyType": property_type,
-                "baseValue": base_value,
-                "propertyTax": float(_parse_numeric(next_sale.get("propertyTax")) or _parse_numeric(prev_sale.get("propertyTax")) or 0.0),
-                "postalFsa": postal_code[:3],
-                "geoLocalArea": "Vancouver",
-                "zoningDistrict": "Unknown",
-                "horizonMonths": max(3.0, min(18.0, (next_sale["saleDate"] - permit_date).days / 30.4)),
-                "permitProjectValue": float(permit["projectvalue"] or 0.0),
-                "permitElapsedDays": float(permit["permitelapseddays"] or 0.0),
-                "issueYear": float(permit["issueyear"] or permit_date.year),
-                "upliftValue": uplift_value,
-                "sampleWeight": OBSERVED_WEIGHT,
-                "evidenceSource": "observed",
-                **location_payload,
-            }
-            for flag in FLAG_FEATURES:
-                row[flag] = int(permit[flag])
-            rows.append(row)
-
-    frame = pd.DataFrame(rows)
-    if frame.empty:
-        return frame
-    return frame.loc[frame["propertyType"].isin(PROPERTY_TYPES)].copy()
-
-
-def _build_uplift_preprocessor() -> ColumnTransformer:
+def _build_pipeline() -> Pipeline:
     numeric_pipeline = Pipeline([("imputer", SimpleImputer(strategy="median"))])
     categorical_pipeline = Pipeline(
         [
@@ -605,502 +682,249 @@ def _build_uplift_preprocessor() -> ColumnTransformer:
             ("encoder", _safe_ohe()),
         ]
     )
-
-    return ColumnTransformer(
+    preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_pipeline, UPLIFT_NUMERIC_FEATURES + FLAG_FEATURES),
-            ("cat", categorical_pipeline, UPLIFT_CATEGORICAL_FEATURES),
+            ("num", numeric_pipeline, NUMERIC_FEATURES + FLAG_FEATURES),
+            ("cat", categorical_pipeline, CATEGORICAL_FEATURES),
         ],
         remainder="drop",
     )
-
-
-def _build_uplift_candidates() -> dict[str, Pipeline]:
-    candidates: dict[str, Pipeline] = {
-        "random-forest": Pipeline(
-            [
-                ("prep", _build_uplift_preprocessor()),
-                (
-                    "model",
-                    RandomForestRegressor(
-                        n_estimators=400,
-                        min_samples_leaf=2,
-                        random_state=42,
-                        n_jobs=4,
-                    ),
-                ),
-            ]
-        )
-    }
-    if XGBOOST_AVAILABLE:
-        candidates["xgboost"] = Pipeline(
-            [
-                ("prep", _build_uplift_preprocessor()),
-                (
-                    "model",
-                    XGBRegressor(
-                        objective="reg:squarederror",
-                        n_estimators=350,
-                        max_depth=5,
-                        learning_rate=0.05,
-                        subsample=0.9,
-                        colsample_bytree=0.9,
-                        reg_lambda=1.2,
-                        random_state=42,
-                        n_jobs=4,
-                    ),
-                ),
-            ]
-        )
-    return candidates
-
-
-def _evaluate_uplift_predictions(actual: np.ndarray, predicted: np.ndarray) -> dict[str, Any]:
-    denominator = np.maximum(np.abs(actual), 50_000.0)
-    abs_pct = np.abs(predicted - actual) / denominator
-    sign_accuracy = float(np.mean(np.sign(predicted) == np.sign(actual)))
-    return {
-        "mae": float(mean_absolute_error(actual, predicted)),
-        "rmse": float(math.sqrt(mean_squared_error(actual, predicted))),
-        "mape": float(np.mean(abs_pct)),
-        "r2": float(r2_score(actual, predicted)) if len(actual) > 1 else 0.0,
-        "signAccuracy": sign_accuracy,
-        "errorRatios": abs_pct.tolist(),
-    }
-
-
-def _build_uplift_strata(target: pd.Series) -> pd.Series:
-    signed = np.where(target >= 0, "pos", "neg")
-    abs_target = np.abs(target)
-    try:
-        bins = pd.qcut(abs_target, q=min(4, max(2, abs_target.nunique())), duplicates="drop")
-        return pd.Series([f"{sign}-{bucket}" for sign, bucket in zip(signed, bins.astype(str))], index=target.index)
-    except ValueError:
-        return pd.Series(signed, index=target.index)
-
-
-def _select_cv_splitter(strata: pd.Series) -> StratifiedKFold | KFold:
-    min_count = int(strata.value_counts().min()) if not strata.empty else 0
-    total_rows = len(strata)
-    if total_rows >= 5 and min_count >= 5:
-        return StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    if total_rows >= 3 and min_count >= 3:
-        return StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-    if total_rows >= 5:
-        return KFold(n_splits=5, shuffle=True, random_state=42)
-    return KFold(n_splits=3, shuffle=True, random_state=42)
-
-
-def _bootstrap_metric_summary(actual: np.ndarray, predicted: np.ndarray, repeats: int = UPLIFT_BOOTSTRAP_REPEATS) -> dict[str, Any]:
-    rng = np.random.default_rng(42)
-    sample_size = len(actual)
-    mae_samples: list[float] = []
-    rmse_samples: list[float] = []
-    mape_samples: list[float] = []
-    r2_samples: list[float] = []
-    sign_samples: list[float] = []
-
-    for _ in range(repeats):
-        sample_index = rng.integers(0, sample_size, size=sample_size)
-        metrics = _evaluate_uplift_predictions(actual[sample_index], predicted[sample_index])
-        mae_samples.append(metrics["mae"])
-        rmse_samples.append(metrics["rmse"])
-        mape_samples.append(metrics["mape"])
-        r2_samples.append(metrics["r2"])
-        sign_samples.append(metrics["signAccuracy"])
-
-    def _summary(values: list[float]) -> dict[str, float]:
-        array = np.array(values, dtype=float)
-        return {
-            "mean": float(array.mean()),
-            "p05": float(np.quantile(array, 0.05)),
-            "p50": float(np.quantile(array, 0.5)),
-            "p95": float(np.quantile(array, 0.95)),
-        }
-
-    return {
-        "mae": _summary(mae_samples),
-        "rmse": _summary(rmse_samples),
-        "mape": _summary(mape_samples),
-        "r2": _summary(r2_samples),
-        "signAccuracy": _summary(sign_samples),
-        "repeats": repeats,
-    }
-
-
-def _train_candidate_model(frame: pd.DataFrame) -> tuple[Pipeline, str, dict[str, Any], float]:
-    features = frame[UPLIFT_NUMERIC_FEATURES + FLAG_FEATURES + UPLIFT_CATEGORICAL_FEATURES].copy()
-    target = frame["upliftValue"].to_numpy(dtype=float)
-    weights = frame["sampleWeight"].to_numpy(dtype=float)
-    strata = _build_uplift_strata(frame["upliftValue"])
-    stratify = strata if strata.nunique() > 1 else None
-
-    train_index, test_index = train_test_split(
-        frame.index.to_numpy(),
-        test_size=0.2,
+    model = RandomForestRegressor(
+        n_estimators=260,
+        min_samples_leaf=2,
         random_state=42,
-        stratify=stratify,
+        n_jobs=4,
     )
-    x_train = features.loc[train_index]
-    x_test = features.loc[test_index]
-    y_train = frame.loc[train_index, "upliftValue"].to_numpy(dtype=float)
-    y_test = frame.loc[test_index, "upliftValue"].to_numpy(dtype=float)
-    w_train = frame.loc[train_index, "sampleWeight"].to_numpy(dtype=float)
-    train_strata = strata.loc[train_index]
-    cv_splitter = _select_cv_splitter(train_strata)
+    return Pipeline([("prep", preprocessor), ("model", model)])
 
-    candidate_metrics: dict[str, Any] = {}
-    candidates = _build_uplift_candidates()
-    for candidate_name, pipeline in candidates.items():
-        cv_mae: list[float] = []
-        cv_rmse: list[float] = []
-        cv_mape: list[float] = []
-        cv_r2: list[float] = []
-        cv_sign: list[float] = []
 
-        if isinstance(cv_splitter, StratifiedKFold):
-            split_iter = cv_splitter.split(x_train, train_strata)
-        else:
-            split_iter = cv_splitter.split(x_train)
+def train_model(rows: pd.DataFrame) -> tuple[Pipeline, dict[str, Any], float]:
+    feature_columns = NUMERIC_FEATURES + FLAG_FEATURES + CATEGORICAL_FEATURES
+    x = rows[feature_columns].copy()
+    y = rows["upliftPercent"].to_numpy(dtype=float)
 
-        for cv_train_pos, cv_valid_pos in split_iter:
-            cv_train_index = x_train.index[cv_train_pos]
-            cv_valid_index = x_train.index[cv_valid_pos]
-            candidate = clone(pipeline)
-            candidate.fit(
-                x_train.loc[cv_train_index],
-                frame.loc[cv_train_index, "upliftValue"].to_numpy(dtype=float),
-                model__sample_weight=frame.loc[cv_train_index, "sampleWeight"].to_numpy(dtype=float),
-            )
-            cv_predicted = candidate.predict(x_train.loc[cv_valid_index])
-            cv_actual = frame.loc[cv_valid_index, "upliftValue"].to_numpy(dtype=float)
-            cv_metrics = _evaluate_uplift_predictions(cv_actual, cv_predicted)
-            cv_mae.append(cv_metrics["mae"])
-            cv_rmse.append(cv_metrics["rmse"])
-            cv_mape.append(cv_metrics["mape"])
-            cv_r2.append(cv_metrics["r2"])
-            cv_sign.append(cv_metrics["signAccuracy"])
-
-        fitted = clone(pipeline)
-        fitted.fit(x_train, y_train, model__sample_weight=w_train)
-        holdout_predicted = fitted.predict(x_test)
-        holdout_metrics = _evaluate_uplift_predictions(y_test, holdout_predicted)
-        candidate_metrics[candidate_name] = {
-            "available": True,
-            "cv": {
-                "folds": len(cv_mae),
-                "maeMean": float(np.mean(cv_mae)),
-                "rmseMean": float(np.mean(cv_rmse)),
-                "mapeMean": float(np.mean(cv_mape)),
-                "r2Mean": float(np.mean(cv_r2)),
-                "signAccuracyMean": float(np.mean(cv_sign)),
-            },
-            "holdout": {
-                "rows": int(len(test_index)),
-                "mae": holdout_metrics["mae"],
-                "rmse": holdout_metrics["rmse"],
-                "mape": holdout_metrics["mape"],
-                "r2": holdout_metrics["r2"],
-                "signAccuracy": holdout_metrics["signAccuracy"],
-            },
-            "_holdoutPredictions": holdout_predicted.tolist(),
-            "_errorRatios": holdout_metrics["errorRatios"],
-        }
-
-    if not XGBOOST_AVAILABLE:
-        candidate_metrics["xgboost"] = {"available": False, "reason": XGBOOST_IMPORT_ERROR}
-
-    selected_family = min(
-        (name for name, item in candidate_metrics.items() if item.get("available")),
-        key=lambda name: float(candidate_metrics[name]["cv"]["maeMean"]),
-    )
-    selected_pipeline = clone(candidates[selected_family])
-    selected_pipeline.fit(features, target, model__sample_weight=weights)
-    confidence_ratio = float(
-        np.clip(
-            np.quantile(candidate_metrics[selected_family].pop("_errorRatios"), 0.7),
-            0.12,
-            0.45,
-        )
-    )
-    holdout_predictions = np.array(candidate_metrics[selected_family].pop("_holdoutPredictions"), dtype=float)
-    bootstrap = _bootstrap_metric_summary(y_test, holdout_predictions)
+    train_x, test_x, train_y, test_y = train_test_split(x, y, test_size=0.2, random_state=42)
+    pipeline = _build_pipeline()
+    pipeline.fit(train_x, train_y)
+    predicted = pipeline.predict(test_x)
+    mae = float(mean_absolute_error(test_y, predicted))
     evaluation = {
-        "selectedModel": selected_family,
-        "trainingRows": int(len(frame)),
-        "cv": candidate_metrics[selected_family]["cv"],
-        "holdout": candidate_metrics[selected_family]["holdout"],
-        "bootstrap": bootstrap,
+        "trainingRows": int(len(rows)),
+        "holdoutRows": int(len(test_y)),
+        "holdoutMaePercentPoints": round(mae * 100, 2),
+        "holdoutR2": float(r2_score(test_y, predicted)) if len(test_y) > 1 else 0.0,
+        "target": "market-adjusted uplift percent from real repeat sales",
     }
-    return selected_pipeline, selected_family, evaluation, confidence_ratio
+    pipeline.fit(x, y)
+    return pipeline, evaluation, mae
 
 
-def _train_uplift_bundle() -> UpliftModelBundle:
-    permits = _load_city_permits(DEFAULT_CITY_PERMITS_PATH)
-    tax = _load_property_tax(DEFAULT_PROPERTY_TAX_PATH)
-    proxy_rows = _build_proxy_rows(permits, tax)
+def _train_uplift_bundle(paths: UpliftDataPaths) -> UpliftModelBundle:
+    permits = load_permits(paths.permits)
+    sales = load_sales(paths.sales)
+    buildings = load_buildings(paths.buildings)
+    rows = build_repeat_sale_rows(permits, sales, buildings)
+    row_counts = {
+        "permitRows": int(len(permits)),
+        "saleRows": int(len(sales)),
+        "buildingRows": int(len(buildings)),
+        "repeatSaleRows": int(len(rows)),
+    }
 
-    observed_rows = pd.DataFrame()
-    if DEFAULT_OBSERVED_SALES_PATH:
-        try:
-            sales = _load_observed_sales(DEFAULT_OBSERVED_SALES_PATH)
-            observed_rows = _build_observed_rows(permits, sales)
-        except Exception:
-            observed_rows = pd.DataFrame()
-
-    frames = [frame for frame in [observed_rows, proxy_rows] if not frame.empty]
-    if not frames:
-        return UpliftModelBundle(
-            ready=False,
-            model_version=UPLIFT_MODEL_VERSION,
-            training_mode=UPLIFT_TRAINING_MODE,
-            trained_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
-            data_sources={
-                "cityPermits": DEFAULT_CITY_PERMITS_PATH,
-                "propertyTax": DEFAULT_PROPERTY_TAX_PATH,
-                "observedSales": DEFAULT_OBSERVED_SALES_PATH,
-            },
-            row_counts={"proxyRows": 0, "observedRows": 0, "trainingRows": 0},
-            models={},
-            model_families={},
-            confidence_error_ratios={},
-            evaluation_summary={"message": "No uplift rows could be assembled from the configured sources."},
-            evidence_level="proxy-heavy",
-            observed_share=0.0,
-            available_flags=list(IMPROVEMENT_CATALOG.keys()),
-            xgboost_available=XGBOOST_AVAILABLE,
-            xgboost_import_error=XGBOOST_IMPORT_ERROR,
+    if len(rows) < MIN_REPEAT_SALE_ROWS:
+        return _missing_bundle(
+            f"Only {len(rows)} observed Seattle repeat-sale uplift rows were found. Need at least {MIN_REPEAT_SALE_ROWS}.",
+            paths,
+            row_counts,
         )
 
-    training_frame = pd.concat(frames, ignore_index=True)
-    training_frame = training_frame.loc[
-        training_frame["propertyType"].isin(PROPERTY_TYPES)
-        & training_frame["baseValue"].gt(50_000)
-        & training_frame["postalFsa"].fillna("").str.startswith(("V5", "V6"))
-    ].copy()
-
-    models: dict[str, Pipeline] = {}
-    model_families: dict[str, str] = {}
-    confidence_error_ratios: dict[str, float] = {}
-    evaluations: dict[str, Any] = {}
-
-    pooled_model, pooled_family, pooled_evaluation, pooled_confidence = _train_candidate_model(training_frame)
-    models["pooled"] = pooled_model
-    model_families["pooled"] = pooled_family
-    confidence_error_ratios["pooled"] = pooled_confidence
-    evaluations["pooled"] = pooled_evaluation
-
-    for property_type, frame in training_frame.groupby("propertyType"):
-        if len(frame) < MIN_TYPE_ROWS:
-            continue
-        model, family, evaluation, confidence_ratio = _train_candidate_model(frame)
-        models[property_type] = model
-        model_families[property_type] = family
-        confidence_error_ratios[property_type] = confidence_ratio
-        evaluations[property_type] = evaluation
-
-    observed_share = float(len(observed_rows) / len(training_frame)) if len(training_frame) else 0.0
-    if observed_share >= 0.7:
-        evidence_level = "observed"
-    elif observed_share >= 0.25:
-        evidence_level = "hybrid"
-    else:
-        evidence_level = "proxy-heavy"
-
+    model, evaluation, confidence_error = train_model(rows)
+    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     bundle = UpliftModelBundle(
         ready=True,
+        message="Seattle observed repeat-sale uplift model is ready.",
         model_version=UPLIFT_MODEL_VERSION,
         training_mode=UPLIFT_TRAINING_MODE,
         trained_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
-        data_sources={
-            "cityPermits": DEFAULT_CITY_PERMITS_PATH,
-            "propertyTax": DEFAULT_PROPERTY_TAX_PATH,
-            "observedSales": DEFAULT_OBSERVED_SALES_PATH or "",
-        },
-        row_counts={
-            "permitRows": int(len(permits)),
-            "proxyRows": int(len(proxy_rows)),
-            "observedRows": int(len(observed_rows)),
-            "trainingRows": int(len(training_frame)),
-        },
-        models=models,
-        model_families=model_families,
-        confidence_error_ratios=confidence_error_ratios,
+        data_sources=_data_sources(paths),
+        row_counts=row_counts,
+        model=model,
+        confidence_error=confidence_error,
         evaluation_summary={
-            "perModel": evaluations,
-            "window": "90 to 365 days after permit issuance for observed rows",
-            "proxyLabel": "current_improvement_value - previous_improvement_value",
-            "flagCoverage": {
-                flag: int(training_frame[flag].sum()) for flag in FLAG_FEATURES
-            },
+            **evaluation,
+            "improvementFlagCoverage": {flag: int(rows[flag].sum()) for flag in FLAG_FEATURES},
+            "saleWindow": f"{POST_SALE_MIN_DAYS}-{POST_SALE_MAX_DAYS} days after permit date",
+            "noSyntheticData": True,
+            "noProxyLabels": True,
         },
-        evidence_level=evidence_level,
-        observed_share=observed_share,
-        available_flags=list(IMPROVEMENT_CATALOG.keys()),
-        xgboost_available=XGBOOST_AVAILABLE,
-        xgboost_import_error=XGBOOST_IMPORT_ERROR,
+        available_flags=FLAG_FEATURES,
     )
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     with UPLIFT_ARTIFACT_PATH.open("wb") as artifact_file:
         pickle.dump(bundle, artifact_file)
     return bundle
 
 
+def _validate_data_files(paths: UpliftDataPaths) -> None:
+    require_real_csv(paths.permits, "Seattle building permits")
+    require_real_csv(paths.sales, "King County sales")
+    require_real_csv(paths.buildings, "King County residential buildings")
+
+
 def load_uplift_bundle(force_retrain: bool = False) -> UpliftModelBundle:
     global _UPLIFT_BUNDLE
-    if _UPLIFT_BUNDLE is not None and not force_retrain:
+    paths = _data_paths()
+
+    try:
+        _validate_data_files(paths)
+    except (FileNotFoundError, ValueError) as error:
+        _UPLIFT_BUNDLE = _missing_bundle(str(error), paths)
+        return _UPLIFT_BUNDLE
+
+    if _UPLIFT_BUNDLE is not None and _UPLIFT_BUNDLE.ready and not force_retrain:
         return _UPLIFT_BUNDLE
 
     if not force_retrain and UPLIFT_ARTIFACT_PATH.exists():
         try:
             with UPLIFT_ARTIFACT_PATH.open("rb") as artifact_file:
                 bundle = pickle.load(artifact_file)
-            if isinstance(bundle, UpliftModelBundle):
+            if isinstance(bundle, UpliftModelBundle) and bundle.model_version == UPLIFT_MODEL_VERSION:
                 _UPLIFT_BUNDLE = bundle
                 return bundle
         except Exception:
             pass
 
-    _UPLIFT_BUNDLE = _train_uplift_bundle()
+    try:
+        _UPLIFT_BUNDLE = _train_uplift_bundle(paths)
+    except (FileNotFoundError, ValueError) as error:
+        _UPLIFT_BUNDLE = _missing_bundle(str(error), paths)
     return _UPLIFT_BUNDLE
 
 
-def _normalize_simulation_request(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str], float]:
-    base_bundle = load_bundle()
-    property_payload = {
-        key: payload.get(key)
-        for key in ["postalCode", "propertyType", "livingAreaSqft", "bedrooms", "bathrooms", "propertyTax", "knownCurrentValue"]
-    }
-    estimate = estimate_property(property_payload)
-    postal_code = _normalize_postal_code(payload.get("postalCode"))
-    if postal_code is None:
-        raise ValueError("postalCode must be a Vancouver postal code like V6B 1X9")
-
-    planned_flags = []
+def _planned_flags(payload: dict[str, Any]) -> list[str]:
+    flags: list[str] = []
     for flag in payload.get("plannedFlags", []) or []:
-        if flag in IMPROVEMENT_CATALOG and flag not in planned_flags:
-            planned_flags.append(flag)
-
-    horizon_months = _parse_numeric(payload.get("horizonMonths")) or 9.0
-    horizon_months = float(np.clip(horizon_months, 3.0, 18.0))
-    latitude, longitude = _resolve_centroid(base_bundle, postal_code)
-    normalized = {
-        "postalCode": postal_code,
-        "postalFsa": postal_code[:3],
-        "propertyType": str(payload.get("propertyType") or "").strip(),
-        "propertyTax": float(_parse_numeric(payload.get("propertyTax")) or 0.0),
-        "baseValue": float(estimate["baseValue"]),
-        "marketContext": estimate["marketContext"],
-        **_location_feature_payload(base_bundle, latitude, longitude),
-    }
-    return normalized, planned_flags, horizon_months
+        if flag in IMPROVEMENT_CATALOG and flag not in flags:
+            flags.append(flag)
+    return flags
 
 
-def _build_feature_row(normalized: dict[str, Any], planned_flags: list[str], horizon_months: float) -> pd.DataFrame:
+def _feature_row(payload: dict[str, Any], base_value: float, planned_flags: list[str], horizon_months: float) -> pd.DataFrame:
+    year_built = _parse_numeric(payload.get("yearBuilt"))
+    age_at_permit = (datetime.utcnow().year - year_built) if year_built and year_built > 0 else np.nan
+    planned_cost = float(sum(IMPROVEMENT_CATALOG[flag]["defaultCost"] for flag in planned_flags))
+
     row = {
-        "baseValue": normalized["baseValue"],
-        "propertyTax": normalized["propertyTax"],
-        "latitude": normalized["latitude"],
-        "longitude": normalized["longitude"],
-        "lat_x_lon": normalized["lat_x_lon"],
-        "lat_sq": normalized["lat_sq"],
-        "lon_sq": normalized["lon_sq"],
+        "livingAreaSqft": _parse_numeric(payload.get("livingAreaSqft")),
+        "bedrooms": _parse_numeric(payload.get("bedrooms")),
+        "bathrooms": _parse_numeric(payload.get("bathrooms")),
+        "ageAtPermit": age_at_permit,
+        "projectCostRatio": planned_cost / base_value if base_value > 0 else np.nan,
         "horizonMonths": horizon_months,
-        "permitProjectValue": float(sum(IMPROVEMENT_CATALOG[flag]["defaultCost"] for flag in planned_flags)),
-        "permitElapsedDays": 0.0,
-        "issueYear": float(datetime.utcnow().year),
-        "postalFsa": normalized["postalFsa"],
-        "submarketCluster": normalized["submarketCluster"],
-        "propertyType": normalized["propertyType"],
-        "geoLocalArea": "Vancouver",
-        "zoningDistrict": "Unknown",
+        "propertyType": str(payload.get("propertyType") or "Detached"),
     }
+    if row["propertyType"] not in PROPERTY_TYPES:
+        row["propertyType"] = "Detached"
     for flag in FLAG_FEATURES:
         row[flag] = 1 if flag in planned_flags else 0
     return pd.DataFrame([row])
 
 
-def _model_key(bundle: UpliftModelBundle, property_type: str) -> str:
-    if property_type in bundle.models:
-        return property_type
-    return "pooled"
+def _zero_uplift_response(payload: dict[str, Any], base_estimate: dict[str, Any], planned_flags: list[str]) -> dict[str, Any]:
+    return {
+        "status": "ready",
+        "modelVersion": UPLIFT_MODEL_VERSION,
+        "trainingMode": UPLIFT_TRAINING_MODE,
+        "modelFamily": "random-forest",
+        "evidenceLevel": "observed",
+        "evidenceSummary": "No selected improvements, so uplift is zero. The trained uplift path uses real Seattle repeat-sale records only.",
+        "baseValue": int(base_estimate["baseValue"]),
+        "upliftPercent": 0.0,
+        "upliftPercentConfidenceLow": 0.0,
+        "upliftPercentConfidenceHigh": 0.0,
+        "upliftValue": 0,
+        "finalValueRaw": int(base_estimate["baseValue"]),
+        "finalValueGuardrailed": int(base_estimate["baseValue"]),
+        "upliftConfidenceLow": 0,
+        "upliftConfidenceHigh": 0,
+        "ceilingFlag": False,
+        "plannedFlags": planned_flags,
+        "topUpliftDrivers": [],
+        "observedShare": 1.0,
+        "methodNotes": ["No synthetic rows, proxy labels, or rule-based uplift are used."],
+    }
 
 
 def simulate_uplift(payload: dict[str, Any]) -> dict[str, Any]:
     base_estimate = estimate_property(payload)
-    bundle = load_uplift_bundle(force_retrain=os.environ.get("UPLIFT_FORCE_RETRAIN") == "1")
-    normalized, planned_flags, horizon_months = _normalize_simulation_request(payload)
+    planned_flags = _planned_flags(payload)
+    if not planned_flags:
+        return _zero_uplift_response(payload, base_estimate, planned_flags)
 
-    if not bundle.ready:
+    bundle = load_uplift_bundle(force_retrain=os.environ.get("UPLIFT_FORCE_RETRAIN") == "1")
+    if not bundle.ready or bundle.model is None:
         return {
             "status": "data-missing",
-            "message": "The uplift model could not assemble enough training rows from the configured Vancouver datasets.",
-            "dataSources": bundle.data_sources,
-            "rowCounts": bundle.row_counts,
-        }
-
-    if not planned_flags:
-        return {
-            "status": "ready",
+            "message": bundle.message,
             "modelVersion": bundle.model_version,
             "trainingMode": bundle.training_mode,
-            "evidenceLevel": bundle.evidence_level,
-            "baseValue": base_estimate["baseValue"],
-            "upliftValue": 0,
-            "finalValueRaw": base_estimate["baseValue"],
-            "finalValueGuardrailed": base_estimate["baseValue"],
-            "upliftConfidenceLow": 0,
-            "upliftConfidenceHigh": 0,
-            "ceilingFlag": False,
-            "plannedFlags": [],
-            "topUpliftDrivers": [],
-            "modelFamily": bundle.model_families[_model_key(bundle, normalized["propertyType"])],
+            "evidenceLevel": "observed",
             "dataSources": bundle.data_sources,
+            "rowCounts": bundle.row_counts,
+            "methodNotes": ["The uplift model refuses to train without real Seattle permits, real King County sales, and real building records."],
         }
 
-    model_key = _model_key(bundle, normalized["propertyType"])
-    feature_frame = _build_feature_row(normalized, planned_flags, horizon_months)
-    uplift_value = float(bundle.models[model_key].predict(feature_frame)[0])
-    confidence_ratio = bundle.confidence_error_ratios[model_key]
-    confidence_span = abs(uplift_value) * confidence_ratio
-    uplift_low = round(uplift_value - confidence_span)
-    uplift_high = round(uplift_value + confidence_span)
+    base_value = float(base_estimate["baseValue"])
+    horizon_months = float(np.clip(_parse_numeric(payload.get("horizonMonths")) or 9.0, 3.0, 18.0))
+    feature_frame = _feature_row(payload, base_value, planned_flags, horizon_months)
+    uplift_percent = float(bundle.model.predict(feature_frame)[0])
+
+    confidence_error = max(float(bundle.confidence_error), 0.015)
+    low_percent = uplift_percent - confidence_error
+    high_percent = uplift_percent + confidence_error
+    uplift_value = round(base_value * uplift_percent)
+    low_value = round(base_value * low_percent)
+    high_value = round(base_value * high_percent)
 
     driver_rows: list[dict[str, Any]] = []
     for flag in planned_flags:
-        single_flag_frame = _build_feature_row(normalized, [flag], horizon_months)
-        single_value = float(bundle.models[model_key].predict(single_flag_frame)[0])
+        single_frame = _feature_row(payload, base_value, [flag], horizon_months)
+        single_percent = float(bundle.model.predict(single_frame)[0])
         driver_rows.append(
             {
                 "flag": flag,
                 "label": IMPROVEMENT_CATALOG[flag]["label"],
-                "value": round(single_value),
+                "value": round(base_value * single_percent),
+                "upliftPercent": round(single_percent, 4),
             }
         )
 
-    top_drivers = sorted(driver_rows, key=lambda item: abs(item["value"]), reverse=True)[:5]
-    final_value_raw = round(base_estimate["baseValue"] + uplift_value)
+    final_value_raw = round(base_value + uplift_value)
     practical_ceiling = int(base_estimate["marketContext"]["practicalCeiling"])
     final_value_guardrailed = min(final_value_raw, practical_ceiling)
-    ceiling_flag = final_value_raw > practical_ceiling
 
     return {
         "status": "ready",
         "modelVersion": bundle.model_version,
         "trainingMode": bundle.training_mode,
-        "modelFamily": bundle.model_families[model_key],
-        "evidenceLevel": bundle.evidence_level,
-        "baseValue": int(base_estimate["baseValue"]),
-        "upliftValue": round(uplift_value),
+        "modelFamily": "random-forest",
+        "evidenceLevel": "observed",
+        "evidenceSummary": "Seattle-trained observed repeat-sale uplift percentage, applied to the Vancouver base estimate.",
+        "baseValue": int(base_value),
+        "upliftPercent": round(uplift_percent, 4),
+        "upliftPercentConfidenceLow": round(low_percent, 4),
+        "upliftPercentConfidenceHigh": round(high_percent, 4),
+        "upliftValue": int(uplift_value),
         "finalValueRaw": int(final_value_raw),
         "finalValueGuardrailed": int(final_value_guardrailed),
-        "upliftConfidenceLow": int(uplift_low),
-        "upliftConfidenceHigh": int(uplift_high),
-        "ceilingFlag": ceiling_flag,
+        "upliftConfidenceLow": int(low_value),
+        "upliftConfidenceHigh": int(high_value),
+        "ceilingFlag": final_value_raw > practical_ceiling,
         "plannedFlags": planned_flags,
-        "topUpliftDrivers": top_drivers,
-        "observedShare": round(bundle.observed_share, 4),
+        "topUpliftDrivers": sorted(driver_rows, key=lambda item: abs(item["value"]), reverse=True),
+        "observedShare": 1.0,
         "dataSources": bundle.data_sources,
+        "rowCounts": bundle.row_counts,
+        "methodNotes": ["No synthetic rows, proxy labels, or rule-based uplift are used."],
     }
 
 
@@ -1108,16 +932,15 @@ def uplift_health_payload() -> dict[str, Any]:
     bundle = load_uplift_bundle()
     return {
         "ready": bundle.ready,
+        "message": bundle.message,
         "modelVersion": bundle.model_version,
         "trainingMode": bundle.training_mode,
         "trainedAt": bundle.trained_at,
         "rowCounts": bundle.row_counts,
-        "modelFamilies": bundle.model_families,
+        "modelFamily": "random-forest" if bundle.ready else None,
         "evaluationSummary": bundle.evaluation_summary,
-        "evidenceLevel": bundle.evidence_level,
-        "observedShare": bundle.observed_share,
+        "evidenceLevel": "observed",
+        "observedShare": 1.0 if bundle.ready else 0.0,
         "dataSources": bundle.data_sources,
         "availableFlags": bundle.available_flags,
-        "xgboostAvailable": bundle.xgboost_available,
-        "xgboostImportError": bundle.xgboost_import_error,
     }

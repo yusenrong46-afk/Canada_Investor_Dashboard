@@ -7,7 +7,7 @@ An investor-facing Vancouver real-estate dashboard that estimates as-is listing 
 ## Why This Is A Flagship Project
 
 - It shows end-to-end engineering: React dashboard, Express API, Python ML service, validation, tests, documentation, and local model inference.
-- It shows data science judgment: the base price model is trained, while renovation uplift is intentionally rule-based because the dataset lacks before/after resale labels.
+- It shows data science judgment: the base price model is trained on Vancouver listings, while renovation uplift uses real Seattle/King County repeat-sale records instead of fake labels.
 - It gives a real user workflow: a buyer can screen one Vancouver deal before spending time on deeper comparable-sale, financing, permit, and contractor diligence.
 
 ## What The Dashboard Teaches
@@ -20,11 +20,11 @@ An investor-facing Vancouver real-estate dashboard that estimates as-is listing 
 
 ## Resume Bullet
 
-Built a Vancouver real-estate investor dashboard using Python, scikit-learn/XGBoost, Express, and React. Trained property-type-specific listing-price models with validation metrics, then added a deal analyzer that compares asking price to modeled value, simulates rule-based renovation upside, and surfaces risk flags and model limitations through a cited project explainer.
+Built a Vancouver real-estate investor dashboard using Python, scikit-learn/XGBoost, Express, and React. Trained property-type-specific listing-price models with validation metrics, then added a deal analyzer that compares asking price to modeled value, estimates renovation upside from Seattle observed repeat-sale percentages, and surfaces risk flags and model limitations through a cited project explainer.
 
 ## Interview Story
 
-The strongest decision in the project was not pretending to have a causal renovation model. The listing data supports a base value model, but it does not contain property-level before/after renovation resale outcomes. I kept uplift transparent and rule-based, then designed the dashboard so users see the uncertainty and data limitations directly.
+The strongest decision in the project was not pretending the Vancouver listing data had renovation labels. I kept the base model Vancouver-specific, then built the uplift layer from real Seattle permit, sale, and residential-building records so the app learns percentage uplift from observed repeat sales instead of synthetic examples.
 
 ## Next Honest Upgrade
 

@@ -36,6 +36,6 @@ if __name__ == "__main__":
     from service import load_bundle
 
     load_bundle(force_retrain=os.environ.get("MODEL_SERVICE_FORCE_RETRAIN") == "1")
-    host = os.environ.get("MODEL_SERVICE_HOST", "127.0.0.1")
-    port = int(os.environ.get("MODEL_SERVICE_PORT", "5001"))
+    host = os.environ.get("MODEL_SERVICE_HOST", "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
+    port = int(os.environ.get("MODEL_SERVICE_PORT", os.environ.get("PORT", "5001")))
     app.run(host=host, port=port, debug=False)

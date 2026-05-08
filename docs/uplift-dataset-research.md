@@ -6,7 +6,8 @@ Bottom line:
 
 - Public City of Vancouver open data is useful for renovation signals, parcel/address joins, zoning, and assessment proxies.
 - A true uplift model requires property-level sales transactions, ideally from BC Assessment or a licensed commercial source.
-- Without sales transactions, we can only build a proxy-heavy uplift model, not a defensible observed before/after resale model.
+- Without Vancouver sales transactions, the live workaround is to train observed uplift percentages from Seattle/King County repeat-sale data and apply those percentages to Vancouver estimates.
+- The live uplift path should not use generated rows or proxy labels.
 
 ## Best Dataset Stack
 
@@ -105,10 +106,10 @@ Exploration questions:
 - How many records are residential additions/alterations/repairs?
 - How many have project value?
 - Which permit categories should be excluded as new build, demolition, salvage, or abatement?
-- Can we classify permit text into the current 8 uplift flags?
+- Can we classify permit text into the current high-value uplift flags?
 - Can permit address join to BCA sales property identifiers?
 
-## 3. Must-have proxy/context: City of Vancouver property tax report
+## 3. Context only: City of Vancouver property tax report
 
 Source:
 
@@ -118,7 +119,7 @@ Source:
 Why we need it:
 
 - Gives annual assessed land/improvement value context.
-- Useful for proxy uplift when observed resale examples are sparse.
+- Useful as context for assessment history, but not as a live proxy label.
 - Useful for year built, big improvement year, zoning district, and postal code context.
 
 Useful fields:
@@ -270,14 +271,11 @@ Columns:
 - renovatedBathrooms
 - legalSuiteAdded
 - energyEfficient
-- curbAppealImproved
-- permitIssuesResolved
 - deferredMaintenanceResolved
 - roofIssueResolved
 - counterfactual_as_is_value_at_post_sale_date
 - uplift_label = post_sale_price - counterfactual_as_is_value_at_post_sale_date
-- label_source = observed | proxy
-- sample_weight
+- label_source = observed
 
 ## Label Rules To Explore
 
@@ -302,12 +300,7 @@ Exclude:
 - commercial / industrial / multi-family if outside v1 scope
 - suspicious sales with extreme price changes and no renovation signal
 
-Proxy row rule:
-
-- only use when observed resale examples are thin
-- derive from assessment-improvement-value change and permit project value
-- down-weight heavily compared with observed rows
-- label as `proxy-heavy` or `hybrid` in product output
+Do not use proxy row labels in the live uplift model. If observed resale examples are thin, return `data-missing` instead of training a weaker model.
 
 ## What I Recommend You Explore First
 
@@ -317,7 +310,7 @@ Proxy row rule:
    - project value missingness
    - permit category distribution
    - address join quality
-3. Download property tax report and profile:
+3. Download property tax report for context only:
    - annual improvement-value jumps
    - `big_improvement_year` quality
    - address/postal-code join quality
@@ -333,11 +326,11 @@ Proxy row rule:
 If you cannot get property-level sales transaction history:
 
 - do not call the second model a true uplift model
-- call it a permit/assessment proxy model
-- keep evidence level as `proxy-heavy`
+- return `data-missing`
+- do not generate rows or train on permit/assessment proxy labels
 
 If you can get sales transaction history:
 
 - retrain Layer 1 on actual sale price
 - create observed quick-flip uplift labels
-- train Layer 2 on observed uplift, with proxy rows only as lower-weight fallback
+- train Layer 2 on observed uplift only

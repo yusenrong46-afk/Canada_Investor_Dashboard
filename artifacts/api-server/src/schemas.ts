@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { improvementFlagValues, propertyTypeValues } from "./data";
 
 const postalCodePattern = /^V[56][A-Z]\s?\d[A-Z]\d$/i;
+const currentYear = new Date().getFullYear();
 
 export const propertyInputSchema = z.object({
   postalCode: z
@@ -13,7 +14,7 @@ export const propertyInputSchema = z.object({
   livingAreaSqft: z.number().min(250).max(10_000),
   bedrooms: z.number().min(0).max(10),
   bathrooms: z.number().min(0).max(10),
-  propertyTax: z.number().positive().optional(),
+  yearBuilt: z.number().int().min(1800).max(currentYear).optional(),
   knownCurrentValue: z.number().positive().optional(),
 });
 

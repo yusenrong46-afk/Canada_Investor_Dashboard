@@ -12,6 +12,7 @@ coverage
 *.tsbuildinfo
 __pycache__
 *.py[cod]
+data/raw
 artifacts/home-value-planner/node_modules
 artifacts/home-value-planner/dist
 artifacts/api-server/node_modules
