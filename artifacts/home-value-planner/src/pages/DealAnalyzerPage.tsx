@@ -283,7 +283,7 @@ export function DealAnalyzerPage({
               <div className="grid gap-3">
                 {[
                   ["/model-data-story", "Read model & data story"],
-                  ["/model-data-story", "Ask the RAG explainer"],
+                  ["/insights", "Review market & investment insights"],
                 ].map(([href, label]) => (
                   <Link key={label} to={href} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-cedar transition hover:border-sound-300">
                     {label}

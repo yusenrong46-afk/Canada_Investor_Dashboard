@@ -1,54 +1,88 @@
-# Portfolio Case Study: Vancouver Deal Analyzer
+# Portfolio Case Study
 
-## One-Line Pitch
+## Project
 
-I built a full-stack Vancouver real-estate deal analyzer that estimates as-is value, compares it with asking price, models renovation upside, flags risk, and explains the model/data limits with a cited RAG-style assistant.
+Canada Investor Dashboard is my full-stack analytics project for screening Vancouver real estate investment scenarios.
 
-## Why I Changed The Shape
-
-The previous app had separate Estimate, Improve, Plan, and Deal Analyzer screens. That was useful while building, but it made the project feel heavier than it needed to be.
-
-I simplified it into two screens:
+The active workflow is:
 
 ```text
-Deal Analyzer
-Model & Data Story
+Estimate -> Improve -> Plan
 ```
 
-That gives the project a cleaner interview story. The main screen answers the investor question. The second screen explains how the model works, what data trained it, and what I would improve next.
+I also kept a secondary Deal Analyzer page for advanced one-screen analysis, but the main recruiter story is the three-step decision workflow.
 
-## What I Am Proud Of
+## Problem
 
-- I connected a React frontend, Express API, Python ML service, validation, tests, docs, and local model inference.
-- I trained property-type-specific Vancouver listing-price models instead of one generic model.
-- I did not fake renovation labels. The uplift layer uses real Seattle/King County permits, sales, and residential-building records.
-- I moved repeated frontend/API contracts into shared TypeScript types and Zod schemas.
-- I moved older prototype layers into `legacy/` so the active product is easier to understand.
+Real estate decisions usually combine messy information: property details, listing values, permit-style data, renovation assumptions, market context, and risk tolerance.
 
-## Interview Story
+I wanted to build a project that feels closer to analyst work than a standalone notebook. The goal was to turn model output into a dashboard that helps someone make a practical decision.
 
-The strongest decision in this project was not pretending the Vancouver listing data could answer every question.
+## What I Built
 
-The Vancouver data supports an as-is listing-price model. It does not support a true renovation-uplift model because it does not show the same property before renovation, the renovation event, and the resale after renovation.
+- React/TypeScript dashboard
+- Express REST API
+- Python model service
+- shared TypeScript schemas and response types
+- Vancouver listing-price model
+- renovation uplift simulation
+- investor action-plan workflow
+- data-quality and model-metrics reports
+- demo-safe sample mode
+- documentation written for interviews
 
-So I separated the system:
+## Data Work
 
-- Vancouver data estimates the base value.
-- Seattle/King County observed repeat-sale data estimates uplift percentage.
-- The UI and docs explain that this is a transfer-learning bridge, not a final local uplift model.
+The base model uses cleaned Vancouver listing-style data. I normalize property type, postal code, square footage, bedroom/bathroom counts, coordinates, and price fields.
 
-## Resume Bullet
+The target is listing price. I do not describe it as sale price because the current data does not support that.
 
-Built a full-stack Vancouver real-estate deal analyzer using React, TypeScript, Express, Python, scikit-learn, and XGBoost. Trained property-type-specific listing-price models on cleaned Vancouver data, added an observed repeat-sale renovation uplift layer from Seattle/King County permits and sales, simplified the product into a deal-screening workflow, and exposed model limitations through risk flags and a cited project assistant.
+For renovation uplift, I use observed repeat-sale / permit-style data as a separate layer. This is useful for scenario screening, but it is still a proxy until I can get stronger Vancouver before/after sale labels.
 
-## Next Honest Upgrade
+## Model Work
 
-The next serious model upgrade is not deep learning first. It is better data.
+The base model trains by property type and compares model families such as Random Forest and XGBoost when the environment supports them.
 
-I would try to get a BC Assessment custom extract with property-level sales, assessment, inventory, permit, and structural fields. Then I would join it to City of Vancouver permits and build a local uplift target:
+The dashboard returns:
 
-```text
-post-renovation sale price - counterfactual as-is value at post-sale date
-```
+- base value estimate
+- confidence range
+- price per square foot
+- local market context
+- model quality fields
+- drivers and warnings
 
-After that, I would compare tuned gradient boosting, random forest, and simple explainable baselines again.
+I kept these fields visible because I want the user to see uncertainty instead of only seeing one confident number.
+
+## Product Workflow
+
+1. Estimate current listing value.
+2. Pick renovation improvements.
+3. Build a budget-aware action plan.
+4. Review market and investment insights.
+5. Use the Deal Analyzer for a faster advanced screen.
+
+## Business Value
+
+This project shows how I think as an analyst:
+
+- clean the data first
+- make assumptions visible
+- connect model outputs to decisions
+- explain limitations in plain English
+- build a dashboard around the user question, not just charts
+
+## Limitations
+
+- The model estimates listing price, not final sale price.
+- Renovation uplift is not a local causal Vancouver uplift model yet.
+- Demo mode uses sample outputs for public review.
+- The model should support screening, not replace professional appraisal or comparable-sale review.
+
+## What I Would Improve Next
+
+- Add better Vancouver sale-price data.
+- Join local permits to property transaction history.
+- Add parcel, zoning, transit, and census features.
+- Improve deployment and add saved user scenarios.
+- Add stronger automated API and data validation tests.

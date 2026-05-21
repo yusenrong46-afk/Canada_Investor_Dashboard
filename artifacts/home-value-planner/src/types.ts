@@ -1,9 +1,9 @@
 export type {
-  AssistantCitation,
-  AssistantQueryResponse,
   DealAnalyzeResponse,
   DealLabel,
   DealRiskFlag,
+  DemoInsightRow,
+  DemoMetricsResponse,
   Driver,
   EstimateResponse,
   ImproveValueResponse,

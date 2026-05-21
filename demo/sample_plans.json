@@ -1,0 +1,114 @@
+{
+  "mode": "demo-safe",
+  "note": "Precomputed sample plans for public demos. Uplift values are examples and should not be described as live model predictions.",
+  "plans": [
+    {
+      "propertyId": "demo-condo-yaletown",
+      "status": "ready",
+      "evidenceLevel": "observed",
+      "targetAssessment": "Stretch",
+      "baseValue": 748000,
+      "achievableValue": 828000,
+      "targetPrice": 850000,
+      "gapToTarget": 22000,
+      "plannedSpend": 78000,
+      "plannedMonths": 4,
+      "items": [
+        {
+          "flag": "renovatedKitchen",
+          "label": "Renovated kitchen",
+          "phase": "Interior",
+          "cost": 50000,
+          "months": 2,
+          "projectedUplift": 54000,
+          "projectedUpliftPercent": 0.072,
+          "projectedFinalValue": 802000,
+          "valueRecoveryRate": 1.08
+        },
+        {
+          "flag": "renovatedBathrooms",
+          "label": "Renovated bathrooms",
+          "phase": "Interior",
+          "cost": 28000,
+          "months": 2,
+          "projectedUplift": 26000,
+          "projectedUpliftPercent": 0.035,
+          "projectedFinalValue": 828000,
+          "valueRecoveryRate": 0.93
+        }
+      ]
+    },
+    {
+      "propertyId": "demo-townhouse-mount-pleasant",
+      "status": "ready",
+      "evidenceLevel": "observed",
+      "targetAssessment": "Likely",
+      "baseValue": 1312000,
+      "achievableValue": 1468000,
+      "targetPrice": 1450000,
+      "gapToTarget": -18000,
+      "plannedSpend": 74000,
+      "plannedMonths": 4,
+      "items": [
+        {
+          "flag": "deferredMaintenanceResolved",
+          "label": "Deferred maintenance",
+          "phase": "Readiness",
+          "cost": 28000,
+          "months": 2,
+          "projectedUplift": 52000,
+          "projectedUpliftPercent": 0.04,
+          "projectedFinalValue": 1364000,
+          "valueRecoveryRate": 1.86
+        },
+        {
+          "flag": "energyEfficient",
+          "label": "Energy upgrades",
+          "phase": "Efficiency",
+          "cost": 46000,
+          "months": 2,
+          "projectedUplift": 104000,
+          "projectedUpliftPercent": 0.079,
+          "projectedFinalValue": 1468000,
+          "valueRecoveryRate": 2.26
+        }
+      ]
+    },
+    {
+      "propertyId": "demo-detached-east-van",
+      "status": "ready",
+      "evidenceLevel": "observed",
+      "targetAssessment": "Stretch",
+      "baseValue": 1915000,
+      "achievableValue": 2165000,
+      "targetPrice": 2180000,
+      "gapToTarget": 15000,
+      "plannedSpend": 114000,
+      "plannedMonths": 5,
+      "items": [
+        {
+          "flag": "legalSuiteAdded",
+          "label": "Legal suite added",
+          "phase": "Income",
+          "cost": 90000,
+          "months": 4,
+          "projectedUplift": 205000,
+          "projectedUpliftPercent": 0.107,
+          "projectedFinalValue": 2120000,
+          "valueRecoveryRate": 2.28
+        },
+        {
+          "flag": "roofIssueResolved",
+          "label": "Roof and systems",
+          "phase": "Readiness",
+          "cost": 24000,
+          "months": 1,
+          "projectedUplift": 45000,
+          "projectedUpliftPercent": 0.023,
+          "projectedFinalValue": 2165000,
+          "valueRecoveryRate": 1.88
+        }
+      ]
+    }
+  ]
+}

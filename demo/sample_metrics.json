@@ -1,0 +1,64 @@
+{
+  "mode": "demo-safe",
+  "note": "Public demo metrics built from three stable sample scenarios. These are not a market-wide Vancouver benchmark.",
+  "summary": {
+    "averageEstimatedValue": 1325000,
+    "medianEstimatedValue": 1312000,
+    "averagePricePerSqft": 982,
+    "samplePropertyCount": 3,
+    "warningCount": 4
+  },
+  "rows": [
+    {
+      "id": "demo-condo-yaletown",
+      "propertyType": "Condo",
+      "livingAreaSqft": 708,
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "estimatedValue": 748000,
+      "pricePerSqft": 1056,
+      "budget": 85000,
+      "targetPrice": 850000,
+      "estimatedUpside": 80000,
+      "riskLevel": "Medium",
+      "verdict": "Worth review",
+      "warnings": ["Small sample output", "Target is a stretch"]
+    },
+    {
+      "id": "demo-townhouse-mount-pleasant",
+      "propertyType": "Townhouse",
+      "livingAreaSqft": 1320,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "estimatedValue": 1312000,
+      "pricePerSqft": 994,
+      "budget": 95000,
+      "targetPrice": 1450000,
+      "estimatedUpside": 156000,
+      "riskLevel": "Low",
+      "verdict": "Strong lead",
+      "warnings": ["Uses demo-safe uplift example"]
+    },
+    {
+      "id": "demo-detached-east-van",
+      "propertyType": "Detached",
+      "livingAreaSqft": 2140,
+      "bedrooms": 4,
+      "bathrooms": 3,
+      "estimatedValue": 1915000,
+      "pricePerSqft": 895,
+      "budget": 140000,
+      "targetPrice": 2180000,
+      "estimatedUpside": 250000,
+      "riskLevel": "High",
+      "verdict": "Needs caution",
+      "warnings": ["Wider model confidence range"]
+    }
+  ],
+  "dataQualityNotes": [
+    "Sample mode uses three public demo scenarios instead of private raw data.",
+    "The base model estimates listing value, not final sale price.",
+    "Renovation uplift examples are transferred assumptions and should be reviewed with local comparable data.",
+    "Detached examples have wider uncertainty because the holdout error is larger for that segment."
+  ]
+}

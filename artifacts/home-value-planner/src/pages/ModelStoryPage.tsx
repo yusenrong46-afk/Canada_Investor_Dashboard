@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 
-import { AssistantPanel } from "../components/AssistantPanel";
 import { SectionCard } from "../components/SectionCard";
 
 export function ModelStoryPage() {
@@ -29,7 +28,13 @@ export function ModelStoryPage() {
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link to="/" className="rounded-full bg-cedar px-5 py-3 text-sm font-semibold text-white transition hover:bg-slateblue">
-              Open analyzer
+              Open workflow
+            </Link>
+            <Link
+              to="/deal-analyzer"
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-sound-200 hover:text-sound-700"
+            >
+              Open deal analyzer
             </Link>
           </div>
         </div>
@@ -77,8 +82,6 @@ export function ModelStoryPage() {
           ))}
         </div>
       </SectionCard>
-
-      <AssistantPanel />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { apiFetch } from "./http";
-import type { AssistantQueryResponse, DealAnalyzeResponse, PlannedFlag, PropertyInput } from "@vvl/shared";
+import type { DealAnalyzeResponse, DemoMetricsResponse, EstimateResponse, PlannedFlag, PlanResponse, PropertyInput, SimulateResponse } from "@vvl/shared";
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 
@@ -12,9 +12,29 @@ export async function postDealAnalyze(
   });
 }
 
-export async function postAssistantQuery(input: { question: string; topK?: number }): Promise<AssistantQueryResponse> {
-  return apiFetch<AssistantQueryResponse>(`${apiBase}/assistant/query`, {
+export async function postEstimate(input: PropertyInput): Promise<EstimateResponse> {
+  return apiFetch<EstimateResponse>(`${apiBase}/estimate`, {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function postImproveValue(input: PropertyInput & { plannedFlags: PlannedFlag[]; horizonMonths?: number }): Promise<SimulateResponse> {
+  return apiFetch<SimulateResponse>(`${apiBase}/simulate`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function postPlan(
+  input: PropertyInput & { plannedFlags: PlannedFlag[]; targetPrice: number; budget: number; timelineMonths: number },
+): Promise<PlanResponse> {
+  return apiFetch<PlanResponse>(`${apiBase}/plan`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getInsights(): Promise<DemoMetricsResponse> {
+  return apiFetch<DemoMetricsResponse>(`${apiBase}/insights`);
 }

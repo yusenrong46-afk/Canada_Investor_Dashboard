@@ -1,12 +1,11 @@
 openapi: 3.1.0
 info:
-  title: Vancouver Deal Analyzer API
-  version: 0.4.0
+  title: Canada Investor Dashboard API
+  version: 0.5.0
   description: >
-    Public API for the streamlined Vancouver investor dashboard. The frontend
-    now uses one deal-analysis endpoint plus a cited project explainer endpoint.
-    The Express API still calls the Python model service internally for base
-    value and uplift estimates.
+    Public API for the Estimate -> Improve -> Plan workflow. In live mode the
+    Express API calls the Python model service. In demo mode it returns stable
+    sample JSON from the demo folder.
 servers:
   - url: http://127.0.0.1:4000
 paths:
@@ -16,10 +15,48 @@ paths:
       responses:
         "200":
           description: API health payload
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiHealthResponse"
+  /api/estimate:
+    post:
+      summary: Estimate current listing value
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyInput"
+      responses:
+        "200":
+          description: Estimate response
+        "400":
+          description: Request validation error
+  /api/simulate:
+    post:
+      summary: Simulate renovation value uplift
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulateRequest"
+      responses:
+        "200":
+          description: Simulate response
+        "400":
+          description: Request validation error
+  /api/plan:
+    post:
+      summary: Build investor action plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanRequest"
+      responses:
+        "200":
+          description: Plan response
+        "400":
+          description: Request validation error
   /api/deal/analyze:
     post:
       summary: Analyze one Vancouver investment deal
@@ -32,66 +69,16 @@ paths:
       responses:
         "200":
           description: Deal analysis response
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DealAnalyzeResponse"
         "400":
           description: Request validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /api/assistant/query:
-    post:
-      summary: Ask a cited project/model question
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AssistantQueryRequest"
+  /api/insights:
+    get:
+      summary: Return demo-safe sample investment insight rows
       responses:
         "200":
-          description: Cited project explainer response
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AssistantQueryResponse"
-        "400":
-          description: Request validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          description: Demo-safe metrics response
 components:
   schemas:
-    ApiHealthResponse:
-      type: object
-      properties:
-        ok:
-          type: boolean
-        service:
-          type: string
-        mode:
-          type: string
-      required: [ok, service, mode]
-    ErrorResponse:
-      type: object
-      properties:
-        message:
-          type: string
-        issues:
-          type: array
-          items:
-            type: object
-            properties:
-              path:
-                type: string
-              message:
-                type: string
-            required: [path, message]
-      required: [message]
     PropertyType:
       type: string
       enum: [Detached, Townhouse, Condo, Duplex]
@@ -104,7 +91,7 @@ components:
         - energyEfficient
         - deferredMaintenanceResolved
         - roofIssueResolved
-    DealAnalyzeRequest:
+    PropertyInput:
       type: object
       additionalProperties: false
       properties:
@@ -131,140 +118,49 @@ components:
         knownCurrentValue:
           type: number
           exclusiveMinimum: 0
-        plannedFlags:
-          type: array
-          items:
-            $ref: "#/components/schemas/PlannedFlag"
-        horizonMonths:
-          type: number
-          minimum: 3
-          maximum: 18
-        askingPrice:
-          type: number
-          exclusiveMinimum: 0
-        budget:
-          type: number
-          exclusiveMinimum: 0
-        timelineMonths:
-          type: number
-          minimum: 3
-          maximum: 18
-      required: [postalCode, propertyType, livingAreaSqft, bedrooms, bathrooms, askingPrice, budget, timelineMonths]
-    EstimateSummary:
-      type: object
-      properties:
-        modelVersion:
-          type: string
-        trainingMode:
-          type: string
-        modelFamily:
-          type: string
-          enum: [xgboost, random-forest]
-        modelScope:
-          $ref: "#/components/schemas/PropertyType"
-        baseValue:
-          type: number
-        confidenceLow:
-          type: number
-        confidenceHigh:
-          type: number
-        pricePerSqft:
-          type: number
-        confidenceRatio:
-          type: number
-      required: [modelVersion, trainingMode, modelFamily, modelScope, baseValue, confidenceLow, confidenceHigh, pricePerSqft, confidenceRatio]
-    PlanSummary:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [ready, data-missing]
-        targetAssessment:
-          type: string
-          enum: [Likely, Stretch, Unlikely]
-        baseValue:
-          type: number
-        achievableValue:
-          type: number
-        targetPrice:
-          type: number
-        gapToTarget:
-          type: number
-        plannedSpend:
-          type: number
-        plannedMonths:
-          type: number
-    DealAnalyzeResponse:
-      type: object
-      properties:
-        dealLabel:
-          type: string
-          enum: [Strong lead, Worth review, Needs caution, Pass for now]
-        modeledValueGap:
-          type: number
-        valueGapPercent:
-          type: number
-        afterPlanValue:
-          type: number
-        estimatedGrossUpside:
-          type: number
-        grossUpsidePercent:
-          type: number
-        riskFlags:
-          type: array
-          items:
-            type: object
-            properties:
-              level:
-                type: string
-                enum: [info, warning, danger]
-              label:
-                type: string
-              detail:
-                type: string
-            required: [level, label, detail]
-        estimate:
-          $ref: "#/components/schemas/EstimateSummary"
-        plan:
-          $ref: "#/components/schemas/PlanSummary"
-      required: [dealLabel, modeledValueGap, valueGapPercent, afterPlanValue, estimatedGrossUpside, grossUpsidePercent, riskFlags, estimate, plan]
-    AssistantQueryRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        question:
-          type: string
-          minLength: 3
-          maxLength: 500
-        topK:
-          type: integer
-          minimum: 1
-          maximum: 8
-      required: [question]
-    AssistantQueryResponse:
-      type: object
-      properties:
-        answer:
-          type: string
-        confidence:
-          type: string
-          enum: [high, medium, low]
-        citations:
-          type: array
-          items:
-            type: object
-            properties:
-              title:
-                type: string
-              source:
-                type: string
-              snippet:
-                type: string
-              score:
-                type: number
-            required: [title, source, snippet, score]
-        suggestedQuestions:
-          type: array
-          items:
-            type: string
-      required: [answer, confidence, citations, suggestedQuestions]
+      required: [postalCode, propertyType, livingAreaSqft, bedrooms, bathrooms]
+    SimulateRequest:
+      allOf:
+        - $ref: "#/components/schemas/PropertyInput"
+        - type: object
+          properties:
+            plannedFlags:
+              type: array
+              items:
+                $ref: "#/components/schemas/PlannedFlag"
+            horizonMonths:
+              type: number
+              minimum: 3
+              maximum: 18
+    PlanRequest:
+      allOf:
+        - $ref: "#/components/schemas/SimulateRequest"
+        - type: object
+          properties:
+            targetPrice:
+              type: number
+              exclusiveMinimum: 0
+            budget:
+              type: number
+              exclusiveMinimum: 0
+            timelineMonths:
+              type: number
+              minimum: 3
+              maximum: 18
+          required: [targetPrice, budget, timelineMonths]
+    DealAnalyzeRequest:
+      allOf:
+        - $ref: "#/components/schemas/SimulateRequest"
+        - type: object
+          properties:
+            askingPrice:
+              type: number
+              exclusiveMinimum: 0
+            budget:
+              type: number
+              exclusiveMinimum: 0
+            timelineMonths:
+              type: number
+              minimum: 3
+              maximum: 18
+          required: [askingPrice, budget, timelineMonths]

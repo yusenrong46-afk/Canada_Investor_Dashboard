@@ -4,9 +4,10 @@ import cors from "cors";
 import express from "express";
 import { ZodError } from "zod/v4";
 
-import { answerProjectQuestion } from "./assistant";
 import { analyzeDeal } from "./dealAnalysis";
-import { assistantQuerySchema, dealAnalyzeRequestSchema } from "./schemas";
+import { buildDemoDealAnalyze, buildDemoEstimate, buildDemoPlan, buildDemoSimulate, demoModeEnabled, getDemoMetrics } from "./demo";
+import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
+import { dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
 
 const app = express();
 const host = process.env.API_HOST ?? (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
@@ -16,23 +17,55 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "api-server", mode: "vancouver-estimate-plus-seattle-observed-uplift" });
+  res.json({
+    ok: true,
+    service: "api-server",
+    mode: demoModeEnabled ? "demo-safe-samples" : "vancouver-estimate-plus-seattle-observed-uplift",
+  });
 });
 
-app.post("/api/deal/analyze", async (req, res, next) => {
+app.post("/api/estimate", async (req, res, next) => {
   try {
-    const request = dealAnalyzeRequestSchema.parse(req.body);
-    const response = await analyzeDeal(request);
+    const request = estimateRequestSchema.parse(req.body);
+    const response = demoModeEnabled ? buildDemoEstimate(request) : await estimateProperty(request);
     res.json(response);
   } catch (error) {
     next(error);
   }
 });
 
-app.post("/api/assistant/query", (req, res, next) => {
+app.post("/api/simulate", async (req, res, next) => {
   try {
-    const request = assistantQuerySchema.parse(req.body);
-    const response = answerProjectQuestion(request);
+    const request = simulateRequestSchema.parse(req.body);
+    const response = demoModeEnabled ? buildDemoSimulate(request) : await simulateScenario(request);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/plan", async (req, res, next) => {
+  try {
+    const request = planRequestSchema.parse(req.body);
+    const response = demoModeEnabled ? buildDemoPlan(request) : await buildSalePlan(request);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/insights", (_req, res, next) => {
+  try {
+    res.json(getDemoMetrics());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/deal/analyze", async (req, res, next) => {
+  try {
+    const request = dealAnalyzeRequestSchema.parse(req.body);
+    const response = demoModeEnabled ? buildDemoDealAnalyze(request) : await analyzeDeal(request);
     res.json(response);
   } catch (error) {
     next(error);

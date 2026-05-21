@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assistantQuerySchema, dealAnalyzeRequestSchema } from "./schemas";
+import { dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
 
 describe("api schemas", () => {
   it("accepts a valid investor deal request", () => {
@@ -19,7 +19,36 @@ describe("api schemas", () => {
     expect(parsed.askingPrice).toBe(735000);
   });
 
-  it("rejects unsupported assistant questions", () => {
-    expect(() => assistantQuerySchema.parse({ question: "ok" })).toThrow();
+  it("accepts the restored estimate request shape", () => {
+    const parsed = estimateRequestSchema.parse({
+      postalCode: "V6B 1X9",
+      propertyType: "Condo",
+      livingAreaSqft: 708,
+      bedrooms: 1,
+      bathrooms: 1,
+    });
+
+    expect(parsed.propertyType).toBe("Condo");
+  });
+
+  it("accepts simulate and plan request shapes", () => {
+    const simulate = simulateRequestSchema.parse({
+      postalCode: "V6B 1X9",
+      propertyType: "Condo",
+      livingAreaSqft: 708,
+      bedrooms: 1,
+      bathrooms: 1,
+      plannedFlags: ["renovatedKitchen"],
+    });
+
+    const plan = planRequestSchema.parse({
+      ...simulate,
+      targetPrice: 850000,
+      budget: 85000,
+      timelineMonths: 9,
+    });
+
+    expect(simulate.plannedFlags).toEqual(["renovatedKitchen"]);
+    expect(plan.targetPrice).toBe(850000);
   });
 });

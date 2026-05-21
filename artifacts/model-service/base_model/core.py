@@ -252,6 +252,10 @@ def _normalize_property_type(property_type: Any, type_value: Any) -> str | None:
     return None
 
 
+def normalize_property_type(property_type: Any, type_value: Any = None) -> str | None:
+    return _normalize_property_type(property_type, type_value)
+
+
 def _iqr_bounds(series: pd.Series, multiplier: float) -> tuple[float, float]:
     values = series.dropna().astype(float)
     if values.empty:

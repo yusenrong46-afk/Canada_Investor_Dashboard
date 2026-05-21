@@ -1,0 +1,90 @@
+{
+  "mode": "demo-safe",
+  "note": "Precomputed sample estimates for public review. Values are realistic examples, not live predictions.",
+  "estimates": [
+    {
+      "propertyId": "demo-condo-yaletown",
+      "propertyType": "Condo",
+      "baseValue": 748000,
+      "confidenceLow": 667000,
+      "confidenceHigh": 829000,
+      "anchorValue": 734000,
+      "pricePerSqft": 1056,
+      "confidenceRatio": 0.108,
+      "drivers": [
+        { "label": "Yaletown / Downtown postal area", "value": 58000 },
+        { "label": "One bedroom layout", "value": -22000 },
+        { "label": "Recent building age", "value": 26000 },
+        { "label": "Living area below local median", "value": -36000 }
+      ],
+      "marketContext": {
+        "localAreaLabel": "V6B condo sample area",
+        "localAreaScope": "fsa",
+        "localMedianValue": 760000,
+        "localMedianPricePerSqft": 1080,
+        "vancouverMedianValue": 930000,
+        "vancouverMedianPricePerSqft": 1045,
+        "percentileRank": 0.48,
+        "practicalCeiling": 925000,
+        "premiumGap": -12000,
+        "comparableCount": 42
+      }
+    },
+    {
+      "propertyId": "demo-townhouse-mount-pleasant",
+      "propertyType": "Townhouse",
+      "baseValue": 1312000,
+      "confidenceLow": 1170000,
+      "confidenceHigh": 1454000,
+      "anchorValue": 1304000,
+      "pricePerSqft": 994,
+      "confidenceRatio": 0.108,
+      "drivers": [
+        { "label": "Mount Pleasant postal area", "value": 88000 },
+        { "label": "Three bedroom layout", "value": 42000 },
+        { "label": "Townhouse sample support is smaller", "value": -18000 },
+        { "label": "Living area above condo baseline", "value": 74000 }
+      ],
+      "marketContext": {
+        "localAreaLabel": "V5T townhouse sample area",
+        "localAreaScope": "fsa",
+        "localMedianValue": 1285000,
+        "localMedianPricePerSqft": 960,
+        "vancouverMedianValue": 1215000,
+        "vancouverMedianPricePerSqft": 940,
+        "percentileRank": 0.61,
+        "practicalCeiling": 1510000,
+        "premiumGap": 27000,
+        "comparableCount": 24
+      }
+    },
+    {
+      "propertyId": "demo-detached-east-van",
+      "propertyType": "Detached",
+      "baseValue": 1915000,
+      "confidenceLow": 1585000,
+      "confidenceHigh": 2245000,
+      "anchorValue": 1902000,
+      "pricePerSqft": 895,
+      "confidenceRatio": 0.172,
+      "drivers": [
+        { "label": "East Vancouver detached sample", "value": 124000 },
+        { "label": "Four bedroom layout", "value": 86000 },
+        { "label": "Older year built", "value": -62000 },
+        { "label": "Detached model has wider error band", "value": -41000 }
+      ],
+      "marketContext": {
+        "localAreaLabel": "V5N detached sample area",
+        "localAreaScope": "fsa",
+        "localMedianValue": 1840000,
+        "localMedianPricePerSqft": 865,
+        "vancouverMedianValue": 2320000,
+        "vancouverMedianPricePerSqft": 910,
+        "percentileRank": 0.44,
+        "practicalCeiling": 2240000,
+        "premiumGap": 75000,
+        "comparableCount": 31
+      }
+    }
+  ]
+}

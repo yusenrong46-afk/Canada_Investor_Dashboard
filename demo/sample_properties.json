@@ -1,0 +1,51 @@
+{
+  "mode": "demo-safe",
+  "note": "Small Vancouver-style sample inputs for public demos. These are not private records and are not live model outputs.",
+  "properties": [
+    {
+      "id": "demo-condo-yaletown",
+      "postalCode": "V6B 1X9",
+      "propertyType": "Condo",
+      "livingAreaSqft": 708,
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "yearBuilt": 2012,
+      "knownCurrentValue": 720000,
+      "askingPrice": 735000,
+      "budget": 85000,
+      "targetPrice": 850000,
+      "timelineMonths": 9,
+      "plannedFlags": ["renovatedKitchen", "renovatedBathrooms"]
+    },
+    {
+      "id": "demo-townhouse-mount-pleasant",
+      "postalCode": "V5T 3K4",
+      "propertyType": "Townhouse",
+      "livingAreaSqft": 1320,
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "yearBuilt": 1998,
+      "knownCurrentValue": 1295000,
+      "askingPrice": 1275000,
+      "budget": 95000,
+      "targetPrice": 1450000,
+      "timelineMonths": 10,
+      "plannedFlags": ["deferredMaintenanceResolved", "energyEfficient"]
+    },
+    {
+      "id": "demo-detached-east-van",
+      "postalCode": "V5N 2A1",
+      "propertyType": "Detached",
+      "livingAreaSqft": 2140,
+      "bedrooms": 4,
+      "bathrooms": 3,
+      "yearBuilt": 1968,
+      "knownCurrentValue": 1890000,
+      "askingPrice": 1950000,
+      "budget": 140000,
+      "targetPrice": 2180000,
+      "timelineMonths": 12,
+      "plannedFlags": ["legalSuiteAdded", "roofIssueResolved"]
+    }
+  ]
+}

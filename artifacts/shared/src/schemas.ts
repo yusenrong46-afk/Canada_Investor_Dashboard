@@ -18,6 +18,19 @@ export const propertyInputSchema = z.object({
   knownCurrentValue: z.number().positive().optional(),
 });
 
+export const estimateRequestSchema = propertyInputSchema;
+
+export const simulateRequestSchema = propertyInputSchema.extend({
+  plannedFlags: z.array(z.enum(improvementFlagValues)).default([]),
+  horizonMonths: z.number().min(3).max(18).optional(),
+});
+
+export const planRequestSchema = simulateRequestSchema.extend({
+  targetPrice: z.number().positive(),
+  budget: z.number().positive(),
+  timelineMonths: z.number().min(3).max(18),
+});
+
 export const dealAnalyzeRequestSchema = propertyInputSchema.extend({
   plannedFlags: z.array(z.enum(improvementFlagValues)).default([]),
   horizonMonths: z.number().min(3).max(18).optional(),
@@ -26,11 +39,8 @@ export const dealAnalyzeRequestSchema = propertyInputSchema.extend({
   timelineMonths: z.number().min(3).max(18),
 });
 
-export const assistantQuerySchema = z.object({
-  question: z.string().trim().min(3).max(500),
-  topK: z.number().int().min(1).max(8).optional(),
-});
-
 export type PropertyInputSchema = z.infer<typeof propertyInputSchema>;
+export type EstimateRequestSchema = z.infer<typeof estimateRequestSchema>;
+export type SimulateRequestSchema = z.infer<typeof simulateRequestSchema>;
+export type PlanRequestSchema = z.infer<typeof planRequestSchema>;
 export type DealAnalyzeRequest = z.infer<typeof dealAnalyzeRequestSchema>;
-export type AssistantQueryRequest = z.infer<typeof assistantQuerySchema>;

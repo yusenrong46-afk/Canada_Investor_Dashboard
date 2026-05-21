@@ -1,132 +1,92 @@
-# Model Card: Vancouver Base Price Model
+# Model Card
+
+## Model Name
+
+Vancouver Listing-Price Model
 
 ## Intended Use
 
-Estimate the current listing value of a Vancouver residential property from structured listing features, then support a deal-screening workflow that compares asking price, model value, renovation scope, budget, and timeline.
+I use this model to estimate the current listing value of a Vancouver residential property from structured property features.
 
-This model is meant for portfolio/demo and exploratory planning use. It is not a replacement for an appraisal, broker opinion, or lender valuation.
+It is meant for portfolio demonstration, screening, and decision support. It is not an appraisal, lender valuation, or final sale-price prediction.
 
 ## Prediction Target
 
 - Target: listing price
-- Geography: Vancouver only
-- Property types: `Condo`, `Detached`, `Townhouse`, `Duplex`
+- Geography: Vancouver
+- Supported property types: `Condo`, `Detached`, `Townhouse`, `Duplex`
 
-The current dataset does not contain verified transaction sale prices, so the model should be described as a listing-price model.
+I should say listing-price model in interviews. I should not say sale-price model unless I add verified transaction sale data later.
 
-## Input Features
+## Inputs
 
 User-facing inputs:
 
 - postal code
 - property type
-- living area in square feet
+- living area square feet
 - bedrooms
 - bathrooms
 - optional year built
-- optional known current value for user-side comparison
+- optional known current value
 
-Engineered features:
+Engineered inputs:
 
-- latitude and longitude from postal-code centroids
 - postal FSA
-- `lat_x_lon`, `lat_sq`, `lon_sq`
-- KMeans submarket cluster from Vancouver coordinates
-
-Excluded features:
-
-- listing description text
-- raw street names
-- parcel-like identifiers
-- high-cardinality location strings that could leak identity instead of learning general patterns
+- latitude/longitude from postal-code centroids
+- coordinate interaction features
+- submarket cluster
+- derived or imputed age when available
 
 ## Training Approach
 
-The service trains one model per property type.
+The service trains separate models by property type. The current workflow compares tree-based models such as Random Forest and XGBoost when the local environment supports them.
 
-For each property type, it compares:
+The model selection rule is simple: choose the model with the stronger cross-validation MAE for that property type.
 
-- XGBoost regressor
-- Random Forest regressor
+## Evaluation
 
-The target is transformed with `log(price)` during training, then transformed back to dollars for predictions.
+Evaluation is generated through `scripts/generate_model_report.py`.
 
-The chosen model family is selected by cross-validation MAE.
+The report tries to load the saved model artifact and write:
 
-## Data Cleaning
+- MAE
+- RMSE
+- MAPE
+- R2
+- holdout row count
+- selected model family
 
-The pipeline:
+If the artifact is missing, the report says metrics are not available yet. It does not invent numbers.
 
-- filters to Vancouver rows
-- normalizes property types into the four supported classes
-- parses numeric fields from messy listing-style strings
-- removes records missing core pricing fields
-- removes implausible values for price, square footage, beds, baths, and coordinates
-- applies property-type-aware outlier removal using price-per-square-foot and living-area checks
-- derives home age from year built or approximate age when available
-- imputes age with property-type medians where missing
+## Renovation Uplift Layer
 
-## Validation
+The uplift layer is separate from the base listing-price model.
 
-The validation strategy is designed to be understandable and realistic for a small city-specific dataset:
+The current Vancouver dataset does not contain clean before/after renovation resale labels. Because of that, the uplift workflow uses observed repeat-sale / permit-style data as a proxy layer and applies the uplift as a percentage to the Vancouver base estimate.
 
-- train/holdout split stratified by price band where possible
-- adaptive 3-fold or 5-fold cross-validation depending on sample support
-- MAE as the main metric because it is easiest to explain in dollars
-- MAPE, RMSE, and R2 as supporting metrics
-- bootstrap summaries on holdout predictions
-- model-quality payload returned by the API for transparency
+This is useful for scenario planning, but I would explain it carefully in an interview:
+
+> The uplift model is a decision-support layer, not proof that a specific Vancouver renovation will create that exact value.
+
+## Data Quality
+
+The project includes a data-quality report script:
+
+```bash
+.venv/bin/python scripts/generate_data_quality_report.py
+```
+
+It checks row count, column count, missing key fields, duplicate rows, and simple outlier ranges for price, area, bedrooms, and bathrooms.
 
 ## Known Limitations
 
-- The model predicts listing price, not final sale price.
-- The dataset is relatively small after filtering to Vancouver and supported property types.
-- Year built or approximate age is often missing and must be imputed.
-- Postal-code centroid features are useful, but they are not as precise as parcel-level geospatial features.
-- The model does not know renovation quality, view, floor level, exact building condition, strata rules, or seller motivation.
-- A current-market index adjustment is only applied from a real local CSV; if the CSV is absent or too thin, the service reports that no adjustment was applied.
+- It predicts listing price, not final sale price.
+- Local condition details, views, floor level, strata rules, and seller motivation are not captured.
+- Some location features are based on postal-code centroids, not parcel-level geometry.
+- Renovation uplift needs stronger local Vancouver sale and permit joins.
+- Demo mode uses precomputed sample outputs.
 
-## Uplift Modeling Status
+## Responsible Use
 
-The renovation uplift layer is a separate observed-data model trained from Seattle/King County records.
-
-Reason:
-
-The Vancouver listing dataset does not contain the labels needed for causal uplift learning. A local Vancouver uplift model would need property-level examples where the same home has:
-
-```text
-pre-renovation state -> renovation event -> resale price within a defined time window
-```
-
-Until that Vancouver dataset exists, the app uses Seattle building permits, King County sale records, and King County residential building records to train on real observed repeat-sale examples. The target is market-adjusted uplift percentage, not raw dollars, so the result can be applied to the Vancouver base estimate.
-
-The uplift layer refuses to train if the real CSV files are missing or if too few repeat-sale rows are found. It does not generate synthetic rows or train on proxy labels.
-
-## Current Product Surface
-
-The active app now exposes the model through a simpler product flow:
-
-```text
-Deal Analyzer -> Model & Data Story
-```
-
-The public Express API is intentionally smaller:
-
-```text
-POST /api/deal/analyze
-POST /api/assistant/query
-```
-
-The Python service still exposes `/estimate` and `/uplift` internally because keeping the base-value model and uplift model separate makes the code and limitations easier to explain.
-
-## Next Data Science Step
-
-Acquire or license Vancouver property-level transaction data, then join it with renovation permit and assessment history to create local before/after resale labels.
-
-The target for a future uplift model would be:
-
-```text
-uplift = post_renovation_sale_price - counterfactual_as_is_value_at_post_sale_date
-```
-
-That future model could compare XGBoost and Random Forest again, but the main challenge is label quality, not model choice.
+I would use this dashboard to shortlist deals and explain assumptions. I would not use it alone to make a purchase decision.

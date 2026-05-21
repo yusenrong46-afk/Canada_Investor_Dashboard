@@ -17,6 +17,8 @@ export interface PropertyInput {
   knownCurrentValue?: number;
 }
 
+export type EstimateRequest = PropertyInput;
+
 export interface Driver {
   label: string;
   value: number;
@@ -129,6 +131,11 @@ export interface SimulateResponse {
 
 export type ImproveValueResponse = SimulateResponse;
 
+export interface SimulateRequest extends PropertyInput {
+  plannedFlags?: PlannedFlag[];
+  horizonMonths?: number;
+}
+
 export interface PlanLineItem {
   flag: PlannedFlag;
   label: string;
@@ -147,6 +154,12 @@ export interface PlanPhase {
   plannedSpend: number;
   plannedUplift: number;
   items: PlanLineItem[];
+}
+
+export interface PlanRequest extends SimulateRequest {
+  targetPrice: number;
+  budget: number;
+  timelineMonths: number;
 }
 
 export interface PlanResponse {
@@ -187,16 +200,32 @@ export interface DealAnalyzeResponse {
   plan: PlanResponse;
 }
 
-export interface AssistantCitation {
-  title: string;
-  source: string;
-  snippet: string;
-  score: number;
+export interface DemoInsightRow {
+  id: string;
+  propertyType: PropertyType;
+  livingAreaSqft: number;
+  bedrooms: number;
+  bathrooms: number;
+  estimatedValue: number;
+  pricePerSqft: number;
+  budget: number;
+  targetPrice: number;
+  estimatedUpside: number;
+  riskLevel: "Low" | "Medium" | "High";
+  verdict: string;
+  warnings: string[];
 }
 
-export interface AssistantQueryResponse {
-  answer: string;
-  confidence: "high" | "medium" | "low";
-  citations: AssistantCitation[];
-  suggestedQuestions: string[];
+export interface DemoMetricsResponse {
+  mode: "demo-safe";
+  note: string;
+  summary: {
+    averageEstimatedValue: number;
+    medianEstimatedValue: number;
+    averagePricePerSqft: number;
+    samplePropertyCount: number;
+    warningCount: number;
+  };
+  rows: DemoInsightRow[];
+  dataQualityNotes: string[];
 }

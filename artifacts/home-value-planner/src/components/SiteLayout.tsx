@@ -4,8 +4,12 @@ import { NavLink } from "react-router-dom";
 import type { PropertyInput } from "@vvl/shared";
 
 const navItems = [
-  { href: "/", label: "Deal analyzer" },
-  { href: "/model-data-story", label: "Model & data story" },
+  { href: "/estimate", label: "Estimate" },
+  { href: "/improve", label: "Improve" },
+  { href: "/plan", label: "Plan" },
+  { href: "/insights", label: "Insights" },
+  { href: "/deal-analyzer", label: "Deal analyzer" },
+  { href: "/model-data-story", label: "Model story" },
 ];
 
 interface SiteLayoutProps extends PropsWithChildren {
@@ -13,6 +17,8 @@ interface SiteLayoutProps extends PropsWithChildren {
 }
 
 export function SiteLayout({ children, property }: SiteLayoutProps) {
+  const demoMode = import.meta.env.VITE_DEMO_MODE === "true" || import.meta.env.VITE_DEMO_MODE === "1";
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-700">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -21,12 +27,12 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
             <div className="text-xs font-extrabold uppercase tracking-[0.18em] text-sound-700">Vancouver Value Lab</div>
             <div className="mt-1 font-display text-lg text-cedar">Estimate, improve, plan</div>
           </div>
-          <nav className="grid w-full grid-cols-2 gap-2 lg:w-auto">
+          <nav className="grid w-full grid-cols-2 gap-2 md:grid-cols-3 lg:w-auto lg:grid-cols-6">
             {navItems.map(({ href, label }) => (
               <NavLink
                 key={href}
                 to={href}
-                end={href === "/"}
+                end
                 className={({ isActive }) =>
                   `flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-center text-sm font-semibold transition ${
                     isActive
@@ -42,6 +48,14 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
         </div>
       </header>
 
+      {demoMode ? (
+        <div className="border-b border-amber-200 bg-amber-50">
+          <div className="mx-auto w-full max-w-7xl px-5 py-3 text-sm font-medium text-amber-900">
+            Demo Mode: This version uses precomputed sample outputs so the dashboard can be reviewed publicly without private data or model artifacts.
+          </div>
+        </div>
+      ) : null}
+
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-5 py-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -50,7 +64,7 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
               {property.postalCode} · {property.propertyType} · {property.livingAreaSqft.toLocaleString()} sqft
             </div>
           </div>
-          <div className="text-sm text-slate-500">One clear product surface: screen the deal, then inspect the model.</div>
+          <div className="text-sm text-slate-500">Main workflow: estimate the value, test improvements, then build an investor plan.</div>
         </div>
       </div>
 

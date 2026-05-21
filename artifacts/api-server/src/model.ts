@@ -1,17 +1,16 @@
-import { improvementCatalog, type EstimateResponse, type PlannedFlag, type PlanLineItem, type PlanResponse, type PropertyInput, type SimulateResponse } from "@vvl/shared";
+import {
+  improvementCatalog,
+  type EstimateResponse,
+  type PlannedFlag,
+  type PlanLineItem,
+  type PlanRequest,
+  type PlanResponse,
+  type PropertyInput,
+  type SimulateRequest,
+  type SimulateResponse,
+} from "@vvl/shared";
 
 const modelServiceBaseUrl = (process.env.MODEL_SERVICE_URL ?? "http://127.0.0.1:5001").replace(/\/$/, "");
-
-interface SimulateRequest extends PropertyInput {
-  plannedFlags?: PlannedFlag[];
-  horizonMonths?: number;
-}
-
-interface PlanRequest extends SimulateRequest {
-  targetPrice: number;
-  budget: number;
-  timelineMonths: number;
-}
 
 async function requestModelService<TResponse>(path: string, payload?: object): Promise<TResponse> {
   const response = await fetch(`${modelServiceBaseUrl}${path}`, {
