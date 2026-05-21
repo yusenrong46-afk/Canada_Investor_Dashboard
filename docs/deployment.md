@@ -1,14 +1,29 @@
 # Deployment Notes
 
-This project can be deployed, but the full dashboard is not a static-only app. It has three runtime parts:
+This is not a static-only app. The full product has three runtime services:
 
 1. React/Vite frontend
 2. Express API
 3. Python model service
 
-## Recommended Setup
+## Current Public API
 
-Use three hosted services:
+The frontend now only needs:
+
+```text
+GET  /health
+POST /api/deal/analyze
+POST /api/assistant/query
+```
+
+The Express API still calls the Python model service internally:
+
+```text
+POST /estimate
+POST /uplift
+```
+
+## Recommended Hosting
 
 - Frontend: Vercel, Netlify, or Render Static Site
 - API: Render, Railway, Fly.io, or another Node web service
@@ -37,26 +52,20 @@ MODEL_SERVICE_FORCE_RETRAIN=0
 UPLIFT_FORCE_RETRAIN=0
 ```
 
-Most hosts provide `PORT` automatically. The API and model service now respect `PORT`, so a separate port value is usually not needed in production.
+Most hosts provide `PORT` automatically. The API and model service respect `PORT`.
 
 ## Data And Model Files
 
-Do not commit these to GitHub:
+Do not commit these:
 
 - `data/raw/`
 - `artifacts/model-service/models/`
 - raw Seattle/King County assessor extracts
+- `legacy/model-artifacts/`
 
-For a public demo, either:
-
-- mount approved private model artifacts into `artifacts/model-service/models/`, or
-- provide approved private data access and run the training/setup commands during deployment.
-
-The project should keep returning `data-missing` if the real model inputs are unavailable. That is intentional and protects the project from fake data.
+For a public demo, I would mount approved private model artifacts into `artifacts/model-service/models/`. If the real uplift CSVs are unavailable, the app should keep returning `data-missing` instead of showing fake uplift.
 
 ## Local Pre-Deploy Check
-
-Run this before deploying:
 
 ```bash
 pnpm typecheck
@@ -73,4 +82,4 @@ Use the GitHub link immediately:
 https://github.com/yusenrong46-afk/Canada_Investor_Dashboard
 ```
 
-Add a live demo link only after the frontend, API, and model service are all deployed and the deployed API returns `status: "ready"` for `/api/simulate`.
+Add a live demo link only after the deployed API returns a successful response for `POST /api/deal/analyze`.

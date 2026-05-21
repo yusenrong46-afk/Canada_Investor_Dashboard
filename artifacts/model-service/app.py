@@ -33,7 +33,7 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    from service import load_bundle
+    from base_model import load_bundle
 
     load_bundle(force_retrain=os.environ.get("MODEL_SERVICE_FORCE_RETRAIN") == "1")
     host = os.environ.get("MODEL_SERVICE_HOST", "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")

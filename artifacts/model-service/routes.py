@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from flask import Flask, jsonify, request
 
-from service import estimate_property, health_payload
-from uplift_service import simulate_uplift, uplift_health_payload
+from base_model import estimate_property, health_payload
+from uplift_model import simulate_uplift, uplift_health_payload
 
 
 def register_routes(app: Flask) -> None:

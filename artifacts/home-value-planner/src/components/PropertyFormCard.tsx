@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-
-import type { PropertyInput, PropertyType } from "../types";
+import { propertyTypeValues, type PropertyInput, type PropertyType } from "@vvl/shared";
 
 interface PropertyFormCardProps {
   property: PropertyInput;
   onChange: (property: PropertyInput) => void;
 }
 
-const propertyTypeOptions: PropertyType[] = ["Detached", "Townhouse", "Condo", "Duplex"];
+const propertyTypeOptions = [...propertyTypeValues];
 const currentYear = new Date().getFullYear();
 type NumberFieldKey = keyof Pick<
   PropertyInput,

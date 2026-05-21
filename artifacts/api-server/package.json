@@ -11,19 +11,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vvl/shared": "workspace:*",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "drizzle-orm": "^0.44.2",
-    "drizzle-zod": "^0.8.1",
     "express": "^5.1.0",
-    "pg": "^8.16.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.1",
     "@types/node": "^24.0.0",
-    "drizzle-kit": "^0.31.1",
     "esbuild": "^0.25.4",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",

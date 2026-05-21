@@ -1,21 +1,18 @@
 import type { PropsWithChildren } from "react";
 import { NavLink } from "react-router-dom";
 
-import { formatCurrency } from "../lib/format";
-import type { EstimateResponse, PropertyInput } from "../types";
+import type { PropertyInput } from "@vvl/shared";
 
 const navItems = [
-  { href: "/", step: "1", label: "Estimate" },
-  { href: "/improve", step: "2", label: "Improve" },
-  { href: "/plan", step: "3", label: "Plan" },
+  { href: "/", label: "Deal analyzer" },
+  { href: "/model-data-story", label: "Model & data story" },
 ];
 
 interface SiteLayoutProps extends PropsWithChildren {
   property: PropertyInput;
-  estimate: EstimateResponse | null;
 }
 
-export function SiteLayout({ children, property, estimate }: SiteLayoutProps) {
+export function SiteLayout({ children, property }: SiteLayoutProps) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-700">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -24,8 +21,8 @@ export function SiteLayout({ children, property, estimate }: SiteLayoutProps) {
             <div className="text-xs font-extrabold uppercase tracking-[0.18em] text-sound-700">Vancouver Value Lab</div>
             <div className="mt-1 font-display text-lg text-cedar">Estimate, improve, plan</div>
           </div>
-          <nav className="grid w-full grid-cols-3 gap-2 lg:w-auto">
-            {navItems.map(({ href, step, label }) => (
+          <nav className="grid w-full grid-cols-2 gap-2 lg:w-auto">
+            {navItems.map(({ href, label }) => (
               <NavLink
                 key={href}
                 to={href}
@@ -38,9 +35,6 @@ export function SiteLayout({ children, property, estimate }: SiteLayoutProps) {
                   }`
                 }
               >
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs ring-1 ring-slate-200">
-                  {step}
-                </span>
                 {label}
               </NavLink>
             ))}
@@ -56,9 +50,7 @@ export function SiteLayout({ children, property, estimate }: SiteLayoutProps) {
               {property.postalCode} · {property.propertyType} · {property.livingAreaSqft.toLocaleString()} sqft
             </div>
           </div>
-          <div className="text-sm text-slate-500">
-            Anchor value: <span className="font-semibold text-slate-700">{estimate ? formatCurrency(estimate.anchorValue) : "Loading"}</span>
-          </div>
+          <div className="text-sm text-slate-500">One clear product surface: screen the deal, then inspect the model.</div>
         </div>
       </div>
 

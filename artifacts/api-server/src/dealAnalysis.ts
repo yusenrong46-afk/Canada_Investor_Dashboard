@@ -1,26 +1,6 @@
-import { buildSalePlan, estimateProperty, type EstimateResponse, type PlanResponse } from "./model";
-import type { DealAnalyzeRequest } from "./schemas";
+import type { DealAnalyzeRequest, DealAnalyzeResponse, DealLabel, DealRiskFlag, EstimateResponse, PlanResponse } from "@vvl/shared";
 
-export type DealLabel = "Strong lead" | "Worth review" | "Needs caution" | "Pass for now";
-export type RiskLevel = "info" | "warning" | "danger";
-
-export interface DealRiskFlag {
-  level: RiskLevel;
-  label: string;
-  detail: string;
-}
-
-export interface DealAnalyzeResponse {
-  dealLabel: DealLabel;
-  modeledValueGap: number;
-  valueGapPercent: number;
-  afterPlanValue: number;
-  estimatedGrossUpside: number;
-  grossUpsidePercent: number;
-  riskFlags: DealRiskFlag[];
-  estimate: EstimateResponse;
-  plan: PlanResponse;
-}
+import { buildSalePlan, estimateProperty } from "./model";
 
 function percent(numerator: number, denominator: number): number {
   if (!Number.isFinite(denominator) || denominator <= 0) {

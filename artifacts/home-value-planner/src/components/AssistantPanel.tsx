@@ -1,7 +1,7 @@
 import { FormEvent, useState } from "react";
+import type { AssistantQueryResponse } from "@vvl/shared";
 
 import { postAssistantQuery } from "../api/client";
-import type { AssistantQueryResponse } from "../types";
 
 const starterQuestions = [
   "How does Seattle uplift translate to Vancouver?",

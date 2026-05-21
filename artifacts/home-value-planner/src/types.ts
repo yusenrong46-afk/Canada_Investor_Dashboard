@@ -1,200 +1,23 @@
-export type PropertyType = "Detached" | "Townhouse" | "Condo" | "Duplex";
-export type PlannedFlag =
-  | "renovatedKitchen"
-  | "renovatedBathrooms"
-  | "legalSuiteAdded"
-  | "energyEfficient"
-  | "deferredMaintenanceResolved"
-  | "roofIssueResolved";
-
-export interface PropertyInput {
-  postalCode: string;
-  propertyType: PropertyType;
-  livingAreaSqft: number;
-  bedrooms: number;
-  bathrooms: number;
-  yearBuilt?: number;
-  knownCurrentValue?: number;
-}
-
-export interface Driver {
-  label: string;
-  value: number;
-}
-
-export interface MarketContextResponse {
-  localAreaLabel: string;
-  localAreaScope: "postal-code" | "fsa" | "city-property-type" | "city";
-  localMedianValue: number;
-  localMedianPricePerSqft: number;
-  vancouverMedianValue: number;
-  vancouverMedianPricePerSqft: number;
-  percentileRank: number;
-  practicalCeiling: number;
-  premiumGap: number;
-  comparableCount: number;
-}
-
-export interface MetricRangeSummary {
-  mean: number;
-  p05: number;
-  p50: number;
-  p95: number;
-}
-
-export interface ValidationSummary {
-  trainHoldoutSplit: string;
-  crossValidation: string;
-  bootstrap: string;
-  bootstrapRanges: {
-    mae: MetricRangeSummary;
-    mape: MetricRangeSummary;
-    r2: MetricRangeSummary;
-  };
-  missingnessNotes: string[];
-  locationFeatures: string;
-  clusterCount: number;
-}
-
-export interface ModelQuality {
-  trainingRows: number;
-  cvMae: number;
-  cvMape: number;
-  cvR2: number;
-  holdoutMae: number;
-  holdoutMape: number;
-  holdoutR2: number;
-  outlierRemovedRate: number;
-  validationSummary: ValidationSummary;
-}
-
-export interface EstimateResponse {
-  modelVersion: string;
-  trainingMode: string;
-  modelFamily: "xgboost" | "random-forest";
-  modelScope: PropertyType;
-  baseValue: number;
-  confidenceLow: number;
-  confidenceHigh: number;
-  anchorValue: number;
-  pricePerSqft: number;
-  confidenceRatio: number;
-  modelQuality: ModelQuality;
-  drivers: Driver[];
-  marketContext: MarketContextResponse;
-  marketFreshness?: {
-    status: "adjusted" | "not-applied";
-    message: string;
-    multiplier?: number;
-    baselinePeriod?: string;
-    latestPeriod?: string;
-    dataSource?: string;
-  };
-}
-
-export interface UpliftDriver {
-  flag: PlannedFlag;
-  label: string;
-  value: number;
-  upliftPercent?: number;
-  confidence?: "high" | "medium" | "low";
-  rationale?: string;
-}
-
-export interface ImproveValueResponse {
-  status: "ready" | "data-missing";
-  message?: string;
-  modelVersion?: string;
-  trainingMode?: string;
-  modelFamily?: "xgboost" | "random-forest";
-  evidenceLevel?: "observed";
-  evidenceSummary?: string;
-  baseValue?: number;
-  upliftPercent?: number;
-  upliftPercentConfidenceLow?: number;
-  upliftPercentConfidenceHigh?: number;
-  upliftValue?: number;
-  finalValueRaw?: number;
-  finalValueGuardrailed?: number;
-  upliftConfidenceLow?: number;
-  upliftConfidenceHigh?: number;
-  ceilingFlag?: boolean;
-  plannedFlags?: PlannedFlag[];
-  topUpliftDrivers?: UpliftDriver[];
-  observedShare?: number;
-  dataSources?: Record<string, string>;
-  rowCounts?: Record<string, number>;
-  methodNotes?: string[];
-}
-
-export interface PlanLineItem {
-  flag: PlannedFlag;
-  label: string;
-  phase: string;
-  cost: number;
-  months: number;
-  projectedUplift: number;
-  projectedUpliftPercent?: number;
-  projectedFinalValue: number;
-  valueRecoveryRate: number;
-}
-
-export interface PlanPhase {
-  phase: string;
-  durationMonths: number;
-  plannedSpend: number;
-  plannedUplift: number;
-  items: PlanLineItem[];
-}
-
-export interface PlanResponse {
-  status: "ready" | "data-missing";
-  message?: string;
-  evidenceLevel?: "observed";
-  dataSources?: Record<string, string>;
-  methodNotes?: string[];
-  targetAssessment?: "Likely" | "Stretch" | "Unlikely";
-  baseValue?: number;
-  achievableValue?: number;
-  targetPrice?: number;
-  gapToTarget?: number;
-  plannedSpend?: number;
-  plannedMonths?: number;
-  items?: PlanLineItem[];
-  phases?: PlanPhase[];
-}
-
-export type DealLabel = "Strong lead" | "Worth review" | "Needs caution" | "Pass for now";
-export type RiskLevel = "info" | "warning" | "danger";
-
-export interface DealRiskFlag {
-  level: RiskLevel;
-  label: string;
-  detail: string;
-}
-
-export interface DealAnalyzeResponse {
-  dealLabel: DealLabel;
-  modeledValueGap: number;
-  valueGapPercent: number;
-  afterPlanValue: number;
-  estimatedGrossUpside: number;
-  grossUpsidePercent: number;
-  riskFlags: DealRiskFlag[];
-  estimate: EstimateResponse;
-  plan: PlanResponse;
-}
-
-export interface AssistantCitation {
-  title: string;
-  source: string;
-  snippet: string;
-  score: number;
-}
-
-export interface AssistantQueryResponse {
-  answer: string;
-  confidence: "high" | "medium" | "low";
-  citations: AssistantCitation[];
-  suggestedQuestions: string[];
-}
+export type {
+  AssistantCitation,
+  AssistantQueryResponse,
+  DealAnalyzeResponse,
+  DealLabel,
+  DealRiskFlag,
+  Driver,
+  EstimateResponse,
+  ImproveValueResponse,
+  MarketContextResponse,
+  MetricRangeSummary,
+  ModelQuality,
+  PlannedFlag,
+  PlanLineItem,
+  PlanPhase,
+  PlanResponse,
+  PropertyInput,
+  PropertyType,
+  RiskLevel,
+  SimulateResponse,
+  UpliftDriver,
+  ValidationSummary,
+} from "@vvl/shared";

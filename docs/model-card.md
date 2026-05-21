@@ -2,7 +2,7 @@
 
 ## Intended Use
 
-Estimate the current listing value of a Vancouver residential property from structured listing features.
+Estimate the current listing value of a Vancouver residential property from structured listing features, then support a deal-screening workflow that compares asking price, model value, renovation scope, budget, and timeline.
 
 This model is meant for portfolio/demo and exploratory planning use. It is not a replacement for an appraisal, broker opinion, or lender valuation.
 
@@ -101,6 +101,23 @@ pre-renovation state -> renovation event -> resale price within a defined time w
 Until that Vancouver dataset exists, the app uses Seattle building permits, King County sale records, and King County residential building records to train on real observed repeat-sale examples. The target is market-adjusted uplift percentage, not raw dollars, so the result can be applied to the Vancouver base estimate.
 
 The uplift layer refuses to train if the real CSV files are missing or if too few repeat-sale rows are found. It does not generate synthetic rows or train on proxy labels.
+
+## Current Product Surface
+
+The active app now exposes the model through a simpler product flow:
+
+```text
+Deal Analyzer -> Model & Data Story
+```
+
+The public Express API is intentionally smaller:
+
+```text
+POST /api/deal/analyze
+POST /api/assistant/query
+```
+
+The Python service still exposes `/estimate` and `/uplift` internally because keeping the base-value model and uplift model separate makes the code and limitations easier to explain.
 
 ## Next Data Science Step
 

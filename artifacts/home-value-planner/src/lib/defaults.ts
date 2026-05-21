@@ -1,4 +1,4 @@
-import type { PropertyInput } from "../types";
+import type { PropertyInput } from "@vvl/shared";
 
 export const defaultProperty: PropertyInput = {
   postalCode: "V6B 1X9",

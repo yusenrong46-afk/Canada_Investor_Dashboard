@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { DealRiskFlag } from "@vvl/shared";
 
-import { labelDeal, type DealRiskFlag } from "./dealAnalysis";
+import { labelDeal } from "./dealAnalysis";
 
 const noRisk: DealRiskFlag[] = [{ level: "info", label: "Rule-based", detail: "Planning note" }];
 const dangerRisk: DealRiskFlag[] = [{ level: "danger", label: "No modeled upside", detail: "Asking price is too high" }];

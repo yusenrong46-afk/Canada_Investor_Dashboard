@@ -6,8 +6,7 @@ import { ZodError } from "zod/v4";
 
 import { answerProjectQuestion } from "./assistant";
 import { analyzeDeal } from "./dealAnalysis";
-import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
-import { assistantQuerySchema, dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
+import { assistantQuerySchema, dealAnalyzeRequestSchema } from "./schemas";
 
 const app = express();
 const host = process.env.API_HOST ?? (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
@@ -18,36 +17,6 @@ app.use(express.json());
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "api-server", mode: "vancouver-estimate-plus-seattle-observed-uplift" });
-});
-
-app.post("/api/estimate", async (req, res, next) => {
-  try {
-    const property = estimateRequestSchema.parse(req.body);
-    const estimate = await estimateProperty(property);
-    res.json(estimate);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/simulate", async (req, res, next) => {
-  try {
-    const request = simulateRequestSchema.parse(req.body);
-    const response = await simulateScenario(request);
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/plan", async (req, res, next) => {
-  try {
-    const request = planRequestSchema.parse(req.body);
-    const response = await buildSalePlan(request);
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
 });
 
 app.post("/api/deal/analyze", async (req, res, next) => {

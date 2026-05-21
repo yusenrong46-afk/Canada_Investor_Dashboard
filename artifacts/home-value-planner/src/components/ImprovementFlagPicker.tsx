@@ -1,13 +1,10 @@
-import type { PlannedFlag } from "../types";
+import { improvementCatalog, improvementFlagValues, type PlannedFlag } from "@vvl/shared";
 
-const improvementOptions: Array<{ flag: PlannedFlag; label: string; hint: string }> = [
-  { flag: "renovatedKitchen", label: "Renovated kitchen", hint: "Cabinets, counters, appliances, layout polish." },
-  { flag: "renovatedBathrooms", label: "Renovated bathrooms", hint: "Fixtures, tile, vanity, plumbing refresh." },
-  { flag: "legalSuiteAdded", label: "Legal suite added", hint: "Secondary suite or lock-off income space." },
-  { flag: "energyEfficient", label: "Energy upgrades", hint: "Windows, insulation, HVAC, heat pump." },
-  { flag: "deferredMaintenanceResolved", label: "Deferred maintenance", hint: "Repairs buyers would notice quickly." },
-  { flag: "roofIssueResolved", label: "Roof and systems", hint: "Roofing, furnace, boiler, electrical." },
-];
+const improvementOptions = improvementFlagValues.map((flag) => ({
+  flag,
+  label: improvementCatalog[flag].label,
+  hint: improvementCatalog[flag].hint,
+}));
 
 interface ImprovementFlagPickerProps {
   plannedFlags: PlannedFlag[];

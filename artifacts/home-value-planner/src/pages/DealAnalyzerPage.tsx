@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Link } from "react-router-dom";
+import type { DealAnalyzeResponse, DealRiskFlag, PlannedFlag, PropertyInput } from "@vvl/shared";
 
 import { postDealAnalyze } from "../api/client";
-import { AssistantPanel } from "../components/AssistantPanel";
 import { ImprovementFlagPicker } from "../components/ImprovementFlagPicker";
 import { MetricCard } from "../components/MetricCard";
 import { PropertyFormCard } from "../components/PropertyFormCard";
 import { SectionCard } from "../components/SectionCard";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
-import type { DealAnalyzeResponse, DealRiskFlag, EstimateResponse, PlannedFlag, PropertyInput } from "../types";
 
 interface DealAnalyzerPageProps {
   property: PropertyInput;
-  estimate: EstimateResponse | null;
   plannedFlags: PlannedFlag[];
   onPropertyChange: (property: PropertyInput) => void;
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
@@ -69,7 +67,6 @@ function updateNumberDraft(
 
 export function DealAnalyzerPage({
   property,
-  estimate,
   plannedFlags,
   onPropertyChange,
   onPlannedFlagsChange,
@@ -86,10 +83,10 @@ export function DealAnalyzerPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (estimate?.baseValue && !askingTouched) {
-      setAskingPrice(Math.round(estimate.baseValue * 0.97));
+    if (result?.estimate.baseValue && !askingTouched) {
+      setAskingPrice(Math.round(result.estimate.baseValue * 0.97));
     }
-  }, [askingTouched, estimate?.baseValue]);
+  }, [askingTouched, result?.estimate.baseValue]);
 
   useEffect(() => {
     setAskingPriceDraft(String(askingPrice));
@@ -139,10 +136,10 @@ export function DealAnalyzerPage({
   const chartData = useMemo(
     () => [
       { name: "Asking", value: askingPrice },
-      { name: "As-is model", value: result?.estimate.baseValue ?? estimate?.baseValue ?? 0 },
+      { name: "As-is model", value: result?.estimate.baseValue ?? 0 },
       { name: "After plan", value: result?.afterPlanValue ?? 0 },
     ],
-    [askingPrice, estimate?.baseValue, result],
+    [askingPrice, result],
   );
 
   return (
@@ -285,20 +282,16 @@ export function DealAnalyzerPage({
             >
               <div className="grid gap-3">
                 {[
-                  ["/estimate", "Inspect base estimate"],
-                  ["/simulate", "Stress-test renovations"],
-                  ["/plan", "Tune the sale plan"],
-                  ["/model-story", "Read project story"],
+                  ["/model-data-story", "Read model & data story"],
+                  ["/model-data-story", "Ask the RAG explainer"],
                 ].map(([href, label]) => (
-                  <Link key={href} to={href} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-cedar transition hover:border-sound-300">
+                  <Link key={label} to={href} className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-cedar transition hover:border-sound-300">
                     {label}
                   </Link>
                 ))}
               </div>
             </SectionCard>
           </div>
-
-          <AssistantPanel />
         </div>
       </div>
     </div>

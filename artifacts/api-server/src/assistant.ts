@@ -28,6 +28,9 @@ const repoRoot = path.resolve(process.cwd(), "../..");
 const sourceFiles = [
   { title: "README", source: "README.md" },
   { title: "Model card", source: "docs/model-card.md" },
+  { title: "Portfolio case study", source: "docs/portfolio-case-study.md" },
+  { title: "Optimization refactor notes", source: "docs/optimization-refactor.md" },
+  { title: "RAG learning plan", source: "docs/rag-learning-plan.md" },
   { title: "Uplift dataset research", source: "docs/uplift-dataset-research.md" },
   { title: "Base model summary", source: "data/processed/vancouver_base_model_summary.json" },
   { title: "API contract", source: "artifacts/openapi/home-value-planner.openapi.yaml" },

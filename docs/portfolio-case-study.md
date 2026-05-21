@@ -1,35 +1,54 @@
-# Portfolio Case Study: Vancouver Investor Deal Analyzer
+# Portfolio Case Study: Vancouver Deal Analyzer
 
-## One-line Pitch
+## One-Line Pitch
 
-An investor-facing Vancouver real-estate dashboard that estimates as-is listing value, compares it with asking price, models renovation upside, flags risk, and explains the model's limitations with cited project documentation.
+I built a full-stack Vancouver real-estate deal analyzer that estimates as-is value, compares it with asking price, models renovation upside, flags risk, and explains the model/data limits with a cited RAG-style assistant.
 
-## Why This Is A Flagship Project
+## Why I Changed The Shape
 
-- It shows end-to-end engineering: React dashboard, Express API, Python ML service, validation, tests, documentation, and local model inference.
-- It shows data science judgment: the base price model is trained on Vancouver listings, while renovation uplift uses real Seattle/King County repeat-sale records instead of fake labels.
-- It gives a real user workflow: a buyer can screen one Vancouver deal before spending time on deeper comparable-sale, financing, permit, and contractor diligence.
+The previous app had separate Estimate, Improve, Plan, and Deal Analyzer screens. That was useful while building, but it made the project feel heavier than it needed to be.
 
-## What The Dashboard Teaches
+I simplified it into two screens:
 
-- Controlled inputs and persisted state.
-- KPI cards for value gap, gross upside, and planned spend.
-- Charts that support a decision instead of decorating the page.
-- Trust design: confidence ranges, risk flags, model-card notes, and cited assistant answers.
-- API design: schemas, typed responses, error handling, and backend orchestration.
+```text
+Deal Analyzer
+Model & Data Story
+```
 
-## Resume Bullet
+That gives the project a cleaner interview story. The main screen answers the investor question. The second screen explains how the model works, what data trained it, and what I would improve next.
 
-Built a Vancouver real-estate investor dashboard using Python, scikit-learn/XGBoost, Express, and React. Trained property-type-specific listing-price models with validation metrics, then added a deal analyzer that compares asking price to modeled value, estimates renovation upside from Seattle observed repeat-sale percentages, and surfaces risk flags and model limitations through a cited project explainer.
+## What I Am Proud Of
+
+- I connected a React frontend, Express API, Python ML service, validation, tests, docs, and local model inference.
+- I trained property-type-specific Vancouver listing-price models instead of one generic model.
+- I did not fake renovation labels. The uplift layer uses real Seattle/King County permits, sales, and residential-building records.
+- I moved repeated frontend/API contracts into shared TypeScript types and Zod schemas.
+- I moved older prototype layers into `legacy/` so the active product is easier to understand.
 
 ## Interview Story
 
-The strongest decision in the project was not pretending the Vancouver listing data had renovation labels. I kept the base model Vancouver-specific, then built the uplift layer from real Seattle permit, sale, and residential-building records so the app learns percentage uplift from observed repeat sales instead of synthetic examples.
+The strongest decision in this project was not pretending the Vancouver listing data could answer every question.
+
+The Vancouver data supports an as-is listing-price model. It does not support a true renovation-uplift model because it does not show the same property before renovation, the renovation event, and the resale after renovation.
+
+So I separated the system:
+
+- Vancouver data estimates the base value.
+- Seattle/King County observed repeat-sale data estimates uplift percentage.
+- The UI and docs explain that this is a transfer-learning bridge, not a final local uplift model.
+
+## Resume Bullet
+
+Built a full-stack Vancouver real-estate deal analyzer using React, TypeScript, Express, Python, scikit-learn, and XGBoost. Trained property-type-specific listing-price models on cleaned Vancouver data, added an observed repeat-sale renovation uplift layer from Seattle/King County permits and sales, simplified the product into a deal-screening workflow, and exposed model limitations through risk flags and a cited project assistant.
 
 ## Next Honest Upgrade
 
-The next data science upgrade is a property-level transaction dataset joined to renovation permits and assessment history. That would allow a true uplift target:
+The next serious model upgrade is not deep learning first. It is better data.
+
+I would try to get a BC Assessment custom extract with property-level sales, assessment, inventory, permit, and structural fields. Then I would join it to City of Vancouver permits and build a local uplift target:
 
 ```text
 post-renovation sale price - counterfactual as-is value at post-sale date
 ```
+
+After that, I would compare tuned gradient boosting, random forest, and simple explainable baselines again.
