@@ -5,14 +5,17 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
-import { scenarioKeyDetails, summarizeScenarios, type ScenarioRecord } from "../lib/scenarios";
+import { scenarioKeyDetails, summarizeScenarios, type ScenarioRecord, type ScenarioTag } from "../lib/scenarios";
 
 interface ScenarioWorkspacePageProps {
   scenarios: ScenarioRecord[];
   onUseScenario: (scenario: ScenarioRecord) => void;
+  onUpdateScenario: (scenario: ScenarioRecord) => void;
   onDeleteScenario: (scenarioId: string) => void;
   onClearScenarios: () => void;
 }
+
+const scenarioTags: ScenarioTag[] = ["Shortlist", "Watch", "Pass", "Needs review"];
 
 function riskTone(riskLevel: ScenarioRecord["riskLevel"]): string {
   if (riskLevel === "High") {
@@ -33,7 +36,7 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-export function ScenarioWorkspacePage({ scenarios, onUseScenario, onDeleteScenario, onClearScenarios }: ScenarioWorkspacePageProps) {
+export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenario, onDeleteScenario, onClearScenarios }: ScenarioWorkspacePageProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const summary = useMemo(() => summarizeScenarios(scenarios), [scenarios]);
   const selectedScenarios = scenarios.filter((scenario) => selectedIds.includes(scenario.id));
@@ -161,19 +164,47 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onDeleteScenar
                       <div className="font-semibold text-slate-700">{scenario.verdict}</div>
                     </div>
                   </div>
+                  <div className="mt-2 rounded-md bg-white px-2 py-1 text-xs text-slate-500">{scenario.note}</div>
                 </div>
               ))
             ) : (
               <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">Select scenarios from the table below.</div>
             )}
           </div>
+
+          {selectedScenarios.length ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 uppercase tracking-[0.12em] text-slate-500">
+                    <th className="py-2 pr-3 font-bold">Scenario</th>
+                    <th className="py-2 pr-3 font-bold">Estimate</th>
+                    <th className="py-2 pr-3 font-bold">Achievable</th>
+                    <th className="py-2 pr-3 font-bold">Spend</th>
+                    <th className="py-2 pr-3 font-bold">Tag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedScenarios.map((scenario) => (
+                    <tr key={`compare-${scenario.id}`} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 font-semibold text-cedar">{scenario.title}</td>
+                      <td className="py-2 pr-3">{formatCurrency(scenario.estimatedValue)}</td>
+                      <td className="py-2 pr-3">{formatCurrency(scenario.achievableValue)}</td>
+                      <td className="py-2 pr-3">{formatCurrency(scenario.plannedSpend)}</td>
+                      <td className="py-2 pr-3">{scenario.tag}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </SectionCard>
       </div>
 
       <SectionCard
         title="Saved scenarios"
         eyebrow="Workspace table"
-        description="Each row is a user-created scenario. Use scenario copies the property and improvements back into the active workflow."
+        description="Each row is a user-created scenario. Use scenario reloads the property, improvements, budget, timeline, and target or asking price."
       >
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
@@ -187,6 +218,8 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onDeleteScenar
                 <th className="py-3 pr-4 font-bold">Budget</th>
                 <th className="py-3 pr-4 font-bold">Spend</th>
                 <th className="py-3 pr-4 font-bold">Risk</th>
+                <th className="py-3 pr-4 font-bold">Tag</th>
+                <th className="py-3 pr-4 font-bold">Note</th>
                 <th className="py-3 pr-4 font-bold">Verdict</th>
                 <th className="py-3 font-bold">Actions</th>
               </tr>
@@ -217,6 +250,28 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onDeleteScenar
                   <td className="py-3 pr-4">{formatCurrency(scenario.plannedSpend)}</td>
                   <td className="py-3 pr-4">
                     <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${riskTone(scenario.riskLevel)}`}>{scenario.riskLevel}</span>
+                  </td>
+                  <td className="py-3 pr-4">
+                    <select
+                      value={scenario.tag}
+                      onChange={(event) => onUpdateScenario({ ...scenario, tag: event.target.value as ScenarioTag })}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600"
+                    >
+                      {scenarioTags.map((tag) => (
+                        <option key={tag} value={tag}>
+                          {tag}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="min-w-56 py-3 pr-4">
+                    <textarea
+                      value={scenario.note}
+                      rows={2}
+                      onChange={(event) => onUpdateScenario({ ...scenario, note: event.target.value })}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
+                      placeholder="Add a short investment note"
+                    />
                   </td>
                   <td className="py-3 pr-4">{scenario.verdict}</td>
                   <td className="py-3">

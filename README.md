@@ -155,6 +155,7 @@ Placeholder paths:
 - `docs/screenshots/plan-page.png`
 - `docs/screenshots/insights-page.png`
 - `docs/screenshots/deal-analyzer-page.png`
+- `docs/demo-script.md`
 
 ## Reports
 
@@ -189,6 +190,7 @@ The scripts do not invent missing metrics. If a model artifact or data file is m
 - Add saved projects and authentication.
 - Deploy the frontend/API/model service with demo mode enabled by default.
 - Add more automated checks around API contracts and report generation.
+- Use `docs/demo-script.md` to practice the interview walkthrough.
 
 ## Interview Summary
 

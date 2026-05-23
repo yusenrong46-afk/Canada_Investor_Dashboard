@@ -9,7 +9,7 @@ import { MetricCard } from "../components/MetricCard";
 import { PropertyFormCard } from "../components/PropertyFormCard";
 import { SectionCard } from "../components/SectionCard";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
-import { createDealScenario, type ScenarioRecord } from "../lib/scenarios";
+import { createDealScenario, type DealInputState, type ScenarioRecord } from "../lib/scenarios";
 
 interface DealAnalyzerPageProps {
   property: PropertyInput;
@@ -17,6 +17,8 @@ interface DealAnalyzerPageProps {
   onPropertyChange: (property: PropertyInput) => void;
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
   onSaveScenario?: (scenario: ScenarioRecord) => void;
+  dealInputs: DealInputState;
+  onDealInputsChange: (inputs: DealInputState) => void;
 }
 
 function riskTone(flag: DealRiskFlag): string {
@@ -73,24 +75,17 @@ export function DealAnalyzerPage({
   onPropertyChange,
   onPlannedFlagsChange,
   onSaveScenario,
+  dealInputs,
+  onDealInputsChange,
 }: DealAnalyzerPageProps) {
-  const [askingPrice, setAskingPrice] = useState(735_000);
-  const [budget, setBudget] = useState(85_000);
-  const [timelineMonths, setTimelineMonths] = useState(9);
-  const [askingPriceDraft, setAskingPriceDraft] = useState(String(askingPrice));
-  const [budgetDraft, setBudgetDraft] = useState(String(budget));
-  const [timelineDraft, setTimelineDraft] = useState(String(timelineMonths));
-  const [askingTouched, setAskingTouched] = useState(false);
+  const { askingPrice, budget, timelineMonths } = dealInputs;
+  const [askingPriceDraft, setAskingPriceDraft] = useState(String(dealInputs.askingPrice));
+  const [budgetDraft, setBudgetDraft] = useState(String(dealInputs.budget));
+  const [timelineDraft, setTimelineDraft] = useState(String(dealInputs.timelineMonths));
   const [result, setResult] = useState<DealAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (result?.estimate.baseValue && !askingTouched) {
-      setAskingPrice(Math.round(result.estimate.baseValue * 0.97));
-    }
-  }, [askingTouched, result?.estimate.baseValue]);
 
   useEffect(() => {
     setAskingPriceDraft(String(askingPrice));
@@ -196,8 +191,12 @@ export function DealAnalyzerPage({
                   min={100000}
                   value={askingPriceDraft}
                   onChange={(event) => {
-                    setAskingTouched(true);
-                    updateNumberDraft(event.target.value, setAskingPriceDraft, setAskingPrice, 100_000);
+                    updateNumberDraft(
+                      event.target.value,
+                      setAskingPriceDraft,
+                      (nextValue) => onDealInputsChange({ ...dealInputs, askingPrice: nextValue }),
+                      100_000,
+                    );
                   }}
                   onBlur={() => setAskingPriceDraft(String(askingPrice))}
                 />
@@ -209,7 +208,9 @@ export function DealAnalyzerPage({
                   type="number"
                   min={1}
                   value={budgetDraft}
-                  onChange={(event) => updateNumberDraft(event.target.value, setBudgetDraft, setBudget, 1)}
+                  onChange={(event) =>
+                    updateNumberDraft(event.target.value, setBudgetDraft, (nextValue) => onDealInputsChange({ ...dealInputs, budget: nextValue }), 1)
+                  }
                   onBlur={() => setBudgetDraft(String(budget))}
                 />
               </label>
@@ -221,7 +222,15 @@ export function DealAnalyzerPage({
                   min={3}
                   max={18}
                   value={timelineDraft}
-                  onChange={(event) => updateNumberDraft(event.target.value, setTimelineDraft, setTimelineMonths, 3, 18)}
+                  onChange={(event) =>
+                    updateNumberDraft(
+                      event.target.value,
+                      setTimelineDraft,
+                      (nextValue) => onDealInputsChange({ ...dealInputs, timelineMonths: nextValue }),
+                      3,
+                      18,
+                    )
+                  }
                   onBlur={() => setTimelineDraft(String(timelineMonths))}
                 />
               </label>

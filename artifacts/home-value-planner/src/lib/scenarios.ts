@@ -2,6 +2,19 @@ import type { DealAnalyzeResponse, EstimateResponse, PlannedFlag, PlanResponse, 
 
 export type ScenarioSource = "plan" | "deal-analyzer";
 export type ScenarioRiskLevel = "Low" | "Medium" | "High";
+export type ScenarioTag = "Shortlist" | "Watch" | "Pass" | "Needs review";
+
+export interface PlanInputState {
+  targetPrice: number;
+  budget: number;
+  timelineMonths: number;
+}
+
+export interface DealInputState {
+  askingPrice: number;
+  budget: number;
+  timelineMonths: number;
+}
 
 export interface ScenarioRecord {
   id: string;
@@ -22,6 +35,8 @@ export interface ScenarioRecord {
   upsidePercent: number;
   verdict: string;
   riskLevel: ScenarioRiskLevel;
+  tag: ScenarioTag;
+  note: string;
   warnings: string[];
   modelVersion?: string;
 }
@@ -85,6 +100,33 @@ function riskFromDeal(deal: DealAnalyzeResponse): ScenarioRiskLevel {
   return "Low";
 }
 
+function tagFromPlan(plan: PlanResponse): ScenarioTag {
+  if (plan.targetAssessment === "Likely") {
+    return "Shortlist";
+  }
+  if (plan.targetAssessment === "Unlikely") {
+    return "Pass";
+  }
+  return "Watch";
+}
+
+function tagFromDeal(deal: DealAnalyzeResponse): ScenarioTag {
+  if (deal.dealLabel === "Strong lead") {
+    return "Shortlist";
+  }
+  if (deal.dealLabel === "Pass for now") {
+    return "Pass";
+  }
+  return "Watch";
+}
+
+function defaultNote(warnings: string[]): string {
+  if (warnings.length) {
+    return warnings[0];
+  }
+  return "Saved for comparison.";
+}
+
 function warningNotesFromPlan(plan: PlanResponse, estimate: EstimateResponse): string[] {
   const warnings: string[] = [];
 
@@ -137,6 +179,8 @@ export function createPlanScenario(input: {
     upsidePercent,
     verdict: input.plan.targetAssessment ?? "Needs review",
     riskLevel: riskFromPlan(input.plan, input.estimate, warnings),
+    tag: tagFromPlan(input.plan),
+    note: defaultNote(warnings),
     warnings,
     modelVersion: input.estimate.modelVersion,
   };
@@ -170,6 +214,8 @@ export function createDealScenario(input: {
     upsidePercent: input.deal.grossUpsidePercent,
     verdict: input.deal.dealLabel,
     riskLevel: riskFromDeal(input.deal),
+    tag: tagFromDeal(input.deal),
+    note: defaultNote(warnings),
     warnings,
     modelVersion: input.deal.estimate.modelVersion,
   };
@@ -188,6 +234,17 @@ export function summarizeScenarios(scenarios: ScenarioRecord[]): ScenarioSummary
 
 export function newestFirst(scenarios: ScenarioRecord[]): ScenarioRecord[] {
   return [...scenarios].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+}
+
+export function cleanScenario(scenario: ScenarioRecord): ScenarioRecord {
+  const fallbackTag: ScenarioTag = scenario.verdict === "Pass for now" || scenario.verdict === "Unlikely" ? "Pass" : "Needs review";
+
+  return {
+    ...scenario,
+    tag: scenario.tag ?? fallbackTag,
+    note: scenario.note ?? defaultNote(scenario.warnings ?? []),
+    warnings: scenario.warnings ?? [],
+  };
 }
 
 export function scenarioKeyDetails(scenario: ScenarioRecord): string {

@@ -5,7 +5,7 @@ import { improvementFlagValues, type EstimateResponse, type PlannedFlag, type Pr
 import { postEstimate } from "./api/client";
 import { SiteLayout } from "./components/SiteLayout";
 import { defaultProperty } from "./lib/defaults";
-import { newestFirst, type ScenarioRecord } from "./lib/scenarios";
+import { cleanScenario, newestFirst, type DealInputState, type PlanInputState, type ScenarioRecord } from "./lib/scenarios";
 import { useLocalStorageState } from "./lib/useLocalStorageState";
 import { DealAnalyzerPage } from "./pages/DealAnalyzerPage";
 import { EstimatePage } from "./pages/EstimatePage";
@@ -17,6 +17,16 @@ import { ScenarioWorkspacePage } from "./pages/ScenarioWorkspacePage";
 
 const validPlannedFlags = [...improvementFlagValues];
 const validPlannedFlagSet = new Set(validPlannedFlags);
+const defaultPlanInputs: PlanInputState = {
+  targetPrice: 1_400_000,
+  budget: 120_000,
+  timelineMonths: 9,
+};
+const defaultDealInputs: DealInputState = {
+  askingPrice: 735_000,
+  budget: 85_000,
+  timelineMonths: 9,
+};
 
 function cleanPlannedFlags(flags: PlannedFlag[]): PlannedFlag[] {
   return flags.filter((flag) => validPlannedFlagSet.has(flag));
@@ -38,6 +48,8 @@ export default function App() {
   const [savedProperty, setSavedProperty] = useLocalStorageState<PropertyInput>("vvl-base-price-property-v1", defaultProperty);
   const [savedPlannedFlags, setSavedPlannedFlags] = useLocalStorageState<PlannedFlag[]>("vvl-uplift-flags-v1", []);
   const [savedScenarios, setSavedScenarios] = useLocalStorageState<ScenarioRecord[]>("vvl-scenarios-v1", []);
+  const [planInputs, setPlanInputs] = useLocalStorageState<PlanInputState>("vvl-plan-inputs-v1", defaultPlanInputs);
+  const [dealInputs, setDealInputs] = useLocalStorageState<DealInputState>("vvl-deal-inputs-v1", defaultDealInputs);
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
@@ -45,7 +57,7 @@ export default function App() {
   const plannedFlags = useMemo(() => cleanPlannedFlags(savedPlannedFlags), [savedPlannedFlags]);
   const setProperty = (nextProperty: PropertyInput) => setSavedProperty(cleanProperty(nextProperty));
   const setPlannedFlags = (nextFlags: PlannedFlag[]) => setSavedPlannedFlags(cleanPlannedFlags(nextFlags));
-  const scenarios = useMemo(() => newestFirst(savedScenarios), [savedScenarios]);
+  const scenarios = useMemo(() => newestFirst(savedScenarios.map(cleanScenario)), [savedScenarios]);
 
   function saveScenario(nextScenario: ScenarioRecord) {
     setSavedScenarios((currentScenarios) => newestFirst([nextScenario, ...currentScenarios]).slice(0, 30));
@@ -55,6 +67,10 @@ export default function App() {
     setSavedScenarios((currentScenarios) => currentScenarios.filter((scenario) => scenario.id !== scenarioId));
   }
 
+  function updateScenario(nextScenario: ScenarioRecord) {
+    setSavedScenarios((currentScenarios) => currentScenarios.map((scenario) => (scenario.id === nextScenario.id ? nextScenario : scenario)));
+  }
+
   function clearScenarios() {
     setSavedScenarios([]);
   }
@@ -62,6 +78,16 @@ export default function App() {
   function useScenario(scenario: ScenarioRecord) {
     setProperty(scenario.property);
     setPlannedFlags(scenario.plannedFlags);
+    setPlanInputs({
+      targetPrice: scenario.targetPrice ?? scenario.achievableValue,
+      budget: scenario.budget,
+      timelineMonths: scenario.timelineMonths,
+    });
+    setDealInputs({
+      askingPrice: scenario.askingPrice ?? scenario.estimatedValue,
+      budget: scenario.budget,
+      timelineMonths: scenario.timelineMonths,
+    });
   }
 
   useEffect(() => {
@@ -113,6 +139,8 @@ export default function App() {
                 plannedFlags={plannedFlags}
                 onPlannedFlagsChange={setPlannedFlags}
                 onSaveScenario={saveScenario}
+                planInputs={planInputs}
+                onPlanInputsChange={setPlanInputs}
               />
             }
           />
@@ -125,6 +153,8 @@ export default function App() {
                 onPropertyChange={setProperty}
                 onPlannedFlagsChange={setPlannedFlags}
                 onSaveScenario={saveScenario}
+                dealInputs={dealInputs}
+                onDealInputsChange={setDealInputs}
               />
             }
           />
@@ -135,6 +165,7 @@ export default function App() {
               <ScenarioWorkspacePage
                 scenarios={scenarios}
                 onUseScenario={useScenario}
+                onUpdateScenario={updateScenario}
                 onDeleteScenario={deleteScenario}
                 onClearScenarios={clearScenarios}
               />

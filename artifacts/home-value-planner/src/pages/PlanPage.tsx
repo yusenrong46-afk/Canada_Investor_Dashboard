@@ -6,7 +6,7 @@ import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusPill } from "../components/StatusPill";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
-import { createPlanScenario, type ScenarioRecord } from "../lib/scenarios";
+import { createPlanScenario, type PlanInputState, type ScenarioRecord } from "../lib/scenarios";
 import type { EstimateResponse, PlanResponse, PlannedFlag, PropertyInput } from "../types";
 
 interface PlanPageProps {
@@ -15,6 +15,8 @@ interface PlanPageProps {
   plannedFlags: PlannedFlag[];
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
   onSaveScenario?: (scenario: ScenarioRecord) => void;
+  planInputs: PlanInputState;
+  onPlanInputsChange: (inputs: PlanInputState) => void;
 }
 
 const dataSourceLabels: Record<string, string> = {
@@ -54,23 +56,15 @@ function updateNumberDraft(
   setNumber(parsed);
 }
 
-export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChange, onSaveScenario }: PlanPageProps) {
-  const [targetPrice, setTargetPrice] = useState<number>(Math.max(1_400_000, estimate?.baseValue ?? 1_400_000));
-  const [budget, setBudget] = useState<number>(120_000);
-  const [timelineMonths, setTimelineMonths] = useState<number>(9);
-  const [targetPriceDraft, setTargetPriceDraft] = useState(String(targetPrice));
-  const [budgetDraft, setBudgetDraft] = useState(String(budget));
-  const [timelineDraft, setTimelineDraft] = useState(String(timelineMonths));
+export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChange, onSaveScenario, planInputs, onPlanInputsChange }: PlanPageProps) {
+  const { targetPrice, budget, timelineMonths } = planInputs;
+  const [targetPriceDraft, setTargetPriceDraft] = useState(String(planInputs.targetPrice));
+  const [budgetDraft, setBudgetDraft] = useState(String(planInputs.budget));
+  const [timelineDraft, setTimelineDraft] = useState(String(planInputs.timelineMonths));
   const [result, setResult] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (estimate?.baseValue) {
-      setTargetPrice((currentTarget) => Math.max(estimate.baseValue + 100_000, currentTarget));
-    }
-  }, [estimate?.baseValue]);
 
   useEffect(() => {
     setTargetPriceDraft(String(targetPrice));
@@ -168,36 +162,53 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
             <label className="space-y-2">
               <span className="label">Target sale price</span>
               <input
-                className="field"
-                type="number"
-                min={100000}
-                value={targetPriceDraft}
-                onChange={(event) => updateNumberDraft(event.target.value, setTargetPriceDraft, setTargetPrice, 100_000)}
-                onBlur={() => setTargetPriceDraft(String(targetPrice))}
-              />
-            </label>
+                  className="field"
+                  type="number"
+                  min={100000}
+                  value={targetPriceDraft}
+                  onChange={(event) =>
+                    updateNumberDraft(
+                      event.target.value,
+                      setTargetPriceDraft,
+                      (nextValue) => onPlanInputsChange({ ...planInputs, targetPrice: nextValue }),
+                      100_000,
+                    )
+                  }
+                  onBlur={() => setTargetPriceDraft(String(targetPrice))}
+                />
+              </label>
             <label className="space-y-2">
               <span className="label">Budget</span>
               <input
                 className="field"
-                type="number"
-                min={1}
-                value={budgetDraft}
-                onChange={(event) => updateNumberDraft(event.target.value, setBudgetDraft, setBudget, 1)}
-                onBlur={() => setBudgetDraft(String(budget))}
-              />
-            </label>
+                  type="number"
+                  min={1}
+                  value={budgetDraft}
+                  onChange={(event) =>
+                    updateNumberDraft(event.target.value, setBudgetDraft, (nextValue) => onPlanInputsChange({ ...planInputs, budget: nextValue }), 1)
+                  }
+                  onBlur={() => setBudgetDraft(String(budget))}
+                />
+              </label>
             <label className="space-y-2">
               <span className="label">Timeline (months)</span>
               <input
                 className="field"
-                type="number"
-                min={3}
-                max={18}
-                value={timelineDraft}
-                onChange={(event) => updateNumberDraft(event.target.value, setTimelineDraft, setTimelineMonths, 3, 18)}
-                onBlur={() => setTimelineDraft(String(timelineMonths))}
-              />
+                  type="number"
+                  min={3}
+                  max={18}
+                  value={timelineDraft}
+                  onChange={(event) =>
+                    updateNumberDraft(
+                      event.target.value,
+                      setTimelineDraft,
+                      (nextValue) => onPlanInputsChange({ ...planInputs, timelineMonths: nextValue }),
+                      3,
+                      18,
+                    )
+                  }
+                  onBlur={() => setTimelineDraft(String(timelineMonths))}
+                />
             </label>
           </div>
 
