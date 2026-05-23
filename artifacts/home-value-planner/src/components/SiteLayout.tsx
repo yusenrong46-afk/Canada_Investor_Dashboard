@@ -22,20 +22,20 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-700">
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <header className="border-b border-slate-200 bg-white/95 backdrop-blur lg:sticky lg:top-0 lg:z-50">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-xs font-extrabold uppercase tracking-[0.18em] text-sound-700">Vancouver Value Lab</div>
             <div className="mt-1 font-display text-lg text-cedar">Estimate, improve, plan</div>
           </div>
-          <nav className="grid w-full grid-cols-2 gap-2 md:grid-cols-4 lg:w-auto lg:grid-cols-7">
+          <nav className="flex w-full gap-2 overflow-x-auto pb-1 lg:grid lg:w-auto lg:grid-cols-7 lg:overflow-visible lg:pb-0">
             {navItems.map(({ href, label }) => (
               <NavLink
                 key={href}
                 to={href}
                 end
                 className={({ isActive }) =>
-                  `flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-center text-sm font-semibold transition ${
+                  `flex shrink-0 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-center text-sm font-semibold transition ${
                     isActive
                       ? "border-sound-200 bg-sound-50 text-cedar"
                       : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-sound-700"
