@@ -38,6 +38,7 @@ React / TypeScript frontend
   /estimate          Estimate current listing value
   /improve           Test renovation uplift
   /plan              Build an investor action plan
+  /workspace         Save and compare user-created scenarios
   /insights          Market & Investment Insights
   /deal-analyzer     Advanced one-page deal screening
   /model-data-story  Static model and data explanation
@@ -76,6 +77,7 @@ legacy/                        older experiments moved out of the active app
 - Model service: Python, Flask, pandas, scikit-learn, XGBoost when available
 - Reports/tests: pytest, Vitest, Markdown report scripts
 - Data workflow: cleaned Vancouver listing-style data and Seattle/King County repeat-sale style uplift data
+- Scenario workspace: browser localStorage for user-saved comparisons
 
 ## How To Run
 
@@ -128,6 +130,21 @@ When demo mode is enabled:
 - the outputs are clearly labeled as demo-safe sample outputs
 
 Demo values are not live predictions and should not be presented as fresh market results.
+
+## Scenario Workspace
+
+The app now works as an interactive scenario workspace.
+
+Users can:
+
+- run a Plan scenario
+- run a Deal Analyzer scenario
+- save the result
+- compare saved scenarios side by side
+- use a saved scenario to reload the property and improvements into the active workflow
+- open Insights and see metrics calculated from saved scenarios instead of only demo sample rows
+
+Saved scenarios stay in the browser through localStorage. This keeps the portfolio project simple and explainable without adding authentication or a database too early.
 
 ## Screenshots
 

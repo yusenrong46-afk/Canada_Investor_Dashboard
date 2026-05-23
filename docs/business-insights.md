@@ -31,7 +31,7 @@ It helps answer:
 
 ### Market & Investment Insights
 
-The Insights page summarizes demo-safe sample outputs:
+The Insights page summarizes saved user scenarios when the user has saved runs in the Scenario Workspace. If no scenarios exist yet, it falls back to demo-safe sample outputs.
 
 - average estimated value
 - median estimated value
@@ -39,6 +39,31 @@ The Insights page summarizes demo-safe sample outputs:
 - sample property count
 - warnings and data-quality notes
 - top sample investment scenarios
+
+### Scenario Workspace
+
+The Scenario Workspace turns the app into a reusable analysis surface instead of a one-result calculator.
+
+Users can save a run from:
+
+- Plan
+- Deal Analyzer
+
+Each saved scenario stores:
+
+- property inputs
+- selected improvements
+- estimate
+- achievable value
+- budget
+- target or asking price
+- planned spend
+- upside
+- risk level
+- verdict
+- model version
+
+This is intentionally stored in browser localStorage for now. It is simple enough for me to explain in an interview, and it gives the product a real user workflow without adding a database too early.
 
 ## How I Would Explain The Value
 
@@ -51,6 +76,7 @@ The value is in connecting:
 - uncertainty
 - business rules
 - dashboard storytelling
+- saved scenario comparison
 
 That is the part I want recruiters to notice.
 

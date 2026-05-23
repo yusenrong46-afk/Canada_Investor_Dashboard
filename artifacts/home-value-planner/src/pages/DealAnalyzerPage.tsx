@@ -9,12 +9,14 @@ import { MetricCard } from "../components/MetricCard";
 import { PropertyFormCard } from "../components/PropertyFormCard";
 import { SectionCard } from "../components/SectionCard";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
+import { createDealScenario, type ScenarioRecord } from "../lib/scenarios";
 
 interface DealAnalyzerPageProps {
   property: PropertyInput;
   plannedFlags: PlannedFlag[];
   onPropertyChange: (property: PropertyInput) => void;
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
+  onSaveScenario?: (scenario: ScenarioRecord) => void;
 }
 
 function riskTone(flag: DealRiskFlag): string {
@@ -70,6 +72,7 @@ export function DealAnalyzerPage({
   plannedFlags,
   onPropertyChange,
   onPlannedFlagsChange,
+  onSaveScenario,
 }: DealAnalyzerPageProps) {
   const [askingPrice, setAskingPrice] = useState(735_000);
   const [budget, setBudget] = useState(85_000);
@@ -81,6 +84,7 @@ export function DealAnalyzerPage({
   const [result, setResult] = useState<DealAnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (result?.estimate.baseValue && !askingTouched) {
@@ -133,6 +137,10 @@ export function DealAnalyzerPage({
     };
   }, [askingPrice, budget, plannedFlags, property, timelineMonths]);
 
+  useEffect(() => {
+    setSavedMessage(null);
+  }, [askingPrice, budget, plannedFlags, property, timelineMonths]);
+
   const chartData = useMemo(
     () => [
       { name: "Asking", value: askingPrice },
@@ -141,6 +149,25 @@ export function DealAnalyzerPage({
     ],
     [askingPrice, result],
   );
+  const canSaveScenario = Boolean(onSaveScenario && result);
+
+  function handleSaveScenario() {
+    if (!onSaveScenario || !result) {
+      return;
+    }
+
+    onSaveScenario(
+      createDealScenario({
+        property,
+        plannedFlags,
+        askingPrice,
+        budget,
+        timelineMonths,
+        deal: result,
+      }),
+    );
+    setSavedMessage("Saved to Scenario Workspace");
+  }
 
   return (
     <div className="space-y-6">
@@ -220,10 +247,26 @@ export function DealAnalyzerPage({
                     : "The API combines base value, asking price, renovation rules, local ceiling, and model-trust notes."}
                 </p>
               </div>
-              {result ? (
-                <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${dealTone(result.dealLabel)}`}>{result.dealLabel}</span>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                {result ? (
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${dealTone(result.dealLabel)}`}>{result.dealLabel}</span>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!canSaveScenario}
+                  onClick={handleSaveScenario}
+                  className="rounded-lg border border-sound-200 bg-white px-3 py-2 text-sm font-semibold text-cedar transition hover:border-sound-300 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  Save scenario
+                </button>
+              </div>
             </div>
+
+            {savedMessage ? (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                {savedMessage}
+              </div>
+            ) : null}
 
             <div className="mt-6 grid gap-4 md:grid-cols-4">
               <MetricCard label="Value gap" value={result ? formatSignedCurrency(result.modeledValueGap) : "Loading"} hint="As-is model minus asking" />

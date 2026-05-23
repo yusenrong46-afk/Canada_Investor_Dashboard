@@ -14,6 +14,7 @@ This is a full-stack real estate analytics dashboard that helps users estimate p
 - Data quality report
 - Demo-safe sample mode
 - Business insights page
+- Scenario workspace for saved user comparisons
 
 ## What I Learned
 
@@ -21,6 +22,7 @@ This is a full-stack real estate analytics dashboard that helps users estimate p
 - How to make model limitations visible
 - How to handle messy and incomplete data
 - How to design a dashboard around decisions, not just charts
+- How to turn a single prediction workflow into a saved scenario workspace
 
 ## Limitations
 
@@ -35,4 +37,5 @@ This is a full-stack real estate analytics dashboard that helps users estimate p
 - More local renovation uplift data
 - More robust geospatial features
 - Authentication / saved projects
+- Database-backed scenario history
 - Production deployment

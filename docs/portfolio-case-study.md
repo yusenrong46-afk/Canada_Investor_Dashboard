@@ -27,6 +27,7 @@ I wanted to build a project that feels closer to analyst work than a standalone 
 - Vancouver listing-price model
 - renovation uplift simulation
 - investor action-plan workflow
+- scenario workspace for saved comparisons
 - data-quality and model-metrics reports
 - demo-safe sample mode
 - documentation written for interviews
@@ -59,8 +60,9 @@ I kept these fields visible because I want the user to see uncertainty instead o
 1. Estimate current listing value.
 2. Pick renovation improvements.
 3. Build a budget-aware action plan.
-4. Review market and investment insights.
-5. Use the Deal Analyzer for a faster advanced screen.
+4. Save scenarios into a workspace.
+5. Compare saved scenarios and review market/investment insights.
+6. Use the Deal Analyzer for a faster advanced screen.
 
 ## Business Value
 
@@ -69,6 +71,7 @@ This project shows how I think as an analyst:
 - clean the data first
 - make assumptions visible
 - connect model outputs to decisions
+- make the dashboard interactive through saved scenarios
 - explain limitations in plain English
 - build a dashboard around the user question, not just charts
 

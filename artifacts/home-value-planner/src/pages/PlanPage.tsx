@@ -6,6 +6,7 @@ import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { StatusPill } from "../components/StatusPill";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
+import { createPlanScenario, type ScenarioRecord } from "../lib/scenarios";
 import type { EstimateResponse, PlanResponse, PlannedFlag, PropertyInput } from "../types";
 
 interface PlanPageProps {
@@ -13,6 +14,7 @@ interface PlanPageProps {
   estimate: EstimateResponse | null;
   plannedFlags: PlannedFlag[];
   onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
+  onSaveScenario?: (scenario: ScenarioRecord) => void;
 }
 
 const dataSourceLabels: Record<string, string> = {
@@ -52,7 +54,7 @@ function updateNumberDraft(
   setNumber(parsed);
 }
 
-export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChange }: PlanPageProps) {
+export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChange, onSaveScenario }: PlanPageProps) {
   const [targetPrice, setTargetPrice] = useState<number>(Math.max(1_400_000, estimate?.baseValue ?? 1_400_000));
   const [budget, setBudget] = useState<number>(120_000);
   const [timelineMonths, setTimelineMonths] = useState<number>(9);
@@ -62,6 +64,7 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
   const [result, setResult] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (estimate?.baseValue) {
@@ -114,8 +117,32 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
     };
   }, [budget, plannedFlags, property, targetPrice, timelineMonths]);
 
+  useEffect(() => {
+    setSavedMessage(null);
+  }, [budget, plannedFlags, property, targetPrice, timelineMonths]);
+
   const dataMissing = result?.status === "data-missing";
   const dataSources = Object.entries(result?.dataSources ?? {});
+  const canSaveScenario = Boolean(onSaveScenario && estimate && result?.status === "ready");
+
+  function handleSaveScenario() {
+    if (!onSaveScenario || !estimate || result?.status !== "ready") {
+      return;
+    }
+
+    onSaveScenario(
+      createPlanScenario({
+        property,
+        plannedFlags,
+        estimate,
+        plan: result,
+        targetPrice,
+        budget,
+        timelineMonths,
+      }),
+    );
+    setSavedMessage("Saved to Scenario Workspace");
+  }
 
   return (
     <div className="space-y-6">
@@ -204,7 +231,23 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
             title="Recommended next steps"
             eyebrow="Action list"
             description="These are the improvements that fit your budget and timeline best."
+            aside={
+              <button
+                type="button"
+                disabled={!canSaveScenario}
+                onClick={handleSaveScenario}
+                className="rounded-lg border border-sound-200 bg-sound-50 px-3 py-2 text-sm font-semibold text-cedar transition hover:border-sound-300 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                Save scenario
+              </button>
+            }
           >
+            {savedMessage ? (
+              <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+                {savedMessage}
+              </div>
+            ) : null}
+
             {result?.status === "ready" ? (
               <div className="space-y-4">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">

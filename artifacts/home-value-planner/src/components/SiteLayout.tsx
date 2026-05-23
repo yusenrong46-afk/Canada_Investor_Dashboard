@@ -7,6 +7,7 @@ const navItems = [
   { href: "/estimate", label: "Estimate" },
   { href: "/improve", label: "Improve" },
   { href: "/plan", label: "Plan" },
+  { href: "/workspace", label: "Workspace" },
   { href: "/insights", label: "Insights" },
   { href: "/deal-analyzer", label: "Deal analyzer" },
   { href: "/model-data-story", label: "Model story" },
@@ -27,7 +28,7 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
             <div className="text-xs font-extrabold uppercase tracking-[0.18em] text-sound-700">Vancouver Value Lab</div>
             <div className="mt-1 font-display text-lg text-cedar">Estimate, improve, plan</div>
           </div>
-          <nav className="grid w-full grid-cols-2 gap-2 md:grid-cols-3 lg:w-auto lg:grid-cols-6">
+          <nav className="grid w-full grid-cols-2 gap-2 md:grid-cols-4 lg:w-auto lg:grid-cols-7">
             {navItems.map(({ href, label }) => (
               <NavLink
                 key={href}
