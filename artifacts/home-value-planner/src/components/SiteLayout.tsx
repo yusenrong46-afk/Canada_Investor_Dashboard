@@ -19,6 +19,7 @@ interface SiteLayoutProps extends PropsWithChildren {
 
 export function SiteLayout({ children, property }: SiteLayoutProps) {
   const demoMode = import.meta.env.VITE_DEMO_MODE === "true" || import.meta.env.VITE_DEMO_MODE === "1";
+  const publicMode = import.meta.env.VITE_PUBLIC_MODE === "true" || import.meta.env.VITE_PUBLIC_MODE === "1";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-700">
@@ -49,10 +50,12 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
         </div>
       </header>
 
-      {demoMode ? (
+      {demoMode || publicMode ? (
         <div className="border-b border-amber-200 bg-amber-50">
           <div className="mx-auto w-full max-w-7xl px-5 py-3 text-sm font-medium text-amber-900">
-            Demo Mode: This version uses precomputed sample outputs so the dashboard can be reviewed publicly without private data or model artifacts.
+            {demoMode
+              ? "Demo Mode: This version uses precomputed sample outputs so the dashboard can be reviewed publicly without private data or model artifacts."
+              : "Public Interactive Mode: estimates update from your inputs using a transparent screening model. Use it for deal review, not appraisal or lending decisions."}
           </div>
         </div>
       ) : null}
@@ -73,7 +76,7 @@ export function SiteLayout({ children, property }: SiteLayoutProps) {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-5 py-6 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
-          <div>Vancouver listing-value estimate plus Seattle observed uplift percentages. Outputs are planning aids, not guarantees.</div>
+          <div>Vancouver listing-value estimate plus renovation upside screening. Outputs are planning aids, not guarantees.</div>
           <div>React + Vite + Tailwind · Express 5 API · Python model service</div>
         </div>
       </footer>

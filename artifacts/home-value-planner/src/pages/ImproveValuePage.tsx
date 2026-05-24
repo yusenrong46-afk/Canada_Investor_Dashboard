@@ -128,7 +128,8 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
             {hasResult ? (
               <div className="space-y-4">
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-                  Uplift is trained from real Seattle permit and repeat-sale records, then applied as a percentage to this Vancouver estimate.
+                  {result.evidenceSummary ??
+                    "Uplift uses available observed renovation patterns when data exists, then applies the estimated percentage to this Vancouver listing-value estimate."}
                 </p>
                 <div className="grid gap-3">
                   {drivers.length ? (

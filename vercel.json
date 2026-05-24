@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "corepack enable && corepack pnpm install --frozen-lockfile",
-  "buildCommand": "corepack pnpm --filter @vvl/api-server build:vercel && VITE_DEMO_MODE=true corepack pnpm --filter @vvl/home-value-planner build",
+  "buildCommand": "corepack pnpm --filter @vvl/api-server build:vercel && VITE_DEMO_MODE=false VITE_PUBLIC_MODE=true corepack pnpm --filter @vvl/home-value-planner build",
   "outputDirectory": "artifacts/home-value-planner/dist",
   "functions": {
     "api/[...path].js": {

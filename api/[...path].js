@@ -1,4 +1,5 @@
-process.env.DEMO_MODE = process.env.DEMO_MODE || "true";
+process.env.PUBLIC_MODE = "true";
+process.env.DEMO_MODE = "false";
 
 const appBundle = require("../artifacts/api-server/dist/app.cjs");
 

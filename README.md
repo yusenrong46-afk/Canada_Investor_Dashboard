@@ -131,16 +131,18 @@ When demo mode is enabled:
 
 Demo values are not live predictions and should not be presented as fresh market results.
 
-## Public Demo Deployment
+## Public Deployment
 
-The public portfolio version is designed to deploy in demo mode:
+The public portfolio version is designed to deploy as an interactive screening product:
 
 - Vercel serves the React/Vite frontend from `vercel.json`.
 - Vercel runs the Express API through the small serverless adapter in `api/[...path].js`.
-- The Python model service is not required for the public demo.
+- The Python model service is not required for the public site.
 - Render deployment config is included as an optional separate API host if I want it later.
+- `PUBLIC_MODE=true` makes the hosted API calculate estimates, renovation upside, plans, and deal verdicts from user inputs.
+- `DEMO_MODE=true` still exists for fixed sample-output testing.
 
-This keeps the recruiter demo stable and reviewable while keeping private/local data out of the hosted app.
+This keeps the recruiter version usable like a real product while keeping private/local data out of the hosted app.
 
 ## Scenario Workspace
 
@@ -190,6 +192,7 @@ The scripts do not invent missing metrics. If a model artifact or data file is m
 - The app is useful for screening and explanation, not appraisal or lending decisions.
 - Renovation uplift uses transferred observed assumptions from Seattle/King County style repeat-sale data because the current Vancouver dataset does not contain clean before/after renovation labels.
 - Demo mode uses precomputed sample outputs so the dashboard can be reviewed publicly without private data or local model artifacts.
+- Public mode is interactive, but it is still a screening model and not an appraisal.
 - Some local data sources are unavailable unless I provide them through environment variables.
 - Transaction costs, taxes, financing, strata rules, exact condition, and seller motivation still need manual review.
 
@@ -199,7 +202,7 @@ The scripts do not invent missing metrics. If a model artifact or data file is m
 - Join local renovation permits to property-level sales history.
 - Improve geospatial features with parcels, zoning, transit, and neighbourhood data.
 - Add saved projects and authentication.
-- Add a live-mode deployment after the data/model pipeline is ready for public hosting.
+- Add a full live-mode deployment after the Python model service and data pipeline are ready for public hosting.
 - Add more automated checks around API contracts and report generation.
 - Use `docs/demo-script.md` to practice the interview walkthrough.
 

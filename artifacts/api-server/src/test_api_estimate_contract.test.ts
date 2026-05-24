@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDemoDealAnalyze, buildDemoEstimate } from "./demo";
+import { buildDemoEstimate } from "./demo";
+import { buildPublicDealAnalyze } from "./publicEngine";
 
 describe("estimate response contract", () => {
   it("includes model note, confidence range, and trust summary fields", () => {
@@ -20,7 +21,7 @@ describe("estimate response contract", () => {
   });
 
   it("keeps the deal analyzer contract in demo mode", () => {
-    const response = buildDemoDealAnalyze({
+    const response = buildPublicDealAnalyze({
       postalCode: "V6B 1X9",
       propertyType: "Condo",
       livingAreaSqft: 708,
@@ -32,8 +33,8 @@ describe("estimate response contract", () => {
       plannedFlags: ["renovatedKitchen"],
     });
 
-    expect(response.estimate.baseValue).toBe(748000);
+    expect(response.estimate.baseValue).toBeGreaterThan(0);
     expect(response.plan.status).toBe("ready");
-    expect(response.riskFlags.some((flag) => flag.label === "Demo-safe output")).toBe(true);
+    expect(response.riskFlags.some((flag) => flag.label === "Interactive public estimate")).toBe(true);
   });
 });

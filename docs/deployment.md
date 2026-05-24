@@ -2,9 +2,9 @@
 
 ## Goal
 
-For a public portfolio demo, I would deploy this project in demo mode first.
+For a public portfolio version, I deploy this project in public interactive mode first.
 
-Demo mode is safer because it does not require private raw data, local model artifacts, or my machine-specific data paths.
+Public interactive mode is safer than full live mode because it does not require private raw data, local model artifacts, or my machine-specific data paths. It is still interactive: estimates, uplift, plans, deal labels, and insights respond to user inputs.
 
 ## Public Demo Setup
 
@@ -12,9 +12,9 @@ The simplest public setup is:
 
 - Vercel for the React/Vite frontend
 - Vercel serverless functions for the Express API demo endpoints
-- Demo mode enabled by default
+- Public interactive mode enabled by default
 
-I am not deploying the Python model service for the public demo yet. In demo mode, the API returns stable sample JSON from `demo/` and does not need private data or local model artifacts.
+I am not deploying the Python model service for the public version yet. In public mode, the API calculates results with a transparent TypeScript screening engine and does not need private data or local model artifacts.
 
 ## Why This Setup
 
@@ -24,21 +24,21 @@ This is the cleanest recruiter-friendly version because:
 - the app does not depend on my laptop
 - private/local raw data is not exposed
 - the dashboard still shows the Estimate -> Improve -> Plan workflow
-- model and data limitations stay visible through the demo banner and docs
+- model and data limitations stay visible through the public-mode banner and docs
 
 ## Vercel Frontend And API
 
-The repo includes `vercel.json` for the frontend build and `api/[...path].js` for the public demo API adapter.
+The repo includes `vercel.json` for the frontend build and `api/[...path].js` for the public interactive API adapter.
 
 Vercel settings:
 
 - Framework preset: Vite
 - Root directory: repo root
 - Install command: `corepack enable && corepack pnpm install --frozen-lockfile`
-- Build command: `corepack pnpm --filter @vvl/api-server build:vercel && VITE_DEMO_MODE=true corepack pnpm --filter @vvl/home-value-planner build`
+- Build command: `corepack pnpm --filter @vvl/api-server build:vercel && VITE_DEMO_MODE=false VITE_PUBLIC_MODE=true corepack pnpm --filter @vvl/home-value-planner build`
 - Output directory: `artifacts/home-value-planner/dist`
 
-The Vercel adapter sets `DEMO_MODE=true` by default so the hosted API can serve demo-safe sample output without the Python model service.
+The Vercel adapter sets `PUBLIC_MODE=true` by default so the hosted API can calculate interactive screening results without the Python model service.
 
 After Vercel deploys, the API should respond at:
 
@@ -52,7 +52,7 @@ The expected health response includes:
 {
   "ok": true,
   "service": "api-server",
-  "mode": "demo-safe-samples"
+  "mode": "public-interactive-estimator"
 }
 ```
 
@@ -72,7 +72,8 @@ Render settings:
 Render environment variables:
 
 ```bash
-DEMO_MODE=true
+DEMO_MODE=false
+PUBLIC_MODE=true
 API_HOST=0.0.0.0
 NODE_VERSION=24
 ```
@@ -89,7 +90,7 @@ The expected health response includes:
 {
   "ok": true,
   "service": "api-server",
-  "mode": "demo-safe-samples"
+  "mode": "public-interactive-estimator"
 }
 ```
 
@@ -99,7 +100,7 @@ If I choose the optional Render API setup, I should set this Vercel environment 
 VITE_API_BASE_URL=https://<render-service-url>/api
 ```
 
-For the Vercel-only demo, leave `VITE_API_BASE_URL` unset so the frontend uses `/api` on the same public domain.
+For the Vercel-only public version, leave `VITE_API_BASE_URL` unset so the frontend uses `/api` on the same public domain.
 
 ## Live Local Mode
 
@@ -113,6 +114,7 @@ Local API variables:
 
 ```bash
 DEMO_MODE=false
+PUBLIC_MODE=false
 API_PORT=4000
 MODEL_SERVICE_URL=http://127.0.0.1:5001
 ```
@@ -121,6 +123,7 @@ Local frontend variables:
 
 ```bash
 VITE_DEMO_MODE=false
+VITE_PUBLIC_MODE=false
 VITE_API_BASE_URL=/api
 ```
 
@@ -142,7 +145,7 @@ KING_COUNTY_BUILDINGS_PATH=/path/to/king-county/resbldg_extr.csv
 5. Confirm the banner says:
 
 ```text
-Demo Mode: This version uses precomputed sample outputs so the dashboard can be reviewed publicly without private data or model artifacts.
+Public Interactive Mode: estimates update from your inputs using a transparent screening model. Use it for deal review, not appraisal or lending decisions.
 ```
 
 ## Smoke Test
@@ -174,7 +177,7 @@ PYTHONPYCACHEPREFIX=/private/tmp/codex_pycache .venv/bin/python -m pytest
 
 ## Manual Review Before Publishing
 
-- Confirm demo mode is enabled.
+- Confirm public interactive mode is enabled.
 - Confirm no private raw-data paths appear in the UI.
 - Confirm reports do not claim unavailable metrics.
 - Confirm README limitations are visible.

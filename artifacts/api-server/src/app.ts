@@ -7,6 +7,7 @@ import { ZodError } from "zod/v4";
 import { analyzeDeal } from "./dealAnalysis";
 import { buildDemoDealAnalyze, buildDemoEstimate, buildDemoPlan, buildDemoSimulate, demoModeEnabled, getDemoMetrics } from "./demo";
 import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
+import { buildPublicDealAnalyze, buildPublicEstimate, buildPublicPlan, buildPublicSimulate, getPublicMetrics, publicModeEnabled } from "./publicEngine";
 import { dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
 
 const app = express();
@@ -18,14 +19,14 @@ app.get(["/health", "/api/health"], (_req, res) => {
   res.json({
     ok: true,
     service: "api-server",
-    mode: demoModeEnabled ? "demo-safe-samples" : "vancouver-estimate-plus-seattle-observed-uplift",
+    mode: demoModeEnabled ? "demo-safe-samples" : publicModeEnabled ? "public-interactive-estimator" : "vancouver-estimate-plus-seattle-observed-uplift",
   });
 });
 
 app.post("/api/estimate", async (req, res, next) => {
   try {
     const request = estimateRequestSchema.parse(req.body);
-    const response = demoModeEnabled ? buildDemoEstimate(request) : await estimateProperty(request);
+    const response = demoModeEnabled ? buildDemoEstimate(request) : publicModeEnabled ? buildPublicEstimate(request) : await estimateProperty(request);
     res.json(response);
   } catch (error) {
     next(error);
@@ -35,7 +36,7 @@ app.post("/api/estimate", async (req, res, next) => {
 app.post("/api/simulate", async (req, res, next) => {
   try {
     const request = simulateRequestSchema.parse(req.body);
-    const response = demoModeEnabled ? buildDemoSimulate(request) : await simulateScenario(request);
+    const response = demoModeEnabled ? buildDemoSimulate(request) : publicModeEnabled ? buildPublicSimulate(request) : await simulateScenario(request);
     res.json(response);
   } catch (error) {
     next(error);
@@ -45,7 +46,7 @@ app.post("/api/simulate", async (req, res, next) => {
 app.post("/api/plan", async (req, res, next) => {
   try {
     const request = planRequestSchema.parse(req.body);
-    const response = demoModeEnabled ? buildDemoPlan(request) : await buildSalePlan(request);
+    const response = demoModeEnabled ? buildDemoPlan(request) : publicModeEnabled ? buildPublicPlan(request) : await buildSalePlan(request);
     res.json(response);
   } catch (error) {
     next(error);
@@ -54,7 +55,7 @@ app.post("/api/plan", async (req, res, next) => {
 
 app.get("/api/insights", (_req, res, next) => {
   try {
-    res.json(getDemoMetrics());
+    res.json(publicModeEnabled ? getPublicMetrics() : getDemoMetrics());
   } catch (error) {
     next(error);
   }
@@ -63,7 +64,7 @@ app.get("/api/insights", (_req, res, next) => {
 app.post("/api/deal/analyze", async (req, res, next) => {
   try {
     const request = dealAnalyzeRequestSchema.parse(req.body);
-    const response = demoModeEnabled ? buildDemoDealAnalyze(request) : await analyzeDeal(request);
+    const response = demoModeEnabled ? buildDemoDealAnalyze(request) : publicModeEnabled ? buildPublicDealAnalyze(request) : await analyzeDeal(request);
     res.json(response);
   } catch (error) {
     next(error);

@@ -144,7 +144,7 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
     <div className="space-y-6">
       <div className="space-y-2">
         <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">Market & Investment Insights</div>
-        <h1 className="font-display text-3xl text-cedar">{scenarios.length ? "What do my saved scenarios say?" : "What do the sample deals say?"}</h1>
+        <h1 className="font-display text-3xl text-cedar">{scenarios.length ? "What do my saved scenarios say?" : "What do the starter scenarios say?"}</h1>
         <p className="max-w-3xl text-sm leading-6 text-slate-500">
           This page turns saved scenario outputs into a simple analyst view: value levels, price-per-square-foot patterns, risk notes,
           and top investment scenarios.
@@ -155,7 +155,7 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
         <MetricCard label="Average value" value={formatCurrency(displayData.summary.averageEstimatedValue)} hint="Across visible scenarios" />
         <MetricCard label="Median value" value={formatCurrency(displayData.summary.medianEstimatedValue)} hint="Middle scenario estimate" />
         <MetricCard label="Avg $/sqft" value={formatCurrency(displayData.summary.averagePricePerSqft)} hint="Estimated price per square foot" />
-        <MetricCard label="Scenarios" value={String(displayData.summary.samplePropertyCount)} hint={scenarios.length ? "Saved user runs" : "Demo-safe samples"} />
+        <MetricCard label="Scenarios" value={String(displayData.summary.samplePropertyCount)} hint={scenarios.length ? "Saved user runs" : "Starter scenarios"} />
         <MetricCard label="Warnings" value={String(displayData.summary.warningCount)} hint="Data-quality and trust notes" />
       </div>
 

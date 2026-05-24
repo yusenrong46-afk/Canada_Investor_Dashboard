@@ -217,7 +217,7 @@ export interface DemoInsightRow {
 }
 
 export interface DemoMetricsResponse {
-  mode: "demo-safe";
+  mode: "demo-safe" | "public-interactive";
   note: string;
   summary: {
     averageEstimatedValue: number;

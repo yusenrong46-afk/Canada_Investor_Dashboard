@@ -273,7 +273,8 @@ export function PlanPage({ property, estimate, plannedFlags, onPlannedFlagsChang
                     {result.targetPrice != null ? formatCurrency(result.targetPrice) : "your target"}.
                   </p>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Uplift uses a Seattle-trained observed repeat-sale percentage, then applies that percentage to this Vancouver estimate.
+                    {result.methodNotes?.[0] ??
+                      "The planner estimates renovation upside, applies local market guardrails, and keeps the plan inside your budget and timeline."}
                   </p>
                 </div>
 
