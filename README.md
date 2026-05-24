@@ -131,6 +131,17 @@ When demo mode is enabled:
 
 Demo values are not live predictions and should not be presented as fresh market results.
 
+## Public Demo Deployment
+
+The public portfolio version is designed to deploy in demo mode:
+
+- Vercel serves the React/Vite frontend from `vercel.json`.
+- Vercel runs the Express API through the small serverless adapter in `api/[...path].js`.
+- The Python model service is not required for the public demo.
+- Render deployment config is included as an optional separate API host if I want it later.
+
+This keeps the recruiter demo stable and reviewable while keeping private/local data out of the hosted app.
+
 ## Scenario Workspace
 
 The app now works as an interactive scenario workspace.
@@ -188,7 +199,7 @@ The scripts do not invent missing metrics. If a model artifact or data file is m
 - Join local renovation permits to property-level sales history.
 - Improve geospatial features with parcels, zoning, transit, and neighbourhood data.
 - Add saved projects and authentication.
-- Deploy the frontend/API/model service with demo mode enabled by default.
+- Add a live-mode deployment after the data/model pipeline is ready for public hosting.
 - Add more automated checks around API contracts and report generation.
 - Use `docs/demo-script.md` to practice the interview walkthrough.
 

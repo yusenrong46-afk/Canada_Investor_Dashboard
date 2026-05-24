@@ -19,3 +19,4 @@ artifacts/api-server/node_modules
 artifacts/api-server/dist
 artifacts/model-service/models
 legacy/model-artifacts
+.vercel

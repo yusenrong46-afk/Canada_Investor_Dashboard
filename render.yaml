@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: canada-investor-dashboard-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm --filter @vvl/api-server build
+    startCommand: node artifacts/api-server/dist/index.cjs
+    healthCheckPath: /health
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: API_HOST
+        value: "0.0.0.0"
+      - key: NODE_VERSION
+        value: "24"
+    buildFilter:
+      paths:
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - render.yaml
+        - demo/**
+        - artifacts/api-server/**
+        - artifacts/shared/**
