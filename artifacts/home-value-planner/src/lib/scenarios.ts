@@ -81,6 +81,7 @@ function propertyLabel(property: PropertyInput): string {
 }
 
 function riskFromPlan(plan: PlanResponse, estimate: EstimateResponse, warnings: string[]): ScenarioRiskLevel {
+  // Saved scenarios carry a simple risk label so the workspace can compare runs without re-calling the API.
   if (plan.targetAssessment === "Unlikely" || estimate.confidenceRatio >= 0.18 || warnings.length >= 3) {
     return "High";
   }
@@ -130,6 +131,7 @@ function defaultNote(warnings: string[]): string {
 function warningNotesFromPlan(plan: PlanResponse, estimate: EstimateResponse): string[] {
   const warnings: string[] = [];
 
+  // These warnings are intentionally plain-language because they surface directly in the investor workspace.
   if (estimate.confidenceRatio >= 0.16) {
     warnings.push("Wide estimate confidence range");
   }
@@ -239,6 +241,7 @@ export function newestFirst(scenarios: ScenarioRecord[]): ScenarioRecord[] {
 export function cleanScenario(scenario: ScenarioRecord): ScenarioRecord {
   const fallbackTag: ScenarioTag = scenario.verdict === "Pass for now" || scenario.verdict === "Unlikely" ? "Pass" : "Needs review";
 
+  // Older localStorage records may be missing fields added after the workspace feature shipped.
   return {
     ...scenario,
     tag: scenario.tag ?? fallbackTag,

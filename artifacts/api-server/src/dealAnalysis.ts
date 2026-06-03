@@ -23,6 +23,7 @@ function buildRiskFlags(
   const flags: DealRiskFlag[] = [];
   const askingPremium = percent(request.askingPrice - estimate.baseValue, estimate.baseValue);
 
+  // Deal flags keep the investor-facing verdict explainable instead of returning only a score.
   if (askingPremium > 0.05) {
     flags.push({
       level: "danger",
@@ -93,6 +94,7 @@ function buildRiskFlags(
 export function labelDeal(grossUpsidePercent: number, valueGapPercent: number, flags: DealRiskFlag[]): DealLabel {
   const hasDanger = flags.some((flag) => flag.level === "danger");
 
+  // Thresholds are conservative because transaction costs, financing, taxes, and surprises are not modeled yet.
   if (grossUpsidePercent < 0 || (hasDanger && grossUpsidePercent < 0.06)) {
     return "Pass for now";
   }

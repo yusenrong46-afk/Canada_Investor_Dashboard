@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { postImproveValue } from "../api/client";
@@ -71,15 +72,15 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">2. Improve value</div>
-        <h1 className="font-display text-3xl text-cedar">What can I do to improve value?</h1>
-        <p className="max-w-2xl text-sm leading-6 text-slate-500">
+        <div className="eyebrow">2. Improve value</div>
+        <h1 className="font-display text-3xl text-ink">What can I do to improve value?</h1>
+        <p className="max-w-2xl text-sm leading-6 text-muted">
           Pick realistic improvements and see the estimated value impact on top of the current price estimate.
         </p>
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>
+        <div className="rounded-card border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">{error}</div>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[380px,minmax(0,1fr)]">
@@ -92,19 +93,22 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
         </SectionCard>
 
         <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            variant="hero"
+            tone="success"
+            label="Added value"
+            value={hasResult && result.upliftValue != null ? formatCurrency(result.upliftValue) : loading ? "Updating" : dataMissing ? "Data needed" : "Choose work"}
+            hint={
+              hasResult && result.upliftPercent != null
+                ? `${formatPercent(result.upliftPercent * 100)} estimated uplift on top of the current price estimate`
+                : dataMissing
+                  ? "Waiting for real Seattle/King County CSVs"
+                  : "Estimated value from selected work"
+            }
+          />
+
+          <div className="grid gap-4 md:grid-cols-2">
             <MetricCard label="Current as-is value" value={estimate ? formatCurrency(estimate.baseValue) : "Loading"} hint="From the live base model" />
-            <MetricCard
-              label="Added value"
-              value={hasResult && result.upliftValue != null ? formatCurrency(result.upliftValue) : loading ? "Updating" : dataMissing ? "Data needed" : "Choose work"}
-              hint={
-                hasResult && result.upliftPercent != null
-                  ? `${formatPercent(result.upliftPercent * 100)} estimated uplift`
-                  : dataMissing
-                    ? "Waiting for real Seattle/King County CSVs"
-                    : "Estimated value from selected work"
-              }
-            />
             <MetricCard
               label="After improvements"
               value={
@@ -127,55 +131,55 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
           >
             {hasResult ? (
               <div className="space-y-4">
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+                <p className="rounded-field border border-brand-200 bg-brand-50 px-4 py-3 text-sm leading-6 text-brand-800">
                   {result.evidenceSummary ??
                     "Uplift uses available observed renovation patterns when data exists, then applies the estimated percentage to this Vancouver listing-value estimate."}
                 </p>
                 <div className="grid gap-3">
                   {drivers.length ? (
                     drivers.map((driver) => (
-                      <div key={driver.flag} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+                      <div key={driver.flag} className="rounded-field border border-line bg-surface px-4 py-3">
                         <div className="flex items-start justify-between gap-4">
                           <div>
-                            <div className="text-sm font-semibold text-cedar">{driver.label}</div>
-                            {driver.rationale ? <div className="mt-1 text-xs leading-5 text-slate-500">{driver.rationale}</div> : null}
+                            <div className="text-sm font-semibold text-ink">{driver.label}</div>
+                            {driver.rationale ? <div className="mt-1 text-xs leading-5 text-muted">{driver.rationale}</div> : null}
                           </div>
-                          <div className="text-right text-sm font-semibold text-sound-700">
+                          <div className="text-right text-sm font-semibold tabular-nums text-success">
                             <div>{formatCurrency(driver.value)}</div>
-                            {driver.upliftPercent != null ? <div className="mt-1 text-xs text-slate-500">{formatPercent(driver.upliftPercent * 100)}</div> : null}
+                            {driver.upliftPercent != null ? <div className="mt-1 text-xs text-muted">{formatPercent(driver.upliftPercent * 100)}</div> : null}
                           </div>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">Choose improvements to see value drivers.</div>
+                    <div className="data-row text-sm text-muted">Choose improvements to see value drivers.</div>
                   )}
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                  <div className="font-semibold">{dataMissing ? "Real uplift data is not loaded yet." : "Choose improvements to estimate value impact."}</div>
+                <div className="rounded-field border border-warning/30 bg-warning/10 p-4 text-sm leading-6 text-body">
+                  <div className="font-semibold text-ink">{dataMissing ? "Real uplift data is not loaded yet." : "Choose improvements to estimate value impact."}</div>
                   <p className="mt-2">
                     {result?.message ?? "Select improvements to estimate value impact from the Seattle observed uplift model."}
                   </p>
                 </div>
 
                 {dataMissing ? (
-                  <div className="rounded-lg border border-slate-200 bg-white p-4">
-                    <div className="text-sm font-semibold text-cedar">Files needed for added value</div>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                  <div className="rounded-field border border-line bg-surface p-4">
+                    <div className="text-sm font-semibold text-ink">Files needed for added value</div>
+                    <p className="mt-2 text-sm leading-6 text-muted">
                       The base price estimate still works. The added-value model needs these real local files before it can calculate uplift.
                     </p>
                     <div className="mt-4 space-y-2">
                       {dataSources.map(([key, path]) => (
-                        <div key={key} className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-sm font-medium text-slate-700">{dataSourceLabels[key] ?? key}</div>
-                          <div className="mt-1 font-mono text-xs text-slate-500">{shortDataPath(path)}</div>
+                        <div key={key} className="rounded-field bg-canvas px-3 py-2">
+                          <div className="text-sm font-medium text-ink">{dataSourceLabels[key] ?? key}</div>
+                          <div className="mt-1 font-mono text-xs text-muted">{shortDataPath(path)}</div>
                         </div>
                       ))}
                     </div>
-                    <p className="mt-4 text-sm leading-6 text-slate-500">
+                    <p className="mt-4 text-sm leading-6 text-muted">
                       This is intentional: the project now uses observed repeat-sale uplift only, so it shows no added value until the real
                       Seattle/King County data exists locally.
                     </p>
@@ -186,11 +190,9 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
           </SectionCard>
 
           <div className="flex justify-end">
-            <NavLink
-              to="/plan"
-              className="inline-flex rounded-lg bg-cedar px-4 py-2 text-sm font-semibold text-white transition hover:bg-slateblue"
-            >
+            <NavLink to="/plan" className="btn-primary">
               Next: make a plan
+              <ArrowRight className="h-4 w-4" />
             </NavLink>
           </div>
         </div>

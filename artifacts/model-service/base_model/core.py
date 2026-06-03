@@ -67,6 +67,7 @@ VANCOUVER_PREFIXES = ("V5", "V6")
 
 @dataclass
 class VancouverModelBundle:
+    # The bundle stores both fitted models and enough training metadata to explain each API estimate.
     models: dict[str, Pipeline]
     model_families: dict[str, str]
     candidate_metrics: dict[str, dict[str, dict[str, Any]]]

@@ -14,5 +14,16 @@ export default defineConfig(({ mode }) => {
         "/api": env.VITE_API_PROXY_TARGET || "http://127.0.0.1:4000",
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            charts: ["recharts"],
+            icons: ["lucide-react"],
+            react: ["react", "react-dom", "react-router-dom"],
+          },
+        },
+      },
+    },
   };
 });

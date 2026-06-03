@@ -45,6 +45,7 @@ function cleanProperty(property: PropertyInput): PropertyInput {
 }
 
 export default function App() {
+  // The dashboard stays database-free by persisting the active workflow and saved scenarios in browser storage.
   const [savedProperty, setSavedProperty] = useLocalStorageState<PropertyInput>("vvl-base-price-property-v1", defaultProperty);
   const [savedPlannedFlags, setSavedPlannedFlags] = useLocalStorageState<PlannedFlag[]>("vvl-uplift-flags-v1", []);
   const [savedScenarios, setSavedScenarios] = useLocalStorageState<ScenarioRecord[]>("vvl-scenarios-v1", []);
@@ -91,6 +92,7 @@ export default function App() {
   }
 
   useEffect(() => {
+    // Keep the base estimate live as the user edits the property; downstream pages reuse this shared result.
     let active = true;
     setEstimateLoading(true);
     setEstimateError(null);

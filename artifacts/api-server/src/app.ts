@@ -23,6 +23,7 @@ app.get(["/health", "/api/health"], (_req, res) => {
   });
 });
 
+// Every endpoint validates at the API boundary so frontend, demo mode, public mode, and live model calls share one contract.
 app.post("/api/estimate", async (req, res, next) => {
   try {
     const request = estimateRequestSchema.parse(req.body);

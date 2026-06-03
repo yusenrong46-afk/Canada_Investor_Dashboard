@@ -1,3 +1,4 @@
+import { ArrowRight } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { PropertyFormCard } from "../components/PropertyFormCard";
@@ -23,15 +24,15 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">1. Estimate current price</div>
-        <h1 className="font-display text-3xl text-cedar">What is this home worth today?</h1>
-      <p className="max-w-2xl text-sm leading-6 text-slate-500">
+        <div className="eyebrow">1. Estimate current price</div>
+        <h1 className="font-display text-3xl text-ink">What is this home worth today?</h1>
+        <p className="max-w-2xl text-sm leading-6 text-muted">
           Enter the basic listing details and the app will estimate the current Vancouver list value.
         </p>
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <div className="rounded-card border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
           {error}
         </div>
       ) : null}
@@ -40,20 +41,20 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
         <PropertyFormCard property={property} onChange={onPropertyChange} />
 
         <div className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-soft">
+          <section className="hero-panel bg-gradient-to-br from-surface to-brand-50/40">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-3">
-                <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">Estimated current price</div>
-                <div className="font-display text-5xl leading-none text-cedar">
+                <div className="eyebrow">Estimated current price</div>
+                <div className="metric-num text-4xl leading-none sm:text-5xl">
                   {estimate ? formatCurrency(estimate.baseValue) : "Loading"}
                 </div>
-                <p className="max-w-xl text-sm leading-6 text-slate-500">
+                <p className="max-w-xl text-sm leading-6 text-muted">
                   {estimate
                     ? `Based on Vancouver ${estimate.modelScope.toLowerCase()} listings near ${estimate.marketContext.localAreaLabel}.`
                     : "Calculating from Vancouver listing patterns."}
                 </p>
               </div>
-              {loading ? <span className="rounded-lg bg-sound-50 px-3 py-1 text-xs font-semibold text-sound-700">Updating</span> : null}
+              {loading ? <span className="rounded-pill bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">Updating</span> : null}
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -84,15 +85,15 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
               <div className="space-y-3">
                 {topDrivers.length ? (
                   topDrivers.map((driver) => (
-                    <div key={driver.label} className="flex items-center justify-between gap-4 rounded-lg bg-slate-50 px-4 py-3">
-                      <span className="text-sm font-medium text-slate-700">{driver.label}</span>
-                      <span className={`text-sm font-semibold ${driver.value >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                    <div key={driver.label} className="data-row">
+                      <span className="text-sm font-medium text-ink">{driver.label}</span>
+                      <span className={`text-sm font-semibold tabular-nums ${driver.value >= 0 ? "text-success" : "text-danger"}`}>
                         {formatSignedCurrency(driver.value)}
                       </span>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">Drivers will appear after the estimate loads.</div>
+                  <div className="data-row text-sm text-muted">Drivers will appear after the estimate loads.</div>
                 )}
               </div>
             </SectionCard>
@@ -104,43 +105,41 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
             >
               {estimate ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-600">Price per sqft</span>
-                    <span className="text-sm font-semibold text-cedar">{formatCurrency(estimate.pricePerSqft)}</span>
+                  <div className="data-row">
+                    <span className="text-sm font-medium text-body">Price per sqft</span>
+                    <span className="text-sm font-semibold tabular-nums text-ink">{formatCurrency(estimate.pricePerSqft)}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-600">Comparable listings</span>
-                    <span className="text-sm font-semibold text-cedar">{estimate.marketContext.comparableCount.toLocaleString()}</span>
+                  <div className="data-row">
+                    <span className="text-sm font-medium text-body">Comparable listings</span>
+                    <span className="text-sm font-semibold tabular-nums text-ink">{estimate.marketContext.comparableCount.toLocaleString()}</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-600">Practical ceiling</span>
-                    <span className="text-sm font-semibold text-cedar">{formatCurrency(estimate.marketContext.practicalCeiling)}</span>
+                  <div className="data-row">
+                    <span className="text-sm font-medium text-body">Practical ceiling</span>
+                    <span className="text-sm font-semibold tabular-nums text-ink">{formatCurrency(estimate.marketContext.practicalCeiling)}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-4 rounded-lg bg-slate-50 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-600">Current market index</span>
-                    <span className="text-right text-sm font-semibold text-cedar">
+                  <div className="data-row">
+                    <span className="text-sm font-medium text-body">Current market index</span>
+                    <span className="text-right text-sm font-semibold tabular-nums text-ink">
                       {estimate.marketFreshness?.status === "adjusted" && estimate.marketFreshness.multiplier != null
                         ? formatPercent((estimate.marketFreshness.multiplier - 1) * 100, 1)
                         : "Not applied"}
                     </span>
                   </div>
-                  <p className="text-sm leading-6 text-slate-500">
+                  <p className="text-sm leading-6 text-muted">
                     {estimate.marketFreshness?.message ??
                       "This is a listing-price model, so treat it as a planning estimate rather than an appraisal."}
                   </p>
                 </div>
               ) : (
-                <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">Loading local market context...</div>
+                <div className="data-row text-sm text-muted">Loading local market context...</div>
               )}
             </SectionCard>
           </div>
 
           <div className="flex justify-end">
-            <NavLink
-              to="/improve"
-              className="inline-flex rounded-lg bg-cedar px-4 py-2 text-sm font-semibold text-white transition hover:bg-slateblue"
-            >
+            <NavLink to="/improve" className="btn-primary">
               Next: improve value
+              <ArrowRight className="h-4 w-4" />
             </NavLink>
           </div>
         </div>

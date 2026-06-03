@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { improvementCatalog, improvementFlagValues, type PlannedFlag } from "@vvl/shared";
 
 const improvementOptions = improvementFlagValues.map((flag) => ({
@@ -31,22 +32,24 @@ export function ImprovementFlagPicker({ plannedFlags, onChange }: ImprovementFla
             key={option.flag}
             type="button"
             onClick={() => toggle(option.flag)}
-            className={`rounded-lg border px-4 py-4 text-left transition ${
+            className={`rounded-card border px-4 py-4 text-left transition ${
               active
-                ? "border-sound-400 bg-sound-50 shadow-soft"
-                : "border-slate-200 bg-white hover:border-slate-300"
+                ? "border-brand-400 bg-brand-50 ring-1 ring-brand-200"
+                : "border-line bg-surface hover:border-slate-300"
             }`}
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-cedar">{option.label}</div>
-                <div className="mt-1 text-sm leading-6 text-slate-500">{option.hint}</div>
+                <div className="text-sm font-semibold text-ink">{option.label}</div>
+                <div className="mt-1 text-sm leading-6 text-muted">{option.hint}</div>
               </div>
-              <div
-                className={`mt-1 h-5 w-5 rounded-full border-2 ${
-                  active ? "border-sound-600 bg-sound-600" : "border-slate-300 bg-white"
+              <span
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition ${
+                  active ? "border-brand-600 bg-brand-600 text-white" : "border-slate-300 bg-surface text-transparent"
                 }`}
-              />
+              >
+                <Check className="h-3 w-3" strokeWidth={3} />
+              </span>
             </div>
           </button>
         );

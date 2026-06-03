@@ -112,6 +112,7 @@ const fallbackEastArea: AreaProfile = {
   comparableCount: 22,
 };
 
+// Public mode uses deterministic starter rows and transparent formulas so the deployed app works without private data.
 const starterProperties: Array<PropertyInput & { id: string; askingPrice: number; budget: number; targetPrice: number; timelineMonths: number; plannedFlags: PlannedFlag[] }> = [
   {
     id: "starter-condo-yaletown",

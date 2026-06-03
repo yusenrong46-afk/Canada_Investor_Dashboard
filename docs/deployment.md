@@ -56,50 +56,6 @@ The expected health response includes:
 }
 ```
 
-## Optional Render API
-
-The repo also includes `render.yaml` in case I want a separate always-on API service later.
-
-Render settings:
-
-- Service type: Web Service
-- Runtime: Node
-- Branch: `main`
-- Build command: `corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm --filter @vvl/api-server build`
-- Start command: `node artifacts/api-server/dist/index.cjs`
-- Health check path: `/health`
-
-Render environment variables:
-
-```bash
-DEMO_MODE=false
-PUBLIC_MODE=true
-API_HOST=0.0.0.0
-NODE_VERSION=24
-```
-
-After Render deploys, the API should respond at:
-
-```text
-https://<render-service-url>/health
-```
-
-The expected health response includes:
-
-```json
-{
-  "ok": true,
-  "service": "api-server",
-  "mode": "public-interactive-estimator"
-}
-```
-
-If I choose the optional Render API setup, I should set this Vercel environment variable:
-
-```bash
-VITE_API_BASE_URL=https://<render-service-url>/api
-```
-
 For the Vercel-only public version, leave `VITE_API_BASE_URL` unset so the frontend uses `/api` on the same public domain.
 
 ## Live Local Mode
@@ -181,4 +137,3 @@ PYTHONPYCACHEPREFIX=/private/tmp/codex_pycache .venv/bin/python -m pytest
 - Confirm no private raw-data paths appear in the UI.
 - Confirm reports do not claim unavailable metrics.
 - Confirm README limitations are visible.
-- Add screenshots under `docs/screenshots/` if I want a stronger GitHub preview.

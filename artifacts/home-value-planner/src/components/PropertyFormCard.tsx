@@ -45,6 +45,7 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
   }, [property.bathrooms, property.bedrooms, property.knownCurrentValue, property.livingAreaSqft, property.yearBuilt]);
 
   const updateNumber = (key: NumberFieldKey, value: string) => {
+    // Keep a draft string so users can clear or partially type a number without committing invalid app state.
     setNumberDrafts((current) => ({ ...current, [key]: value }));
 
     const range = numberFieldRanges[key];
@@ -72,11 +73,11 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft xl:sticky xl:top-24">
+    <div className="card-pad xl:sticky xl:top-28">
       <div className="mb-5">
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">Home profile</div>
-        <h2 className="mt-1 font-display text-xl text-cedar">Enter the home details</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
+        <div className="eyebrow">Home profile</div>
+        <h2 className="mt-1 font-display text-xl text-ink">Enter the home details</h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
           Use the current condition of the home. The optional value field is only for your own comparison.
         </p>
       </div>
@@ -91,7 +92,7 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
             placeholder="V6B 1X9"
             onChange={(event) => onChange({ ...property, postalCode: event.target.value.toUpperCase() })}
           />
-          <p className="text-xs text-slate-500">Use a Vancouver postal code in the V5 or V6 area.</p>
+          <p className="text-xs text-muted">Use a Vancouver postal code in the V5 or V6 area.</p>
         </label>
 
         <label className="space-y-2">

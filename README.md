@@ -49,6 +49,7 @@ Express API
   POST /api/simulate
   POST /api/plan
   POST /api/deal/analyze
+  GET  /api/insights
 
 Python model service
   /estimate  Vancouver listing-price model
@@ -67,7 +68,6 @@ demo/                          public sample outputs for demo mode
 docs/                          portfolio documentation
 reports/                       generated model and data-quality reports
 tests/                         focused Python tests
-legacy/                        older experiments moved out of the active app
 ```
 
 ## Tech Stack
@@ -138,7 +138,6 @@ The public portfolio version is designed to deploy as an interactive screening p
 - Vercel serves the React/Vite frontend from `vercel.json`.
 - Vercel runs the Express API through the small serverless adapter in `api/[...path].js`.
 - The Python model service is not required for the public site.
-- Render deployment config is included as an optional separate API host if I want it later.
 - `PUBLIC_MODE=true` makes the hosted API calculate estimates, renovation upside, plans, and deal verdicts from user inputs.
 - `DEMO_MODE=true` still exists for fixed sample-output testing.
 
@@ -159,16 +158,9 @@ Users can:
 
 Saved scenarios stay in the browser through localStorage. This keeps the portfolio project simple and explainable without adding authentication or a database too early.
 
-## Screenshots
+## Demo Walkthrough
 
-Placeholder paths:
-
-- `docs/screenshots/estimate-page.png`
-- `docs/screenshots/improve-page.png`
-- `docs/screenshots/plan-page.png`
-- `docs/screenshots/insights-page.png`
-- `docs/screenshots/deal-analyzer-page.png`
-- `docs/demo-script.md`
+Use `docs/demo-script.md` for the interview walkthrough. The live app is the primary demo artifact, so placeholder screenshot paths are intentionally not kept in the repo.
 
 ## Reports
 
@@ -203,7 +195,7 @@ The scripts do not invent missing metrics. If a model artifact or data file is m
 - Improve geospatial features with parcels, zoning, transit, and neighbourhood data.
 - Add saved projects and authentication.
 - Add a full live-mode deployment after the Python model service and data pipeline are ready for public hosting.
-- Add more automated checks around API contracts and report generation.
+- Add more automated checks around API behavior and report generation.
 - Use `docs/demo-script.md` to practice the interview walkthrough.
 
 ## Interview Summary

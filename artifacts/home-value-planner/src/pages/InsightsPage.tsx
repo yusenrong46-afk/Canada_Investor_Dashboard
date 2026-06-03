@@ -133,19 +133,19 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
   const pricePerSqftRows = useMemo(() => (displayData ? buildPricePerSqftRows(displayData) : []), [displayData]);
 
   if (error) {
-    return <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{error}</div>;
+    return <div className="rounded-card border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">{error}</div>;
   }
 
   if (!displayData) {
-    return <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-soft">Loading insights...</div>;
+    return <div className="card px-4 py-3 text-sm text-muted">Loading insights...</div>;
   }
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">Market & Investment Insights</div>
-        <h1 className="font-display text-3xl text-cedar">{scenarios.length ? "What do my saved scenarios say?" : "What do the starter scenarios say?"}</h1>
-        <p className="max-w-3xl text-sm leading-6 text-slate-500">
+        <div className="eyebrow">Market &amp; Investment Insights</div>
+        <h1 className="font-display text-3xl text-ink">{scenarios.length ? "What do my saved scenarios say?" : "What do the starter scenarios say?"}</h1>
+        <p className="max-w-3xl text-sm leading-6 text-muted">
           This page turns saved scenario outputs into a simple analyst view: value levels, price-per-square-foot patterns, risk notes,
           and top investment scenarios.
         </p>
@@ -168,11 +168,11 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={typeRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="propertyType" tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="propertyType" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
                 <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="estimatedValue" fill="#128284" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="estimatedValue" fill="#0d9488" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -190,11 +190,11 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="livingAreaSqft" name="Sqft" tickLine={false} axisLine={false} />
-                <YAxis dataKey="estimatedValue" name="Value" tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="livingAreaSqft" name="Sqft" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                <YAxis dataKey="estimatedValue" name="Value" tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
                 <Tooltip formatter={(value, name) => (name === "Value" ? formatCurrency(Number(value)) : Number(value).toLocaleString())} />
-                <Scatter data={displayData.rows} fill="#128284" />
+                <Scatter data={displayData.rows} fill="#0d9488" />
               </ScatterChart>
             </ResponsiveContainer>
           </div>
@@ -208,11 +208,11 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={pricePerSqftRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="propertyType" tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={(value) => `$${Number(value)}`} width={72} tickLine={false} axisLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="propertyType" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                <YAxis tickFormatter={(value) => `$${Number(value)}`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
                 <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="pricePerSqft" fill="#345c72" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="pricePerSqft" fill="#0f766e" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -227,7 +227,7 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+              <tr className="border-b border-line text-[11px] uppercase tracking-[0.14em] text-muted">
                 <th className="py-3 pr-4 font-bold">Property type</th>
                 <th className="py-3 pr-4 font-bold">Living area</th>
                 <th className="py-3 pr-4 font-bold">Beds</th>
@@ -242,15 +242,15 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
             </thead>
             <tbody>
               {displayData.rows.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100">
-                  <td className="py-3 pr-4 font-semibold text-cedar">{row.propertyType}</td>
-                  <td className="py-3 pr-4">{row.livingAreaSqft.toLocaleString()} sqft</td>
-                  <td className="py-3 pr-4">{row.bedrooms}</td>
-                  <td className="py-3 pr-4">{row.bathrooms}</td>
-                  <td className="py-3 pr-4">{formatCurrency(row.estimatedValue)}</td>
-                  <td className="py-3 pr-4">{formatCurrency(row.budget)}</td>
-                  <td className="py-3 pr-4">{formatCurrency(row.targetPrice)}</td>
-                  <td className="py-3 pr-4">{formatSignedCurrency(row.estimatedUpside)}</td>
+                <tr key={row.id} className="border-b border-line/60 even:bg-canvas">
+                  <td className="py-3 pr-4 font-semibold text-ink">{row.propertyType}</td>
+                  <td className="py-3 pr-4 tabular-nums">{row.livingAreaSqft.toLocaleString()} sqft</td>
+                  <td className="py-3 pr-4 tabular-nums">{row.bedrooms}</td>
+                  <td className="py-3 pr-4 tabular-nums">{row.bathrooms}</td>
+                  <td className="py-3 pr-4 tabular-nums">{formatCurrency(row.estimatedValue)}</td>
+                  <td className="py-3 pr-4 tabular-nums">{formatCurrency(row.budget)}</td>
+                  <td className="py-3 pr-4 tabular-nums">{formatCurrency(row.targetPrice)}</td>
+                  <td className="py-3 pr-4 tabular-nums">{formatSignedCurrency(row.estimatedUpside)}</td>
                   <td className="py-3 pr-4">{row.riskLevel}</td>
                   <td className="py-3">{row.verdict}</td>
                 </tr>

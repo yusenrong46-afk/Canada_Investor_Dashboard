@@ -18,22 +18,19 @@ export function ModelStoryPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-lg border border-slate-200 bg-white p-8 shadow-soft">
+      <section className="hero-panel bg-gradient-to-br from-surface to-brand-50/40">
         <div className="max-w-3xl">
-          <div className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-sound-600">Model & data story</div>
-          <h1 className="mt-2 font-display text-4xl leading-tight text-cedar">How I built the deal analyzer, and where I would improve it next</h1>
-          <p className="mt-3 text-base leading-7 text-slate-500">
+          <div className="eyebrow">Model &amp; data story</div>
+          <h1 className="mt-2 font-display text-4xl leading-tight text-ink">How I built the deal analyzer, and where I would improve it next</h1>
+          <p className="mt-3 text-base leading-7 text-body">
             I kept this project focused on one practical question: is this Vancouver deal worth deeper review? The model helps with screening,
             but I also show the data limits clearly because real estate models can become misleading fast.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link to="/" className="rounded-full bg-cedar px-5 py-3 text-sm font-semibold text-white transition hover:bg-slateblue">
+            <Link to="/" className="btn-primary">
               Open workflow
             </Link>
-            <Link
-              to="/deal-analyzer"
-              className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-sound-200 hover:text-sound-700"
-            >
+            <Link to="/deal-analyzer" className="btn-ghost">
               Open deal analyzer
             </Link>
           </div>
@@ -42,11 +39,11 @@ export function ModelStoryPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         {modelRows.map(([title, source, metric, body]) => (
-          <div key={title} className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="font-display text-xl text-cedar">{title}</div>
-            <div className="mt-3 text-[11px] font-extrabold uppercase tracking-[0.16em] text-sound-600">{source}</div>
-            <div className="mt-1 text-sm font-semibold text-slate-700">{metric}</div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{body}</p>
+          <div key={title} className="card-pad">
+            <div className="font-display text-xl text-ink">{title}</div>
+            <div className="eyebrow mt-3">{source}</div>
+            <div className="mt-1 text-sm font-semibold text-body">{metric}</div>
+            <p className="mt-2 text-sm leading-6 text-muted">{body}</p>
           </div>
         ))}
       </div>
@@ -56,7 +53,7 @@ export function ModelStoryPage() {
         eyebrow="Resume narrative"
         description="The strongest story is not that the model is perfect. The strongest story is that the product tells the user what the model can and cannot know."
       >
-        <div className="space-y-3 text-sm leading-6 text-slate-600">
+        <div className="space-y-3 text-sm leading-6 text-body">
           <p>
             I built this as a full-stack data science project, not just a notebook. The React app gives the investor workflow, the Express API
             keeps validation and deal math in one place, and the Python service owns the model training and inference.
@@ -75,9 +72,9 @@ export function ModelStoryPage() {
       >
         <div className="grid gap-3 md:grid-cols-2">
           {nextDataRows.map(([title, body]) => (
-            <div key={title} className="rounded-xl bg-slate-50 px-4 py-3">
-              <div className="text-sm font-semibold text-cedar">{title}</div>
-              <div className="mt-1 text-sm leading-6 text-slate-500">{body}</div>
+            <div key={title} className="rounded-field bg-canvas px-4 py-3">
+              <div className="text-sm font-semibold text-ink">{title}</div>
+              <div className="mt-1 text-sm leading-6 text-muted">{body}</div>
             </div>
           ))}
         </div>

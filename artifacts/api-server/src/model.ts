@@ -13,6 +13,7 @@ import {
 const modelServiceBaseUrl = (process.env.MODEL_SERVICE_URL ?? "http://127.0.0.1:5001").replace(/\/$/, "");
 
 async function requestModelService<TResponse>(path: string, payload?: object): Promise<TResponse> {
+  // Live local mode delegates model inference to Flask; demo/public modes bypass this boundary.
   const response = await fetch(`${modelServiceBaseUrl}${path}`, {
     method: payload ? "POST" : "GET",
     headers: payload ? { "Content-Type": "application/json" } : undefined,
@@ -161,6 +162,7 @@ export async function buildSalePlan(request: PlanRequest): Promise<PlanResponse>
   let remainingBudget = request.budget;
   let remainingMonths = request.timelineMonths;
 
+  // Greedy selection keeps the planner easy to explain: pick the strongest positive-value actions that fit the limits.
   for (const item of byValueDescending(candidateRows)) {
     if (item.cost > remainingBudget || item.months > remainingMonths || item.projectedUplift <= 0) {
       continue;

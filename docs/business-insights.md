@@ -80,6 +80,18 @@ The value is in connecting:
 
 That is the part I want recruiters to notice.
 
+## Streamlined Product Scope
+
+The active repo now focuses on one complete workflow:
+
+- estimate the current value
+- test renovation upside
+- build a plan
+- save and compare scenarios
+- summarize insights from saved scenarios
+
+Older prototypes, dormant database experiments, assistant experiments, and optional deployment artifacts were removed so the codebase is easier to review and explain.
+
 ## Current Limitations
 
 - Listing value is not final sale price.

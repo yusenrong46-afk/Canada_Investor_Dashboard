@@ -90,6 +90,7 @@ function demoPlans(): DemoPlanFileRow[] {
 
 function chooseDemoProperty(property: PropertyInput): DemoProperty {
   const samples = demoProperties();
+  // Prefer postal-code matches, then property-type matches, so demo mode still reacts to user input.
   const postalMatch = samples.find((sample) => sample.postalCode.replace(" ", "") === property.postalCode.replace(" ", ""));
   const typeMatch = samples.find((sample) => sample.propertyType === property.propertyType);
   return postalMatch ?? typeMatch ?? samples[0];
