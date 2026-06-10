@@ -18,6 +18,26 @@
 - Townhouse: `xgboost` selected by cross-validation MAE.
 - The app compares XGBoost and Random Forest per property type when the training artifact is available.
 
+## Conformal Coverage
+
+| Segment | Target coverage | Empirical coverage | Calibration rows | Coverage rows | Interval ratio |
+|---|---:|---:|---:|---:|---:|
+| Condo | 80.00% | 83.92% | 200 | 199 | 0.1829 |
+| Detached | 80.00% | 82.00% | 100 | 100 | 0.3110 |
+| Duplex | 80.00% | 78.57% | 29 | 28 | 0.0996 |
+| Townhouse | 80.00% | 92.00% | 25 | 25 | 0.3958 |
+
+## Spatial Generalization
+
+| Segment | Random CV MAE | Spatial CV MAE | Gap |
+|---|---:|---:|---:|
+| Condo | $149,525 | $211,063 | 41.2% |
+| Detached | $840,331 | $982,157 | 16.9% |
+| Duplex | $146,401 | $197,087 | 34.6% |
+| Townhouse | $209,278 | $265,639 | 26.9% |
+
+Spatial CV uses GroupKFold grouped by postal FSA, so each validation fold contains only postal areas the model never saw in training.
+
 ## Data Quality Summary
 
 | Check | Result |

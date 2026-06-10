@@ -9,7 +9,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODEL_SERVICE_DIR = REPO_ROOT / "artifacts" / "model-service"
-DEFAULT_ARTIFACT_PATH = MODEL_SERVICE_DIR / "models" / "vancouver_base_price_bundle_v4.pkl"
+DEFAULT_ARTIFACT_PATH = MODEL_SERVICE_DIR / "models" / "vancouver_base_price_bundle_v5.pkl"
 DEFAULT_SUMMARY_PATH = REPO_ROOT / "data" / "processed" / "vancouver_base_model_summary.json"
 DEFAULT_OUTPUT_PATH = REPO_ROOT / "reports" / "model_metrics_report.md"
 
@@ -113,6 +113,50 @@ def metrics_from_bundle(bundle: Any) -> dict[str, Any] | None:
   }
 
 
+def conformal_rows(bundle: Any) -> list[dict[str, Any]] | None:
+  calibrations = getattr(bundle, "conformal_calibrations", None)
+  if not isinstance(calibrations, dict) or not calibrations:
+    return None
+
+  rows = []
+  for property_type, calibration in calibrations.items():
+    rows.append(
+      {
+        "segment": property_type,
+        "target_coverage": getattr(calibration, "target_coverage", None),
+        "empirical_coverage": getattr(calibration, "empirical_coverage", None),
+        "calibration_rows": getattr(calibration, "calibration_rows", None),
+        "coverage_rows": getattr(calibration, "coverage_rows", None),
+        "ratio": getattr(calibration, "ratio", None),
+      }
+    )
+  return rows
+
+
+def spatial_rows(bundle: Any) -> list[dict[str, Any]] | None:
+  summary = getattr(bundle, "evaluation_summary", None)
+  if not isinstance(summary, dict):
+    return None
+
+  per_type = summary.get("perType", {})
+  if not isinstance(per_type, dict) or not per_type:
+    return None
+
+  rows = []
+  for property_type, details in per_type.items():
+    if "spatialCvMae" not in details and "randomCvMae" not in details:
+      continue
+    rows.append(
+      {
+        "segment": property_type,
+        "random_cv_mae": details.get("randomCvMae"),
+        "spatial_cv_mae": details.get("spatialCvMae"),
+        "gap_pct": details.get("spatialGeneralizationGapPct"),
+      }
+    )
+  return rows or None
+
+
 def data_quality_rows(summary: dict[str, Any] | None) -> list[tuple[str, str]]:
   if not summary:
     return [("processed summary file", "not found")]
@@ -180,6 +224,57 @@ def build_model_report(
   else:
     lines.append("- Metrics not available yet.")
     lines.append(f"- {bundle_error or 'A saved model artifact or evaluation file is needed before metrics can be reported.'}")
+
+  lines.extend(["", "## Conformal Coverage", ""])
+  conformal = conformal_rows(bundle) if bundle is not None else None
+  if conformal:
+    lines.extend(
+      [
+        "| Segment | Target coverage | Empirical coverage | Calibration rows | Coverage rows | Interval ratio |",
+        "|---|---:|---:|---:|---:|---:|",
+      ]
+    )
+    for row in conformal:
+      empirical = format_percent(row["empirical_coverage"]) if row["empirical_coverage"] is not None else "not measured (too few rows)"
+      lines.append(
+        "| {segment} | {target} | {empirical} | {calibration_rows} | {coverage_rows} | {ratio} |".format(
+          segment=row["segment"],
+          target=format_percent(row["target_coverage"]),
+          empirical=empirical,
+          calibration_rows=format_number(row["calibration_rows"], 0),
+          coverage_rows=format_number(row["coverage_rows"], 0),
+          ratio=format_number(row["ratio"], 4),
+        )
+      )
+  else:
+    lines.append(
+      "Conformal coverage is not available: the saved bundle predates v5 (or no artifact was found), so no calibration was stored. This report does not invent coverage numbers."
+    )
+
+  lines.extend(["", "## Spatial Generalization", ""])
+  spatial = spatial_rows(bundle) if bundle is not None else None
+  if spatial:
+    lines.extend(
+      [
+        "| Segment | Random CV MAE | Spatial CV MAE | Gap |",
+        "|---|---:|---:|---:|",
+      ]
+    )
+    for row in spatial:
+      lines.append(
+        "| {segment} | ${random_mae} | {spatial_mae} | {gap} |".format(
+          segment=row["segment"],
+          random_mae=format_number(row["random_cv_mae"], 0),
+          spatial_mae=f"${format_number(row['spatial_cv_mae'], 0)}" if row["spatial_cv_mae"] is not None else "not run",
+          gap=f"{format_number(row['gap_pct'], 1)}%" if row["gap_pct"] is not None else "not available",
+        )
+      )
+    lines.append("")
+    lines.append("Spatial CV uses GroupKFold grouped by postal FSA, so each validation fold contains only postal areas the model never saw in training.")
+  else:
+    lines.append(
+      "Spatial generalization metrics are not available: the saved bundle predates v5 (or no artifact was found), so no GroupKFold results were stored. This report does not invent gap numbers."
+    )
 
   lines.extend(["", "## Data Quality Summary", "", "| Check | Result |", "|---|---:|"])
   for check, result in data_quality_rows(summary):
