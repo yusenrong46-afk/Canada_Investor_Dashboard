@@ -1,5 +1,9 @@
+import { ZodError } from "zod/v4";
+
 import {
+  detectMarket,
   improvementCatalog,
+  marketCatalog,
   type DealAnalyzeResponse,
   type DealLabel,
   type DealRiskFlag,
@@ -15,7 +19,12 @@ import {
   type PropertyType,
   type SimulateRequest,
   type SimulateResponse,
+  type UpliftDriver,
 } from "@vvl/shared";
+
+import { computeDealRobustness } from "./dealAnalysis";
+import { hasReadyUpliftCategory, loadHalifaxUplift, type HalifaxUpliftFile } from "./halifaxUplift";
+import { getEvidenceAreaProfile, type EvidenceAreaProfile } from "./marketProfiles";
 
 export const publicModeEnabled = process.env.PUBLIC_MODE === "true" || process.env.PUBLIC_MODE === "1";
 
@@ -186,6 +195,18 @@ function getAreaProfile(postalCode: string): AreaProfile {
   return fsaProfiles[fsa] ?? (fsa.startsWith("V6") ? fallbackWestArea : fallbackEastArea);
 }
 
+// ZodError keeps app.ts mapping engine-level input problems to a 400.
+function publicInputError(message: string, postalCode: string): ZodError {
+  return new ZodError([
+    {
+      code: "custom",
+      path: ["postalCode"],
+      message,
+      input: postalCode,
+    },
+  ]);
+}
+
 function expectedBedrooms(propertyType: PropertyType, sqft: number): number {
   if (propertyType === "Condo") {
     if (sqft < 650) return 1;
@@ -260,6 +281,20 @@ function modelQualityForPublicMode(profile: TypeProfile, missingnessNotes: strin
 }
 
 export function buildPublicEstimate(property: PropertyInput): EstimateResponse {
+  const market = detectMarket(property.postalCode);
+
+  if (market === "halifax_maritimes") {
+    return buildHalifaxPublicEstimate(property);
+  }
+  if (market !== "vancouver") {
+    throw publicInputError("Use a Vancouver postal code in the V5 or V6 area, or a Halifax / Maritimes postal code in the B area.", property.postalCode);
+  }
+
+  return buildVancouverPublicEstimate(property);
+}
+
+function buildVancouverPublicEstimate(property: PropertyInput): EstimateResponse {
+  const market = "vancouver" as const;
   const profile = typeProfiles[property.propertyType];
   const area = getAreaProfile(property.postalCode);
   const sqft = Math.max(property.livingAreaSqft, 1);
@@ -300,6 +335,8 @@ export function buildPublicEstimate(property: PropertyInput): EstimateResponse {
     trainingMode: "public-interactive-estimator",
     modelFamily: profile.modelFamily,
     modelScope: property.propertyType,
+    market,
+    marketLabel: marketCatalog[market].label,
     baseValue,
     confidenceLow: roundMoney(baseValue * (1 - confidenceRatio)),
     confidenceHigh: roundMoney(baseValue * (1 + confidenceRatio)),
@@ -313,6 +350,8 @@ export function buildPublicEstimate(property: PropertyInput): EstimateResponse {
       localAreaScope: fsaProfiles[getFsa(property.postalCode)] ? "fsa" : "city-property-type",
       localMedianValue,
       localMedianPricePerSqft,
+      cityMedianValue: profile.cityMedianValue,
+      cityMedianPricePerSqft: profile.cityMedianPricePerSqft,
       vancouverMedianValue: profile.cityMedianValue,
       vancouverMedianPricePerSqft: profile.cityMedianPricePerSqft,
       percentileRank: Number(clamp(0.5 + ((baseValue - localMedianValue) / Math.max(localMedianValue, 1)) * 0.5, 0.05, 0.95).toFixed(2)),
@@ -320,9 +359,122 @@ export function buildPublicEstimate(property: PropertyInput): EstimateResponse {
       premiumGap: roundMoney(baseValue - localMedianValue),
       comparableCount: area.comparableCount,
     },
+    uncertainty: {
+      method: "error-ratio",
+      targetCoverage: 0.8,
+      calibrationNote: "The band comes from the saved holdout error ratio for this property type, not a per-property conformal calibration.",
+    },
+    explanationMethod: "heuristic",
     marketFreshness: {
       status: "not-applied",
       message: "Public interactive mode: estimates update from your inputs using a transparent screening model. It is not a live MLS feed or appraisal.",
+    },
+  };
+}
+
+function evidenceContextScope(profile: EvidenceAreaProfile): EstimateResponse["marketContext"]["localAreaScope"] {
+  if (profile.scope === "fsa-property-type" || profile.scope === "fsa") {
+    return "fsa";
+  }
+  return profile.scope === "market-property-type" ? "city-property-type" : "city";
+}
+
+// Halifax public estimates are anchored to PVSC sale-price medians from the committed evidence export,
+// then reuse the Vancouver engine's bedroom/bathroom/age adjustment flavor and error-ratio band.
+function buildHalifaxPublicEstimate(property: PropertyInput): EstimateResponse {
+  const market = "halifax_maritimes" as const;
+
+  if (property.propertyType === "Condo") {
+    throw publicInputError(
+      "Condo estimates are not available for Halifax / Maritimes: PVSC open data does not cover condo unit characteristics. Supported property types are Detached, Townhouse, and Duplex.",
+      property.postalCode,
+    );
+  }
+
+  const fsa = getFsa(property.postalCode);
+  const area = getEvidenceAreaProfile(market, fsa, property.propertyType);
+  const city = getEvidenceAreaProfile(market, undefined, property.propertyType);
+
+  if (!area || !city) {
+    throw publicInputError(
+      "Halifax / Maritimes public estimates need the committed evidence export (data/exports/market_evidence.json), which is missing or has no Halifax rows - run live mode for B-prefix postal codes.",
+      property.postalCode,
+    );
+  }
+
+  // typeProfiles only contributes the saved model-family label and base error ratio; all price levels come from evidence rows.
+  const profile = typeProfiles[property.propertyType];
+  const sqft = Math.max(property.livingAreaSqft, 1);
+  const baseFromSqft = sqft * area.medianPricePerSqft;
+  const marketGapDriver = sqft * (area.medianPricePerSqft - city.medianPricePerSqft);
+  const bedroomGap = property.bedrooms - expectedBedrooms(property.propertyType, sqft);
+  const bathroomGap = property.bathrooms - expectedBathrooms(property.propertyType, property.bedrooms);
+  const bedroomDriver = baseFromSqft * clamp(bedroomGap * 0.018, -0.045, 0.07);
+  const bathroomDriver = baseFromSqft * clamp(bathroomGap * 0.014, -0.035, 0.055);
+  const ageDriver = baseFromSqft * ageAdjustment(property);
+  const baseValue = roundMoney(baseFromSqft + bedroomDriver + bathroomDriver + ageDriver);
+  const localMedianValue = roundMoney(area.medianValue);
+  const localMedianPricePerSqft = Math.round(area.medianPricePerSqft);
+  const cityMedianValue = roundMoney(city.medianValue);
+  const cityMedianPricePerSqft = Math.round(city.medianPricePerSqft);
+  const confidenceRatio = clamp(
+    profile.baseConfidenceRatio + (property.yearBuilt ? 0 : 0.015) + (area.comparableCount < 24 ? 0.015 : 0) + (Math.abs(bedroomGap) >= 2 ? 0.01 : 0),
+    0.09,
+    0.22,
+  );
+  const driverRows: EstimateResponse["drivers"] = [
+    { label: `${area.label} evidence $/sqft vs Halifax / Maritimes market`, value: roundMoney(marketGapDriver), source: "heuristic" },
+    { label: `${property.bedrooms} bedroom layout`, value: roundMoney(bedroomDriver), source: "heuristic" },
+    { label: `${property.bathrooms} bathroom count`, value: roundMoney(bathroomDriver), source: "heuristic" },
+    { label: property.yearBuilt ? `Built in ${property.yearBuilt}` : "Year built not provided", value: roundMoney(ageDriver), source: "heuristic" },
+  ];
+  const drivers = driverRows.sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
+  const missingnessNotes = [
+    "Halifax / Maritimes public estimates come from PVSC sale-price evidence medians in data/exports/market_evidence.json, not a saved Halifax model.",
+    "No Halifax model validation metrics are committed yet, so the model-quality numbers shown are the saved Vancouver listing-model reference.",
+    "Halifax evidence medians are time-adjusted sale prices, not listing prices.",
+    property.yearBuilt ? "Year built was provided by the user." : "Year built was missing, so a small uncertainty penalty was applied.",
+    "This public estimator is for screening and portfolio review, not appraisal or lending decisions.",
+  ];
+
+  return {
+    modelVersion: "public-halifax-evidence-screening-v1",
+    trainingMode: "public-interactive-estimator",
+    modelFamily: profile.modelFamily,
+    modelScope: property.propertyType,
+    market,
+    marketLabel: marketCatalog[market].label,
+    baseValue,
+    confidenceLow: roundMoney(baseValue * (1 - confidenceRatio)),
+    confidenceHigh: roundMoney(baseValue * (1 + confidenceRatio)),
+    anchorValue: property.knownCurrentValue ? roundMoney(baseValue * 0.75 + property.knownCurrentValue * 0.25) : baseValue,
+    pricePerSqft: Math.round(baseValue / sqft),
+    confidenceRatio,
+    modelQuality: modelQualityForPublicMode(profile, missingnessNotes),
+    drivers,
+    marketContext: {
+      localAreaLabel: evidenceContextScope(area) === "fsa" ? `${area.label} postal area` : `${area.label} market-wide evidence`,
+      localAreaScope: evidenceContextScope(area),
+      localMedianValue,
+      localMedianPricePerSqft,
+      cityMedianValue,
+      cityMedianPricePerSqft,
+      vancouverMedianValue: cityMedianValue,
+      vancouverMedianPricePerSqft: cityMedianPricePerSqft,
+      percentileRank: Number(clamp(0.5 + ((baseValue - localMedianValue) / Math.max(localMedianValue, 1)) * 0.5, 0.05, 0.95).toFixed(2)),
+      practicalCeiling: roundMoney(Math.max(baseValue, localMedianValue) * (property.propertyType === "Detached" ? 1.28 : 1.2)),
+      premiumGap: roundMoney(baseValue - localMedianValue),
+      comparableCount: area.comparableCount,
+    },
+    uncertainty: {
+      method: "error-ratio",
+      targetCoverage: 0.8,
+      calibrationNote: "Public mode band from evidence medians, not the conformal live model.",
+    },
+    explanationMethod: "heuristic",
+    marketFreshness: {
+      status: "not-applied",
+      message: "Public interactive mode: Halifax / Maritimes values come from committed PVSC evidence medians plus transparent adjustments. It is not a live MLS feed or appraisal.",
     },
   };
 }
@@ -394,8 +546,130 @@ function phaseRows(items: PlanLineItem[]): PlanPhase[] {
   }));
 }
 
+function publicDataSources(estimate: EstimateResponse): Record<string, string> {
+  if (estimate.market === "halifax_maritimes") {
+    return {
+      evidence: "data/exports/market_evidence.json",
+      publicRules: "artifacts/api-server/src/publicEngine.ts",
+    };
+  }
+  return {
+    modelSummary: "reports/model_metrics_report.md",
+    publicRules: "artifacts/api-server/src/publicEngine.ts",
+  };
+}
+
+// Halifax simulate prefers the committed local repeat-sale uplift export over generic improvement assumptions.
+// Distinct categories contribute their observed median once (several flags can map to one category), and a
+// category without enough treated pairs contributes exactly 0 instead of an invented percentage.
+function buildHalifaxObservedSimulate(request: SimulateRequest, estimate: EstimateResponse, upliftFile: HalifaxUpliftFile): SimulateResponse {
+  const selectedFlags = request.plannedFlags ?? [];
+  const categoryFlags = new Map<string, PlannedFlag[]>();
+  const unmappedFlags: PlannedFlag[] = [];
+
+  for (const flag of selectedFlags) {
+    const category = upliftFile.flagCategoryMap[flag];
+    if (!category || !upliftFile.categories[category]) {
+      unmappedFlags.push(flag);
+      continue;
+    }
+    categoryFlags.set(category, [...(categoryFlags.get(category) ?? []), flag]);
+  }
+
+  let upliftPercent = 0;
+  let upliftPercentLow = 0;
+  let upliftPercentHigh = 0;
+  let readyCategoryCount = 0;
+  const zeroContributionNotes: string[] = [];
+  const topUpliftDrivers: UpliftDriver[] = [];
+  const rowCounts: Record<string, number> = { evidenceComparables: estimate.marketContext.comparableCount };
+
+  for (const [category, flags] of categoryFlags) {
+    const observed = upliftFile.categories[category];
+    const flagLabels = flags.map((flag) => improvementCatalog[flag].label).join(" + ");
+    rowCounts[`${category.toLowerCase()}TreatedPairs`] = observed.treatedPairs;
+    rowCounts[`${category.toLowerCase()}ControlPairs`] = observed.controlPairs;
+
+    if (observed.status === "ready" && observed.medianExcessUpliftPercent != null) {
+      readyCategoryCount += 1;
+      upliftPercent += observed.medianExcessUpliftPercent;
+      upliftPercentLow += observed.p25ExcessUpliftPercent ?? observed.medianExcessUpliftPercent;
+      upliftPercentHigh += observed.p75ExcessUpliftPercent ?? observed.medianExcessUpliftPercent;
+      topUpliftDrivers.push({
+        flag: flags[0],
+        label: `${flagLabels} (${category})`,
+        value: Math.round(estimate.baseValue * observed.medianExcessUpliftPercent),
+        upliftPercent: observed.medianExcessUpliftPercent,
+        confidence: "medium",
+        rationale: `Median excess uplift from ${observed.treatedPairs} treated repeat-sale pairs vs ${observed.controlPairs} matched controls. ${observed.note}`,
+      });
+    } else {
+      zeroContributionNotes.push(`${category} contributes $0: ${observed.note}`);
+      topUpliftDrivers.push({
+        flag: flags[0],
+        label: `${flagLabels} (${category})`,
+        value: 0,
+        upliftPercent: 0,
+        confidence: "low",
+        rationale: observed.note,
+      });
+    }
+  }
+
+  if (unmappedFlags.length) {
+    zeroContributionNotes.push(`No observed Halifax uplift category covers: ${unmappedFlags.join(", ")} - these contribute $0.`);
+  }
+
+  const upliftValue = Math.round(estimate.baseValue * upliftPercent);
+  const finalValueRaw = estimate.baseValue + upliftValue;
+  const finalValueGuardrailed = Math.min(finalValueRaw, estimate.marketContext.practicalCeiling);
+
+  return {
+    status: "ready",
+    message: "Public interactive mode: Halifax / Maritimes uplift comes from the committed local repeat-sale evidence export.",
+    modelVersion: "public-halifax-observed-uplift-v1",
+    trainingMode: "public-interactive-estimator",
+    modelFamily: estimate.modelFamily,
+    evidenceLevel: "observed",
+    evidenceSummary: upliftFile.method,
+    baseValue: estimate.baseValue,
+    upliftPercent,
+    upliftPercentConfidenceLow: upliftPercentLow,
+    upliftPercentConfidenceHigh: upliftPercentHigh,
+    upliftValue,
+    finalValueRaw,
+    finalValueGuardrailed,
+    upliftConfidenceLow: Math.round(estimate.baseValue * upliftPercentLow),
+    upliftConfidenceHigh: Math.round(estimate.baseValue * upliftPercentHigh),
+    ceilingFlag: finalValueRaw > finalValueGuardrailed,
+    plannedFlags: selectedFlags,
+    topUpliftDrivers,
+    observedShare: categoryFlags.size > 0 ? readyCategoryCount / categoryFlags.size : 1,
+    dataSources: {
+      ...publicDataSources(estimate),
+      halifaxUplift: "data/exports/halifax_uplift.json",
+    },
+    rowCounts,
+    methodNotes: [
+      `Observed uplift source: ${upliftFile.source}.`,
+      `Excess uplift percentiles use sale prices time-adjusted to the ${upliftFile.baselineMonth} baseline month.`,
+      ...zeroContributionNotes,
+      "Categories without enough treated pairs contribute exactly $0 instead of an assumed percentage.",
+      "Values are deal-screening estimates, not appraisals.",
+    ],
+  };
+}
+
 export function buildPublicSimulate(request: SimulateRequest): SimulateResponse {
   const estimate = buildPublicEstimate(request);
+
+  if (estimate.market === "halifax_maritimes") {
+    const upliftFile = loadHalifaxUplift();
+    if (upliftFile && hasReadyUpliftCategory(upliftFile)) {
+      return buildHalifaxObservedSimulate(request, estimate, upliftFile);
+    }
+  }
+
   const selectedFlags = request.plannedFlags ?? [];
   const selectedItems = buildItemsForFlags(selectedFlags, request, estimate);
   const upliftValue = selectedItems.reduce((sum, item) => sum + item.projectedUplift, 0);
@@ -431,13 +705,11 @@ export function buildPublicSimulate(request: SimulateRequest): SimulateResponse 
       rationale: "Calculated from the current property estimate, improvement type, age, and local market ceiling.",
     })),
     observedShare: 1,
-    dataSources: {
-      modelSummary: "reports/model_metrics_report.md",
-      publicRules: "artifacts/api-server/src/publicEngine.ts",
-    },
-    rowCounts: {
-      savedTrainingRows: 3_518,
-    },
+    dataSources: publicDataSources(estimate),
+    rowCounts:
+      estimate.market === "halifax_maritimes"
+        ? { evidenceComparables: estimate.marketContext.comparableCount }
+        : { savedTrainingRows: 3_518 },
     methodNotes: [
       "Public mode is fully interactive and does not require private raw data.",
       "The Python model service remains available for live local mode.",
@@ -500,10 +772,7 @@ export function buildPublicPlan(request: PlanRequest): PlanResponse {
     status: "ready",
     message: "Public interactive mode: plan is calculated from the current property, budget, timeline, and improvement choices.",
     evidenceLevel: "observed",
-    dataSources: {
-      modelSummary: "reports/model_metrics_report.md",
-      publicRules: "artifacts/api-server/src/publicEngine.ts",
-    },
+    dataSources: publicDataSources(estimate),
     methodNotes: [
       "Plan recommendations update from user inputs in public mode.",
       "The app still needs comparable-sale review, transaction costs, and financing assumptions before a real decision.",
@@ -595,6 +864,15 @@ export function buildPublicDealAnalyze(
     riskFlags,
     estimate,
     plan,
+    // PlanResponse exposes only the point uplift, so the uplift distribution is zero-width here.
+    robustness: computeDealRobustness({
+      askingPrice: request.askingPrice,
+      baseValue: estimate.baseValue,
+      confidenceLow: estimate.confidenceLow,
+      confidenceHigh: estimate.confidenceHigh,
+      afterPlanValue,
+      targetPrice: plan.targetPrice ?? null,
+    }),
   };
 }
 

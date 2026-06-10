@@ -1,3 +1,12 @@
+import type { z } from "zod/v4";
+
+import type {
+  marketEvidenceFileSchema,
+  marketEvidenceRowSchema,
+  marketTrendPointSchema,
+  marketTrendResponseSchema,
+} from "./schemas";
+
 export type PropertyType = "Detached" | "Townhouse" | "Condo" | "Duplex";
 export type PlannedFlag =
   | "renovatedKitchen"
@@ -22,6 +31,7 @@ export type EstimateRequest = PropertyInput;
 export interface Driver {
   label: string;
   value: number;
+  source?: "shap" | "heuristic";
 }
 
 export interface MarketContextResponse {
@@ -29,8 +39,12 @@ export interface MarketContextResponse {
   localAreaScope: "postal-code" | "fsa" | "city-property-type" | "city";
   localMedianValue: number;
   localMedianPricePerSqft: number;
-  vancouverMedianValue: number;
-  vancouverMedianPricePerSqft: number;
+  cityMedianValue: number;
+  cityMedianPricePerSqft: number;
+  /** @deprecated use cityMedianValue */
+  vancouverMedianValue?: number;
+  /** @deprecated use cityMedianPricePerSqft */
+  vancouverMedianPricePerSqft?: number;
   percentileRank: number;
   practicalCeiling: number;
   premiumGap: number;
@@ -70,11 +84,20 @@ export interface ModelQuality {
   validationSummary: ValidationSummary;
 }
 
+export interface EstimateUncertainty {
+  method: "conformal" | "error-ratio";
+  targetCoverage: number;
+  empiricalCoverage?: number | null;
+  calibrationNote?: string;
+}
+
 export interface EstimateResponse {
   modelVersion: string;
   trainingMode: string;
   modelFamily: "xgboost" | "random-forest";
   modelScope: PropertyType;
+  market: string;
+  marketLabel: string;
   baseValue: number;
   confidenceLow: number;
   confidenceHigh: number;
@@ -84,6 +107,8 @@ export interface EstimateResponse {
   modelQuality: ModelQuality;
   drivers: Driver[];
   marketContext: MarketContextResponse;
+  uncertainty?: EstimateUncertainty;
+  explanationMethod?: "shap" | "heuristic";
   marketFreshness?: {
     status: "adjusted" | "not-applied";
     message: string;
@@ -188,6 +213,20 @@ export interface DealRiskFlag {
   detail: string;
 }
 
+/** Monte Carlo deal robustness, propagating the estimate confidence band and
+ * uplift range through the deal calculus. Additive and optional. */
+export interface DealRobustness {
+  method: "monte-carlo-triangular";
+  draws: number;
+  probPositiveUpside: number;
+  /** Probability the after-plan value reaches the target price; null when no target was given. */
+  probTargetAchievable: number | null;
+  upsideP10: number;
+  upsideP50: number;
+  upsideP90: number;
+  note: string;
+}
+
 export interface DealAnalyzeResponse {
   dealLabel: DealLabel;
   modeledValueGap: number;
@@ -198,7 +237,47 @@ export interface DealAnalyzeResponse {
   riskFlags: DealRiskFlag[];
   estimate: EstimateResponse;
   plan: PlanResponse;
+  robustness?: DealRobustness;
 }
+
+export interface MarketMapCell {
+  h3: string;
+  /** Six [lat, lng] vertices of the H3 cell. */
+  boundary: [number, number][];
+  rows: number;
+  medianValue: number;
+  medianPricePerSqft: number;
+}
+
+export interface MarketMapMarket {
+  market: string;
+  label: string;
+  zoom: number;
+  center: [number, number];
+  pricePerSqftDomain: [number, number];
+  cells: MarketMapCell[];
+}
+
+export type MarketMapResponse =
+  | ({ status: "ready"; generatedAt: string; source: string } & MarketMapMarket)
+  | { status: "unavailable"; message: string };
+
+export interface ModelExperimentRow {
+  experiment: "local" | "pooled" | "hybrid";
+  market: string;
+  propertyType: string;
+  family: string;
+  trainingRows: number;
+  holdoutRows: number;
+  holdoutMae: number;
+  holdoutMape: number;
+  spatialCvMae: number | null;
+  notes?: string;
+}
+
+export type ModelExperimentsResponse =
+  | { status: "ready"; generatedAt: string; source: string; rows: ModelExperimentRow[]; conclusions: string[] }
+  | { status: "unavailable"; message: string };
 
 export interface DemoInsightRow {
   id: string;
@@ -228,4 +307,21 @@ export interface DemoMetricsResponse {
   };
   rows: DemoInsightRow[];
   dataQualityNotes: string[];
+}
+
+export type MarketEvidenceRow = z.infer<typeof marketEvidenceRowSchema>;
+export type MarketEvidenceFile = z.infer<typeof marketEvidenceFileSchema>;
+export type MarketTrendPoint = z.infer<typeof marketTrendPointSchema>;
+export type MarketTrendResponse = z.infer<typeof marketTrendResponseSchema>;
+
+export interface MarketsResponse {
+  markets: Array<{
+    id: string;
+    label: string;
+    region: string;
+    status: "available" | "live-only";
+    postalPlaceholder: string;
+    valuationBasis: string;
+    note?: string;
+  }>;
 }

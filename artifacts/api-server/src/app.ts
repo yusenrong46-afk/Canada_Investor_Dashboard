@@ -6,9 +6,14 @@ import { ZodError } from "zod/v4";
 
 import { analyzeDeal } from "./dealAnalysis";
 import { buildDemoDealAnalyze, buildDemoEstimate, buildDemoPlan, buildDemoSimulate, demoModeEnabled, getDemoMetrics } from "./demo";
+import { buildEvidenceResponse, evidenceQuerySchema } from "./evidence";
+import { buildExperimentsResponse } from "./experiments";
+import { buildMapResponse } from "./map";
+import { buildMarketsResponse } from "./marketsRoute";
 import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
 import { buildPublicDealAnalyze, buildPublicEstimate, buildPublicPlan, buildPublicSimulate, getPublicMetrics, publicModeEnabled } from "./publicEngine";
 import { dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
+import { getMarketTrend } from "./trend";
 
 const app = express();
 
@@ -49,6 +54,52 @@ app.post("/api/plan", async (req, res, next) => {
     const request = planRequestSchema.parse(req.body);
     const response = demoModeEnabled ? buildDemoPlan(request) : publicModeEnabled ? buildPublicPlan(request) : await buildSalePlan(request);
     res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Evidence and markets serve committed real data, so all three modes share the same handlers.
+app.get("/api/evidence", (req, res, next) => {
+  try {
+    const query = evidenceQuerySchema.parse(req.query);
+    res.json(buildEvidenceResponse(query.market, query.fsa, query.propertyType));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/trend", async (req, res, next) => {
+  try {
+    const market = typeof req.query.market === "string" ? req.query.market : "";
+    res.json(await getMarketTrend(market));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Map and experiments serve committed exports, so all three modes share the same handlers; an
+// unavailable payload stays HTTP 200 like the other static-export endpoints.
+app.get("/api/map", (req, res, next) => {
+  try {
+    const market = typeof req.query.market === "string" ? req.query.market : "";
+    res.json(buildMapResponse(market));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/experiments", (_req, res, next) => {
+  try {
+    res.json(buildExperimentsResponse());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/markets", (_req, res, next) => {
+  try {
+    res.json(buildMarketsResponse());
   } catch (error) {
     next(error);
   }

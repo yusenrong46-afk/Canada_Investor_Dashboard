@@ -12,7 +12,7 @@ import {
 
 const modelServiceBaseUrl = (process.env.MODEL_SERVICE_URL ?? "http://127.0.0.1:5001").replace(/\/$/, "");
 
-async function requestModelService<TResponse>(path: string, payload?: object): Promise<TResponse> {
+export async function requestModelService<TResponse>(path: string, payload?: object): Promise<TResponse> {
   // Live local mode delegates model inference to Flask; demo/public modes bypass this boundary.
   const response = await fetch(`${modelServiceBaseUrl}${path}`, {
     method: payload ? "POST" : "GET",

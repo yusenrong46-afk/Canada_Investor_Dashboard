@@ -1,7 +1,10 @@
-import fs from "node:fs";
 import path from "node:path";
 
+import { ZodError } from "zod/v4";
+
 import {
+  detectMarket,
+  marketCatalog,
   type DealAnalyzeResponse,
   type DealLabel,
   type DealRiskFlag,
@@ -17,6 +20,9 @@ import {
   type SimulateResponse,
 } from "@vvl/shared";
 
+import { computeDealRobustness } from "./dealAnalysis";
+import { readRepoJson } from "./repoFiles";
+
 export const demoModeEnabled = process.env.DEMO_MODE === "true" || process.env.DEMO_MODE === "1";
 
 interface DemoProperty extends PropertyInput {
@@ -26,6 +32,14 @@ interface DemoProperty extends PropertyInput {
   targetPrice: number;
   timelineMonths: number;
   plannedFlags: PlannedFlag[];
+}
+
+// Demo sample JSON predates the multi-market contract: it stores Vancouver medians only under the deprecated keys.
+interface DemoMarketContextRow extends Omit<EstimateResponse["marketContext"], "cityMedianValue" | "cityMedianPricePerSqft"> {
+  cityMedianValue?: number;
+  cityMedianPricePerSqft?: number;
+  vancouverMedianValue: number;
+  vancouverMedianPricePerSqft: number;
 }
 
 interface DemoEstimateRow {
@@ -38,7 +52,7 @@ interface DemoEstimateRow {
   pricePerSqft: number;
   confidenceRatio: number;
   drivers: EstimateResponse["drivers"];
-  marketContext: EstimateResponse["marketContext"];
+  marketContext: DemoMarketContextRow;
 }
 
 interface DemoPlanFileRow extends Omit<PlanResponse, "phases"> {
@@ -59,21 +73,22 @@ interface DemoPlansFile {
   plans: DemoPlanFileRow[];
 }
 
-function findRepoRoot(): string {
-  const candidates = [process.cwd(), path.resolve(process.cwd(), "../.."), path.resolve(process.cwd(), "../../..")];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(path.join(candidate, "demo", "sample_properties.json"))) {
-      return candidate;
-    }
-  }
-
-  return path.resolve(process.cwd(), "../..");
+function readDemoJson<T>(fileName: string): T {
+  return readRepoJson<T>(path.join("demo", fileName));
 }
 
-function readDemoJson<T>(fileName: string): T {
-  const filePath = path.join(findRepoRoot(), "demo", fileName);
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+// Demo samples are Vancouver-only; ZodError keeps app.ts mapping this guard to a 400.
+function assertDemoMarketSupported(postalCode: string): void {
+  if (detectMarket(postalCode) === "halifax_maritimes") {
+    throw new ZodError([
+      {
+        code: "custom",
+        path: ["postalCode"],
+        message: "Demo mode has precomputed Vancouver samples only - use live or public mode for Halifax / Maritimes (B-prefix) postal codes.",
+        input: postalCode,
+      },
+    ]);
+  }
 }
 
 function demoProperties(): DemoProperty[] {
@@ -143,13 +158,17 @@ function demoMarketFreshness(): EstimateResponse["marketFreshness"] {
 }
 
 export function buildDemoEstimate(property: PropertyInput): EstimateResponse {
+  assertDemoMarketSupported(property.postalCode);
   const sample = chooseDemoEstimate(property);
+  const market = detectMarket(property.postalCode) ?? "vancouver";
 
   return {
     modelVersion: "demo-sample-v1",
     trainingMode: "demo-safe-precomputed",
     modelFamily: "random-forest",
     modelScope: sample.propertyType,
+    market,
+    marketLabel: marketCatalog[market].label,
     baseValue: sample.baseValue,
     confidenceLow: sample.confidenceLow,
     confidenceHigh: sample.confidenceHigh,
@@ -158,7 +177,17 @@ export function buildDemoEstimate(property: PropertyInput): EstimateResponse {
     confidenceRatio: sample.confidenceRatio,
     modelQuality: demoModelQuality,
     drivers: sample.drivers,
-    marketContext: sample.marketContext,
+    marketContext: {
+      ...sample.marketContext,
+      cityMedianValue: sample.marketContext.cityMedianValue ?? sample.marketContext.vancouverMedianValue,
+      cityMedianPricePerSqft: sample.marketContext.cityMedianPricePerSqft ?? sample.marketContext.vancouverMedianPricePerSqft,
+    },
+    uncertainty: {
+      method: "error-ratio",
+      targetCoverage: 0.8,
+      calibrationNote: "Demo intervals reuse the saved sample confidence ratio and are not recalibrated for this property.",
+    },
+    explanationMethod: "heuristic",
     marketFreshness: demoMarketFreshness(),
   };
 }
@@ -354,6 +383,15 @@ export function buildDemoDealAnalyze(
     riskFlags,
     estimate,
     plan,
+    // PlanResponse exposes only the point uplift, so the uplift distribution is zero-width here.
+    robustness: computeDealRobustness({
+      askingPrice: request.askingPrice,
+      baseValue: estimate.baseValue,
+      confidenceLow: estimate.confidenceLow,
+      confidenceHigh: estimate.confidenceHigh,
+      afterPlanValue,
+      targetPrice: plan.targetPrice ?? null,
+    }),
   };
 }
 
