@@ -1,0 +1,29 @@
+{
+  "market": "halifax_maritimes",
+  "targetName": "sale_price_time_adjusted",
+  "trainingWindowStart": "2022-01-01",
+  "timeAdjustmentBaselineMonth": "2026-05",
+  "rows": {
+    "windowSales": 25160,
+    "joinedToDwellings": 18268,
+    "cleanTrainingRows": 17998,
+    "styleExcluded": 16450
+  },
+  "rates": {
+    "saleToDwellingJoin": 0.7715,
+    "postalMatchWithin150m": 0.9958,
+    "bedroomsImputed": 0.1173,
+    "assessedValuePresent": 1.0
+  },
+  "propertyTypeCounts": {
+    "Detached": 14751,
+    "Duplex": 2401,
+    "Townhouse": 846
+  },
+  "sources": {
+    "dwellings": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_dwelling_characteristics_hrm.csv",
+    "sales": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_parcel_sales_hrm.csv",
+    "assessments": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_assessed_values_hrm.csv",
+    "civicAddresses": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/hrm_civic_addresses.csv"
+  }
+}

@@ -1,0 +1,1877 @@
+{
+  "generatedAt": "2026-06-09T23:51:49+00:00",
+  "source": "Statistics Canada table 18-10-0205-01 (New Housing Price Index)",
+  "license": "Open Government Licence - Canada",
+  "markets": {
+    "vancouver": {
+      "status": "ready",
+      "market": "vancouver",
+      "marketLabel": "Vancouver",
+      "method": "ETS(A,Ad,N) exponential smoothing, 80% prediction interval",
+      "dataSource": "Statistics Canada New Housing Price Index (table 18-10-0205-01), NHPI, new housing only \u2014 used as a market direction proxy, not a resale price level",
+      "baselinePeriod": "2026-04",
+      "backtestMape": 1.218,
+      "points": [
+        {
+          "period": "2016-05",
+          "indexValue": 98.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-06",
+          "indexValue": 99.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-07",
+          "indexValue": 99.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-08",
+          "indexValue": 99.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-09",
+          "indexValue": 100.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-10",
+          "indexValue": 100.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-11",
+          "indexValue": 100.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-12",
+          "indexValue": 100.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-01",
+          "indexValue": 99.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-02",
+          "indexValue": 99.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-03",
+          "indexValue": 100.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-04",
+          "indexValue": 101.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-05",
+          "indexValue": 103.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-06",
+          "indexValue": 105.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-07",
+          "indexValue": 107.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-08",
+          "indexValue": 107.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-09",
+          "indexValue": 108.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-10",
+          "indexValue": 108.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-11",
+          "indexValue": 108.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-12",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-01",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-02",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-03",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-04",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-05",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-06",
+          "indexValue": 109.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-07",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-08",
+          "indexValue": 108.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-09",
+          "indexValue": 109.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-10",
+          "indexValue": 109.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-11",
+          "indexValue": 108.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-12",
+          "indexValue": 108.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-01",
+          "indexValue": 108.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-02",
+          "indexValue": 108.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-03",
+          "indexValue": 108.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-04",
+          "indexValue": 108.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-05",
+          "indexValue": 107.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-06",
+          "indexValue": 107.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-07",
+          "indexValue": 107.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-08",
+          "indexValue": 107.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-09",
+          "indexValue": 106.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-10",
+          "indexValue": 106.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-11",
+          "indexValue": 105.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-12",
+          "indexValue": 106.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-01",
+          "indexValue": 106.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-02",
+          "indexValue": 106.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-03",
+          "indexValue": 106.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-04",
+          "indexValue": 106.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-05",
+          "indexValue": 106.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-06",
+          "indexValue": 107.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-07",
+          "indexValue": 107.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-08",
+          "indexValue": 108.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-09",
+          "indexValue": 111.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-10",
+          "indexValue": 112.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-11",
+          "indexValue": 112.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-12",
+          "indexValue": 112.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-01",
+          "indexValue": 113.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-02",
+          "indexValue": 117.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-03",
+          "indexValue": 118.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-04",
+          "indexValue": 120.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-05",
+          "indexValue": 120.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-06",
+          "indexValue": 120.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-07",
+          "indexValue": 120.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-08",
+          "indexValue": 121.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-09",
+          "indexValue": 122.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-10",
+          "indexValue": 123.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-11",
+          "indexValue": 124.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-12",
+          "indexValue": 124.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-01",
+          "indexValue": 127.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-02",
+          "indexValue": 128.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-03",
+          "indexValue": 128.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-04",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-05",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-06",
+          "indexValue": 128.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-07",
+          "indexValue": 129.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-08",
+          "indexValue": 129.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-09",
+          "indexValue": 129.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-10",
+          "indexValue": 128.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-11",
+          "indexValue": 128.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-12",
+          "indexValue": 128.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-01",
+          "indexValue": 127.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-02",
+          "indexValue": 127.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-03",
+          "indexValue": 127.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-04",
+          "indexValue": 127.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-05",
+          "indexValue": 127.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-06",
+          "indexValue": 128.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-07",
+          "indexValue": 128.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-08",
+          "indexValue": 129.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-09",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-10",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-11",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-12",
+          "indexValue": 128.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-01",
+          "indexValue": 128.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-02",
+          "indexValue": 128.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-03",
+          "indexValue": 128.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-04",
+          "indexValue": 129.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-05",
+          "indexValue": 129.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-06",
+          "indexValue": 128.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-07",
+          "indexValue": 128.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-08",
+          "indexValue": 128.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-09",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-10",
+          "indexValue": 127.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-11",
+          "indexValue": 127.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-12",
+          "indexValue": 127.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-01",
+          "indexValue": 128.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-02",
+          "indexValue": 127.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-03",
+          "indexValue": 127.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-04",
+          "indexValue": 127.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-05",
+          "indexValue": 127.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-06",
+          "indexValue": 126.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-07",
+          "indexValue": 126.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-08",
+          "indexValue": 125.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-09",
+          "indexValue": 126.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-10",
+          "indexValue": 125.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-11",
+          "indexValue": 125.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-12",
+          "indexValue": 125.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-01",
+          "indexValue": 125.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-02",
+          "indexValue": 125.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-03",
+          "indexValue": 124.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-04",
+          "indexValue": 124.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-05",
+          "indexValue": null,
+          "forecastValue": 124.3623,
+          "forecastLow": 123.6284,
+          "forecastHigh": 125.0963
+        },
+        {
+          "period": "2026-06",
+          "indexValue": null,
+          "forecastValue": 124.2463,
+          "forecastLow": 123.0454,
+          "forecastHigh": 125.4472
+        },
+        {
+          "period": "2026-07",
+          "indexValue": null,
+          "forecastValue": 124.1471,
+          "forecastLow": 122.4836,
+          "forecastHigh": 125.8106
+        },
+        {
+          "period": "2026-08",
+          "indexValue": null,
+          "forecastValue": 124.0623,
+          "forecastLow": 121.9371,
+          "forecastHigh": 126.1875
+        },
+        {
+          "period": "2026-09",
+          "indexValue": null,
+          "forecastValue": 123.9898,
+          "forecastLow": 121.4062,
+          "forecastHigh": 126.5734
+        },
+        {
+          "period": "2026-10",
+          "indexValue": null,
+          "forecastValue": 123.9278,
+          "forecastLow": 120.8917,
+          "forecastHigh": 126.9638
+        },
+        {
+          "period": "2026-11",
+          "indexValue": null,
+          "forecastValue": 123.8747,
+          "forecastLow": 120.3942,
+          "forecastHigh": 127.3552
+        },
+        {
+          "period": "2026-12",
+          "indexValue": null,
+          "forecastValue": 123.8294,
+          "forecastLow": 119.9139,
+          "forecastHigh": 127.7448
+        },
+        {
+          "period": "2027-01",
+          "indexValue": null,
+          "forecastValue": 123.7906,
+          "forecastLow": 119.4507,
+          "forecastHigh": 128.1305
+        },
+        {
+          "period": "2027-02",
+          "indexValue": null,
+          "forecastValue": 123.7575,
+          "forecastLow": 119.0041,
+          "forecastHigh": 128.5108
+        },
+        {
+          "period": "2027-03",
+          "indexValue": null,
+          "forecastValue": 123.7291,
+          "forecastLow": 118.5736,
+          "forecastHigh": 128.8846
+        },
+        {
+          "period": "2027-04",
+          "indexValue": null,
+          "forecastValue": 123.7049,
+          "forecastLow": 118.1585,
+          "forecastHigh": 129.2513
+        }
+      ]
+    },
+    "halifax_maritimes": {
+      "status": "ready",
+      "market": "halifax_maritimes",
+      "marketLabel": "Halifax / Maritimes",
+      "method": "ETS(A,Ad,N) exponential smoothing, 80% prediction interval",
+      "dataSource": "Statistics Canada New Housing Price Index (table 18-10-0205-01), NHPI, new housing only \u2014 used as a market direction proxy, not a resale price level",
+      "baselinePeriod": "2026-04",
+      "backtestMape": 0.6086,
+      "points": [
+        {
+          "period": "2016-05",
+          "indexValue": 99.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-06",
+          "indexValue": 99.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-07",
+          "indexValue": 99.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-08",
+          "indexValue": 99.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-09",
+          "indexValue": 99.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-10",
+          "indexValue": 99.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-11",
+          "indexValue": 100.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2016-12",
+          "indexValue": 100.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-01",
+          "indexValue": 100.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-02",
+          "indexValue": 100.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-03",
+          "indexValue": 100.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-04",
+          "indexValue": 100.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-05",
+          "indexValue": 100.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-06",
+          "indexValue": 100.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-07",
+          "indexValue": 100.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-08",
+          "indexValue": 100.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-09",
+          "indexValue": 100.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-10",
+          "indexValue": 101.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-11",
+          "indexValue": 101.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2017-12",
+          "indexValue": 101.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-01",
+          "indexValue": 101.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-02",
+          "indexValue": 101.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-03",
+          "indexValue": 101.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-04",
+          "indexValue": 101.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-05",
+          "indexValue": 101.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-06",
+          "indexValue": 101.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-07",
+          "indexValue": 102.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-08",
+          "indexValue": 102.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-09",
+          "indexValue": 101.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-10",
+          "indexValue": 101.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-11",
+          "indexValue": 101.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2018-12",
+          "indexValue": 101.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-01",
+          "indexValue": 101.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-02",
+          "indexValue": 102.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-03",
+          "indexValue": 102.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-04",
+          "indexValue": 102.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-05",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-06",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-07",
+          "indexValue": 102.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-08",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-09",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-10",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-11",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2019-12",
+          "indexValue": 102.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-01",
+          "indexValue": 102.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-02",
+          "indexValue": 103.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-03",
+          "indexValue": 103.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-04",
+          "indexValue": 103.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-05",
+          "indexValue": 104.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-06",
+          "indexValue": 104.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-07",
+          "indexValue": 105.4,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-08",
+          "indexValue": 107.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-09",
+          "indexValue": 108.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-10",
+          "indexValue": 109.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-11",
+          "indexValue": 110.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2020-12",
+          "indexValue": 110.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-01",
+          "indexValue": 110.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-02",
+          "indexValue": 112.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-03",
+          "indexValue": 113.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-04",
+          "indexValue": 116.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-05",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-06",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-07",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-08",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-09",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-10",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-11",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2021-12",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-01",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-02",
+          "indexValue": 117.8,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-03",
+          "indexValue": 119.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-04",
+          "indexValue": 119.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-05",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-06",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-07",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-08",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-09",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-10",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-11",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2022-12",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-01",
+          "indexValue": 121.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-02",
+          "indexValue": 121.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-03",
+          "indexValue": 122.0,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-04",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-05",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-06",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-07",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-08",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-09",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-10",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-11",
+          "indexValue": 121.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2023-12",
+          "indexValue": 119.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-01",
+          "indexValue": 119.9,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-02",
+          "indexValue": 120.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-03",
+          "indexValue": 120.1,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-04",
+          "indexValue": 120.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-05",
+          "indexValue": 121.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-06",
+          "indexValue": 121.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-07",
+          "indexValue": 121.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-08",
+          "indexValue": 121.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-09",
+          "indexValue": 121.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-10",
+          "indexValue": 121.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-11",
+          "indexValue": 121.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2024-12",
+          "indexValue": 121.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-01",
+          "indexValue": 121.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-02",
+          "indexValue": 126.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-03",
+          "indexValue": 126.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-04",
+          "indexValue": 126.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-05",
+          "indexValue": 127.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-06",
+          "indexValue": 127.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-07",
+          "indexValue": 127.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-08",
+          "indexValue": 127.3,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-09",
+          "indexValue": 127.2,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-10",
+          "indexValue": 127.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-11",
+          "indexValue": 127.7,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2025-12",
+          "indexValue": 127.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-01",
+          "indexValue": 127.5,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-02",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-03",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-04",
+          "indexValue": 128.6,
+          "forecastValue": null,
+          "forecastLow": null,
+          "forecastHigh": null
+        },
+        {
+          "period": "2026-05",
+          "indexValue": null,
+          "forecastValue": 128.7718,
+          "forecastLow": 127.99,
+          "forecastHigh": 129.5536
+        },
+        {
+          "period": "2026-06",
+          "indexValue": null,
+          "forecastValue": 128.9376,
+          "forecastLow": 127.7822,
+          "forecastHigh": 130.093
+        },
+        {
+          "period": "2026-07",
+          "indexValue": null,
+          "forecastValue": 129.0976,
+          "forecastLow": 127.6223,
+          "forecastHigh": 130.573
+        },
+        {
+          "period": "2026-08",
+          "indexValue": null,
+          "forecastValue": 129.2521,
+          "forecastLow": 127.4801,
+          "forecastHigh": 131.0242
+        },
+        {
+          "period": "2026-09",
+          "indexValue": null,
+          "forecastValue": 129.4013,
+          "forecastLow": 127.3447,
+          "forecastHigh": 131.4578
+        },
+        {
+          "period": "2026-10",
+          "indexValue": null,
+          "forecastValue": 129.5452,
+          "forecastLow": 127.2113,
+          "forecastHigh": 131.8792
+        },
+        {
+          "period": "2026-11",
+          "indexValue": null,
+          "forecastValue": 129.6842,
+          "forecastLow": 127.0772,
+          "forecastHigh": 132.2911
+        },
+        {
+          "period": "2026-12",
+          "indexValue": null,
+          "forecastValue": 129.8183,
+          "forecastLow": 126.9412,
+          "forecastHigh": 132.6954
+        },
+        {
+          "period": "2027-01",
+          "indexValue": null,
+          "forecastValue": 129.9478,
+          "forecastLow": 126.8024,
+          "forecastHigh": 133.0932
+        },
+        {
+          "period": "2027-02",
+          "indexValue": null,
+          "forecastValue": 130.0728,
+          "forecastLow": 126.6604,
+          "forecastHigh": 133.4851
+        },
+        {
+          "period": "2027-03",
+          "indexValue": null,
+          "forecastValue": 130.1934,
+          "forecastLow": 126.5151,
+          "forecastHigh": 133.8718
+        },
+        {
+          "period": "2027-04",
+          "indexValue": null,
+          "forecastValue": 130.3099,
+          "forecastLow": 126.3664,
+          "forecastHigh": 134.2534
+        }
+      ]
+    }
+  }
+}

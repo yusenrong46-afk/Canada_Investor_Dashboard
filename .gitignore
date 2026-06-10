@@ -13,6 +13,8 @@ coverage
 __pycache__
 *.py[cod]
 data/raw
+data/warehouse/*.duckdb
+data/warehouse/*.wal
 artifacts/home-value-planner/node_modules
 artifacts/home-value-planner/dist
 artifacts/api-server/node_modules
