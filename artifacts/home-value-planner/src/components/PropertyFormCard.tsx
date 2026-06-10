@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
-import { propertyTypeValues, type PropertyInput, type PropertyType } from "@vvl/shared";
+import {
+  detectMarket,
+  marketCatalog,
+  marketValues,
+  propertyTypeValues,
+  type MarketId,
+  type MarketsResponse,
+  type PropertyInput,
+  type PropertyType,
+} from "@vvl/shared";
+
+import { defaultPropertyByMarket } from "../lib/defaults";
 
 interface PropertyFormCardProps {
   property: PropertyInput;
   onChange: (property: PropertyInput) => void;
+  markets?: MarketsResponse["markets"] | null;
 }
 
 const propertyTypeOptions = [...propertyTypeValues];
@@ -25,7 +37,12 @@ function toDraft(value: number | undefined): string {
   return value == null ? "" : String(value);
 }
 
-export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) {
+export function PropertyFormCard({ property, onChange, markets }: PropertyFormCardProps) {
+  const detectedMarket = detectMarket(property.postalCode);
+  // Remember the last pill the user clicked so an empty or partial postal code keeps the chosen market.
+  const [pickedMarket, setPickedMarket] = useState<MarketId>(detectedMarket ?? "vancouver");
+  const activeMarket = detectedMarket ?? pickedMarket;
+  const marketInfo = marketCatalog[activeMarket];
   const [numberDrafts, setNumberDrafts] = useState<Record<NumberFieldKey, string>>({
     livingAreaSqft: toDraft(property.livingAreaSqft),
     bedrooms: toDraft(property.bedrooms),
@@ -72,6 +89,13 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
     setNumberDrafts((current) => ({ ...current, [key]: toDraft(property[key]) }));
   };
 
+  const selectMarket = (marketId: MarketId) => {
+    setPickedMarket(marketId);
+    if (marketId !== activeMarket) {
+      onChange({ ...defaultPropertyByMarket[marketId] });
+    }
+  };
+
   return (
     <div className="card-pad xl:sticky xl:top-28">
       <div className="mb-5">
@@ -83,16 +107,43 @@ export function PropertyFormCard({ property, onChange }: PropertyFormCardProps) 
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2 sm:col-span-2">
+          <span className="label">Market</span>
+          <div className="grid grid-cols-2 gap-2">
+            {marketValues.map((marketId) => {
+              const liveStatus = markets?.find((item) => item.id === marketId);
+              const liveOnly = liveStatus?.status === "live-only";
+              const active = marketId === activeMarket;
+              return (
+                <button
+                  key={marketId}
+                  type="button"
+                  disabled={liveOnly}
+                  title={liveOnly ? liveStatus?.note : undefined}
+                  onClick={() => selectMarket(marketId)}
+                  className={`rounded-pill border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:border-line disabled:bg-canvas disabled:text-muted ${
+                    active
+                      ? "border-brand-400 bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                      : "border-line bg-surface text-body hover:border-slate-300 hover:text-ink"
+                  }`}
+                >
+                  {marketCatalog[marketId].label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <label className="space-y-2 sm:col-span-2">
           <span className="label">Postal code</span>
           <input
             className="field"
             type="text"
             value={property.postalCode}
-            placeholder="V6B 1X9"
+            placeholder={marketInfo.postalPlaceholder}
             onChange={(event) => onChange({ ...property, postalCode: event.target.value.toUpperCase() })}
           />
-          <p className="text-xs text-muted">Use a Vancouver postal code in the V5 or V6 area.</p>
+          <p className="text-xs text-muted">{marketInfo.postalHint}</p>
         </label>
 
         <label className="space-y-2">

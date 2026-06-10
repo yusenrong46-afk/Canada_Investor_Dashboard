@@ -1,8 +1,40 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import type { ModelExperimentsResponse } from "@vvl/shared";
 
+import { getModelExperiments } from "../api/client";
 import { SectionCard } from "../components/SectionCard";
+import { formatCurrency, formatPercent } from "../lib/format";
+
+const experimentLabels: Record<string, string> = {
+  local: "Local (per market)",
+  pooled: "Pooled (both markets)",
+  hybrid: "Hybrid (pooled + market features)",
+};
 
 export function ModelStoryPage() {
+  const [experiments, setExperiments] = useState<ModelExperimentsResponse | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    getModelExperiments()
+      .then((response) => {
+        if (active) {
+          setExperiments(response);
+        }
+      })
+      .catch(() => {
+        // The model lab section simply stays hidden when the endpoint is unreachable.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const experimentsReady = experiments?.status === "ready" ? experiments : null;
+  const leaderboardRows = experimentsReady ? experimentsReady.rows.filter((row) => row.propertyType === "All") : [];
   const modelRows = [
     ["Base model", "Vancouver listing data", "3,518 usable rows", "As-is listing value by property type."],
     ["Uplift model", "Seattle/King County observed repeat sales", "633 repeat-sale rows", "Renovation uplift percentage, transferred carefully to Vancouver."],
@@ -64,6 +96,69 @@ export function ModelStoryPage() {
           </p>
         </div>
       </SectionCard>
+
+      <SectionCard
+        title="Halifax / Maritimes expansion"
+        eyebrow="Second market"
+        description="The same workflow now runs on a second market, trained on real sale prices instead of listings."
+      >
+        <div className="space-y-3 text-sm leading-6 text-body">
+          <p>
+            The Halifax / Maritimes model trains on real PVSC parcel sale prices, time-adjusted to a common reference period so older
+            sales do not drag the estimate down. A civic-address bridge attaches postal codes to each parcel, which gives Halifax the
+            same FSA and submarket-cluster location features the Vancouver model uses.
+          </p>
+          <p>
+            When the full model service is running, estimates also report a split conformal confidence interval (an 80% target checked
+            against held-out sales), explain each value with SHAP attributions, and are validated with spatial cross-validation so nearby
+            parcels cannot leak between train and test folds. The public demo falls back to a heuristic error-ratio band and labels it
+            as such.
+          </p>
+        </div>
+      </SectionCard>
+
+      {experimentsReady && leaderboardRows.length ? (
+        <SectionCard
+          title="Model lab: local vs pooled vs hybrid"
+          eyebrow="Experiments"
+          description="The same holdout protocol run across training strategies, so the architecture choice is backed by numbers instead of preference."
+        >
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-[11px] uppercase tracking-[0.14em] text-muted">
+                  <th className="py-3 pr-4 font-bold">Experiment</th>
+                  <th className="py-3 pr-4 font-bold">Market</th>
+                  <th className="py-3 pr-4 font-bold">Family</th>
+                  <th className="py-3 pr-4 font-bold">Holdout MAE</th>
+                  <th className="py-3 pr-4 font-bold">Holdout MAPE</th>
+                  <th className="py-3 font-bold">Spatial CV MAE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leaderboardRows.map((row) => (
+                  <tr key={`${row.experiment}-${row.market}`} className="border-b border-line/60 even:bg-canvas">
+                    <td className="py-3 pr-4 font-semibold text-ink">{experimentLabels[row.experiment] ?? row.experiment}</td>
+                    <td className="py-3 pr-4">{row.market}</td>
+                    <td className="py-3 pr-4">{row.family}</td>
+                    <td className="py-3 pr-4 tabular-nums">{formatCurrency(row.holdoutMae)}</td>
+                    <td className="py-3 pr-4 tabular-nums">{formatPercent(row.holdoutMape * 100, 1)}</td>
+                    <td className="py-3 tabular-nums">{row.spatialCvMae != null ? formatCurrency(row.spatialCvMae) : "not run"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="mt-5 list-disc space-y-2 pl-5 text-sm leading-6 text-body">
+            {experimentsReady.conclusions.map((conclusion) => (
+              <li key={conclusion}>{conclusion}</li>
+            ))}
+          </ul>
+          <p className="mt-4 text-xs leading-5 text-muted">
+            Source: {experimentsReady.source} · Generated {new Date(experimentsReady.generatedAt).toLocaleDateString("en-CA")}
+          </p>
+        </SectionCard>
+      ) : null}
 
       <SectionCard
         title="Data I would add next"

@@ -35,6 +35,7 @@ interface InsightData {
 
 interface InsightsPageProps {
   scenarios: ScenarioRecord[];
+  intervalMethod?: "conformal" | "error-ratio";
 }
 
 function average(values: number[]): number {
@@ -99,7 +100,7 @@ function buildScenarioInsightData(scenarios: ScenarioRecord[]): InsightData {
   };
 }
 
-export function InsightsPage({ scenarios }: InsightsPageProps) {
+export function InsightsPage({ scenarios, intervalMethod }: InsightsPageProps) {
   const [data, setData] = useState<DemoMetricsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -178,7 +179,7 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
           </div>
         </SectionCard>
 
-        <ModelTrustSummary modeNote={displayData.note} />
+        <ModelTrustSummary modeNote={displayData.note} intervalMethod={intervalMethod} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">

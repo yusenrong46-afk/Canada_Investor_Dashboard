@@ -1,11 +1,13 @@
 interface ModelTrustSummaryProps {
   modeNote: string;
+  intervalMethod?: "conformal" | "error-ratio";
 }
 
-export function ModelTrustSummary({ modeNote }: ModelTrustSummaryProps) {
+export function ModelTrustSummary({ modeNote, intervalMethod }: ModelTrustSummaryProps) {
   const rows = [
     ["Prediction target", "Listing value, not final sale price"],
     ["Best use", "Deal screening and interview demo"],
+    ...(intervalMethod ? [["Interval method", intervalMethod === "conformal" ? "Split conformal (80% target)" : "Error-ratio heuristic"]] : []),
     ["Needs review", "Comparable sales, exact condition, financing, taxes, and closing costs"],
   ];
 

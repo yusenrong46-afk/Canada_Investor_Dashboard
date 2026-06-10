@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Bookmark } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Link } from "react-router-dom";
-import type { DealAnalyzeResponse, DealRiskFlag, PlannedFlag, PropertyInput } from "@vvl/shared";
+import type { DealAnalyzeResponse, DealRiskFlag, DealRobustness, MarketsResponse, PlannedFlag, PropertyInput } from "@vvl/shared";
 
 import { postDealAnalyze } from "../api/client";
 import { ImprovementFlagPicker } from "../components/ImprovementFlagPicker";
@@ -20,6 +20,7 @@ interface DealAnalyzerPageProps {
   onSaveScenario?: (scenario: ScenarioRecord) => void;
   dealInputs: DealInputState;
   onDealInputsChange: (inputs: DealInputState) => void;
+  markets?: MarketsResponse["markets"] | null;
 }
 
 function riskTone(flag: DealRiskFlag): string {
@@ -43,6 +44,58 @@ function dealTone(label: string): string {
     return "bg-danger/10 text-danger ring-danger/20";
   }
   return "bg-warning/10 text-warning ring-warning/20";
+}
+
+function probabilityTone(probability: number): string {
+  if (probability >= 0.7) {
+    return "bg-success/10 text-success ring-success/20";
+  }
+  if (probability >= 0.4) {
+    return "bg-warning/10 text-warning ring-warning/20";
+  }
+  return "bg-danger/10 text-danger ring-danger/20";
+}
+
+function ProbabilityChip({ label, probability }: { label: string; probability: number }) {
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-pill px-3 py-1.5 text-sm font-bold ring-1 ${probabilityTone(probability)}`}>
+      {label}
+      <span className="tabular-nums">{formatPercent(probability * 100, 0)}</span>
+    </span>
+  );
+}
+
+function UpsideRange({ robustness }: { robustness: DealRobustness }) {
+  // Anchor the scale to zero so a negative P10 reads as downside at a glance.
+  const low = Math.min(robustness.upsideP10, 0);
+  const high = Math.max(robustness.upsideP90, 0);
+  const span = high - low || 1;
+  const position = (value: number) => `${((value - low) / span) * 100}%`;
+
+  return (
+    <div>
+      <div className="relative h-3 rounded-pill bg-canvas ring-1 ring-inset ring-line">
+        <div
+          className="absolute inset-y-0 rounded-pill bg-brand-200"
+          style={{ left: position(robustness.upsideP10), width: `calc(${position(robustness.upsideP90)} - ${position(robustness.upsideP10)})` }}
+        />
+        <div className="absolute inset-y-0 w-1 -translate-x-1/2 rounded-pill bg-brand-700" style={{ left: position(robustness.upsideP50) }} />
+        {low < 0 ? <div className="absolute -inset-y-1 w-px -translate-x-1/2 bg-muted" style={{ left: position(0) }} /> : null}
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        {([
+          ["P10", robustness.upsideP10],
+          ["P50", robustness.upsideP50],
+          ["P90", robustness.upsideP90],
+        ] as const).map(([label, value]) => (
+          <div key={label} className={label === "P10" ? "text-left" : label === "P50" ? "text-center" : "text-right"}>
+            <div className="font-extrabold uppercase tracking-[0.14em] text-muted">{label}</div>
+            <div className={`mt-0.5 font-semibold tabular-nums ${value >= 0 ? "text-ink" : "text-danger"}`}>{formatSignedCurrency(value)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function updateNumberDraft(
@@ -78,6 +131,7 @@ export function DealAnalyzerPage({
   onSaveScenario,
   dealInputs,
   onDealInputsChange,
+  markets,
 }: DealAnalyzerPageProps) {
   const { askingPrice, budget, timelineMonths } = dealInputs;
   const [askingPriceDraft, setAskingPriceDraft] = useState(String(dealInputs.askingPrice));
@@ -169,7 +223,7 @@ export function DealAnalyzerPage({
     <div className="space-y-6">
       <div className="space-y-2">
         <div className="eyebrow">Investor dashboard</div>
-        <h1 className="font-display text-3xl text-ink">Analyze one Vancouver deal before deeper diligence</h1>
+        <h1 className="font-display text-3xl text-ink">Analyze one {result?.estimate.marketLabel ?? "Vancouver"} deal before deeper diligence</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted">
           Enter a listing, compare the asking price with the as-is model estimate, add a realistic renovation budget, and see whether the
           modeled upside is worth reviewing.
@@ -180,7 +234,7 @@ export function DealAnalyzerPage({
 
       <div className="grid gap-6 xl:grid-cols-[400px,minmax(0,1fr)]">
         <div className="space-y-6">
-          <PropertyFormCard property={property} onChange={onPropertyChange} />
+          <PropertyFormCard property={property} onChange={onPropertyChange} markets={markets} />
 
           <SectionCard title="Deal inputs" eyebrow="Investor thesis" description="Keep these numbers conservative; transaction costs are not included yet.">
             <div className="grid gap-4">
@@ -313,6 +367,25 @@ export function DealAnalyzerPage({
               </ResponsiveContainer>
             </div>
           </SectionCard>
+
+          {result?.robustness ? (
+            <SectionCard
+              title="Deal robustness"
+              eyebrow="Monte Carlo"
+              description={`${result.robustness.draws.toLocaleString()} draws propagating the estimate confidence band and uplift range through the deal math.`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <ProbabilityChip label="P(positive upside)" probability={result.robustness.probPositiveUpside} />
+                {result.robustness.probTargetAchievable != null ? (
+                  <ProbabilityChip label="P(target achievable)" probability={result.robustness.probTargetAchievable} />
+                ) : null}
+              </div>
+              <div className="mt-5">
+                <UpsideRange robustness={result.robustness} />
+              </div>
+              <p className="mt-4 text-xs leading-5 text-muted">{result.robustness.note}</p>
+            </SectionCard>
+          ) : null}
 
           <div className="grid gap-6 lg:grid-cols-[1fr,0.9fr]">
             <SectionCard

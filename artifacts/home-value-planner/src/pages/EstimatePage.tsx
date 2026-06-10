@@ -1,11 +1,14 @@
 import { ArrowRight } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { detectMarket, marketCatalog, marketValues } from "@vvl/shared";
 
+import { MarketEvidencePanel } from "../components/MarketEvidencePanel";
+import { MarketTrendCard } from "../components/MarketTrendCard";
 import { PropertyFormCard } from "../components/PropertyFormCard";
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
-import type { EstimateResponse, PropertyInput } from "../types";
+import type { EstimateResponse, MarketsResponse, PropertyInput } from "../types";
 
 interface EstimatePageProps {
   property: PropertyInput;
@@ -13,13 +16,37 @@ interface EstimatePageProps {
   onPropertyChange: (property: PropertyInput) => void;
   loading: boolean;
   error?: string | null;
+  markets?: MarketsResponse["markets"] | null;
 }
 
-export function EstimatePage({ property, estimate, onPropertyChange, loading, error }: EstimatePageProps) {
+// Vancouver trains on listing prices while Halifax trains on real sale prices, so the copy names the right basis.
+function basisNounFor(market: string | undefined): "sales" | "listings" {
+  const marketId = marketValues.find((value) => value === market);
+  return marketId && marketCatalog[marketId].valuationBasis === "sale-price" ? "sales" : "listings";
+}
+
+function confidenceHintFor(estimate: EstimateResponse | null): string {
+  const uncertainty = estimate?.uncertainty;
+  if (uncertainty?.method === "conformal") {
+    const interval = `${formatPercent(uncertainty.targetCoverage * 100, 0)} split-conformal interval`;
+    return uncertainty.empiricalCoverage != null
+      ? `${interval} - empirical coverage ${formatPercent(uncertainty.empiricalCoverage * 100, 0)} on held-out ${basisNounFor(estimate?.market)}`
+      : interval;
+  }
+  if (uncertainty?.method === "error-ratio") {
+    return "Heuristic error-ratio band (public/demo mode)";
+  }
+  return "A practical low-to-high range";
+}
+
+export function EstimatePage({ property, estimate, onPropertyChange, loading, error, markets }: EstimatePageProps) {
   const anchorDelta =
     estimate && property.knownCurrentValue != null ? Math.round(estimate.anchorValue - estimate.baseValue) : null;
 
   const topDrivers = (estimate?.drivers ?? []).slice(0, 5);
+  const maxDriverMagnitude = topDrivers.reduce((max, driver) => Math.max(max, Math.abs(driver.value)), 0);
+  const detectedMarket = detectMarket(property.postalCode);
+  const marketLabel = estimate?.marketLabel ?? (detectedMarket ? marketCatalog[detectedMarket].label : "Vancouver");
 
   return (
     <div className="space-y-6">
@@ -27,7 +54,7 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
         <div className="eyebrow">1. Estimate current price</div>
         <h1 className="font-display text-3xl text-ink">What is this home worth today?</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted">
-          Enter the basic listing details and the app will estimate the current Vancouver list value.
+          Enter the basic property details and the app will estimate the current {marketLabel} value.
         </p>
       </div>
 
@@ -38,7 +65,7 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[380px,minmax(0,1fr)]">
-        <PropertyFormCard property={property} onChange={onPropertyChange} />
+        <PropertyFormCard property={property} onChange={onPropertyChange} markets={markets} />
 
         <div className="space-y-6">
           <section className="hero-panel bg-gradient-to-br from-surface to-brand-50/40">
@@ -50,8 +77,8 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
                 </div>
                 <p className="max-w-xl text-sm leading-6 text-muted">
                   {estimate
-                    ? `Based on Vancouver ${estimate.modelScope.toLowerCase()} listings near ${estimate.marketContext.localAreaLabel}.`
-                    : "Calculating from Vancouver listing patterns."}
+                    ? `Based on ${estimate.marketLabel} ${estimate.modelScope.toLowerCase()} ${basisNounFor(estimate.market)} near ${estimate.marketContext.localAreaLabel}.`
+                    : `Calculating from ${marketLabel} market patterns.`}
                 </p>
               </div>
               {loading ? <span className="rounded-pill bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">Updating</span> : null}
@@ -61,7 +88,7 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
               <MetricCard
                 label="Confidence range"
                 value={estimate ? `${formatCurrency(estimate.confidenceLow)} to ${formatCurrency(estimate.confidenceHigh)}` : "Loading"}
-                hint="A practical low-to-high range"
+                hint={confidenceHintFor(estimate)}
               />
               <MetricCard
                 label="Local median"
@@ -79,17 +106,25 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
           <div className="grid gap-6 lg:grid-cols-2">
             <SectionCard
               title="Why this value?"
-              eyebrow="Main drivers"
+              eyebrow={estimate?.explanationMethod === "shap" ? "SHAP attribution" : "Main drivers"}
               description="These are the strongest signals pushing the estimate up or down."
             >
               <div className="space-y-3">
                 {topDrivers.length ? (
                   topDrivers.map((driver) => (
-                    <div key={driver.label} className="data-row">
-                      <span className="text-sm font-medium text-ink">{driver.label}</span>
-                      <span className={`text-sm font-semibold tabular-nums ${driver.value >= 0 ? "text-success" : "text-danger"}`}>
-                        {formatSignedCurrency(driver.value)}
-                      </span>
+                    <div key={driver.label} className="space-y-1.5 rounded-field bg-canvas px-4 py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-sm font-medium text-ink">{driver.label}</span>
+                        <span className={`text-sm font-semibold tabular-nums ${driver.value >= 0 ? "text-success" : "text-danger"}`}>
+                          {formatSignedCurrency(driver.value)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-pill bg-line/70">
+                        <div
+                          className={`h-full rounded-pill ${driver.value >= 0 ? "bg-brand-500" : "bg-danger"}`}
+                          style={{ width: `${maxDriverMagnitude > 0 ? (Math.abs(driver.value) / maxDriverMagnitude) * 100 : 0}%` }}
+                        />
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -136,6 +171,8 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
             </SectionCard>
           </div>
 
+          <MarketEvidencePanel property={property} estimate={estimate} />
+
           <div className="flex justify-end">
             <NavLink to="/improve" className="btn-primary">
               Next: improve value
@@ -144,6 +181,8 @@ export function EstimatePage({ property, estimate, onPropertyChange, loading, er
           </div>
         </div>
       </div>
+
+      <MarketTrendCard market={estimate?.market ?? null} />
     </div>
   );
 }

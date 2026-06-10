@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Hammer,
   LineChart,
+  Map as MapIcon,
   MapPin,
   Menu,
   ScrollText,
@@ -43,6 +44,7 @@ const navSections: NavSection[] = [
       { href: "/workspace", label: "Scenarios", icon: Bookmark },
       { href: "/insights", label: "Insights", icon: BarChart3 },
       { href: "/deal-analyzer", label: "Deal", icon: LineChart },
+      { href: "/map", label: "Market map", icon: MapIcon },
     ],
   },
   {

@@ -133,7 +133,7 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
               <div className="space-y-4">
                 <p className="rounded-field border border-brand-200 bg-brand-50 px-4 py-3 text-sm leading-6 text-brand-800">
                   {result.evidenceSummary ??
-                    "Uplift uses available observed renovation patterns when data exists, then applies the estimated percentage to this Vancouver listing-value estimate."}
+                    `Uplift uses available observed renovation patterns when data exists, then applies the estimated percentage to this ${estimate?.marketLabel ?? "Vancouver"} value estimate.`}
                 </p>
                 <div className="grid gap-3">
                   {drivers.length ? (
