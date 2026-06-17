@@ -1,0 +1,28 @@
+# The Vercel CLI does not honor .gitignore, so exclude everything not needed to build the
+# public site. Dependencies are installed on Vercel; data/exports + demo are kept because the
+# serverless API function reads them (see vercel.json includeFiles).
+.git
+node_modules
+**/node_modules
+.venv
+.pnpm-store
+.tooling
+.pytest_cache
+**/dist
+**/.vite
+*.tsbuildinfo
+
+# Large local data + model artifacts not used by the public (Python-free) build
+data/raw
+data/warehouse
+data/processed
+artifacts/model-service/models
+mlflow
+reports
+analytics
+
+# Python sources / docs / tests are not part of the public build
+scripts
+tests
+docs
+**/__pycache__
