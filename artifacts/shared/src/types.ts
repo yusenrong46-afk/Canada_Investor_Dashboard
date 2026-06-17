@@ -279,6 +279,36 @@ export type ModelExperimentsResponse =
   | { status: "ready"; generatedAt: string; source: string; rows: ModelExperimentRow[]; conclusions: string[] }
   | { status: "unavailable"; message: string };
 
+export interface ModelRegistryPolicy {
+  primaryMetric: string;
+  direction: string;
+  guardrail: string;
+  rationale?: string;
+}
+
+export interface ModelRegistryEntry {
+  name: string;
+  market: string;
+  productionVersion: number;
+  modelVersionTag: string | null;
+  stage: string;
+  modelArchitecture: string | null;
+  spatialCvMae: number | null;
+  holdoutMae: number | null;
+  holdoutMape: number | null;
+  runId: string | null;
+}
+
+export type ModelRegistryResponse =
+  | {
+      status: "ready";
+      generatedAt: string;
+      trackingStore: string;
+      policy: ModelRegistryPolicy;
+      models: ModelRegistryEntry[];
+    }
+  | { status: "unavailable"; message: string };
+
 export interface DemoInsightRow {
   id: string;
   propertyType: PropertyType;

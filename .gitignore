@@ -22,3 +22,7 @@ artifacts/api-server/dist
 artifacts/model-service/models
 legacy/model-artifacts
 .vercel
+# MLflow: commit the small SQLite history/registry DB; ignore the heavy file artifact store + WAL.
+mlflow/artifacts
+mlflow/*.db-wal
+mlflow/*.db-shm

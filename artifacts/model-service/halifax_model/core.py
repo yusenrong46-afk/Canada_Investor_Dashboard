@@ -26,6 +26,16 @@ from common.conformal import ConformalCalibration, calibrate_split_conformal
 from common.explain import shap_drivers
 
 try:
+    from common import mlflow_tracking
+except Exception:  # pragma: no cover - MLflow is strictly optional
+    mlflow_tracking = None
+
+try:
+    from common import registry as model_registry
+except Exception:  # pragma: no cover - registry resolver is optional
+    model_registry = None
+
+try:
     from xgboost import XGBRegressor
 
     XGBOOST_AVAILABLE = True
@@ -40,6 +50,11 @@ ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "models"
 ARTIFACT_PATH = ARTIFACT_DIR / "halifax_base_price_bundle_v1.pkl"
 MODEL_VERSION = "halifax-base-price-v1"
 TRAINING_MODE = "halifax-real-sales"
+# Halifax serves one model per property type (PVSC open data has no condo coverage). Cross-market
+# pooling is deferred (it would mix listing-price and sale-price targets), so there is a single
+# architecture here; the field exists for parity with Vancouver and the registry.
+DEFAULT_ARCHITECTURE = "local-per-type"
+REGISTRY_MODEL_NAME = "halifax-base-price"
 MARKET_ID = "halifax_maritimes"
 MARKET_LABEL = "Halifax / Maritimes"
 LOCATION_FEATURE_VERSION = "latlon-polynomial-cluster-v1"
@@ -111,6 +126,8 @@ class HalifaxModelBundle:
     time_adjustment_baseline_month: str | None
     xgboost_available: bool
     xgboost_import_error: str | None
+    # Defaulted last so older pickles (which lack it) still unpickle; read via getattr fallback.
+    model_architecture: str = DEFAULT_ARCHITECTURE
 
 
 _BUNDLE: HalifaxModelBundle | None = None
@@ -658,6 +675,73 @@ def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple
     return selected_pipeline, selected_family, candidate_metrics, calibration, evaluation
 
 
+def _log_training_run(bundle: HalifaxModelBundle, artifact_path: Path, market: str = MARKET_ID) -> None:
+    """Log + register this trained Halifax bundle in MLflow when MLFLOW_LOG_TRAINING=1.
+    New registry versions land in stage None — promotion is a separate, explicit step."""
+    if mlflow_tracking is None or not mlflow_tracking.training_logging_enabled():
+        return
+    try:
+        mlflow_tracking.configure(mlflow_tracking.EXPERIMENT_PROD)
+        weighted = bundle.evaluation_summary["overallWeightedMetrics"]
+        spatial = weighted.get("spatialCvMae")
+        run_stamp = bundle.trained_at.replace(":", "").replace("-", "")
+        tags = mlflow_tracking.common_tags(
+            {
+                "experiment_family": "production",
+                "market": market,
+                "model_architecture": bundle.model_architecture,
+                "model_version": bundle.model_version,
+            }
+        )
+        with mlflow_tracking.start_run(run_name=f"{market}/{bundle.model_version}/{run_stamp}", tags=tags) as run:
+            mlflow_tracking.log_params(
+                {
+                    "model_version": bundle.model_version,
+                    "training_mode": bundle.training_mode,
+                    "architecture": bundle.model_architecture,
+                    "data_path": bundle.data_path,
+                    "cluster_count": bundle.cluster_count,
+                    "location_feature_version": bundle.location_feature_version,
+                    "property_types": ",".join(sorted(bundle.models.keys())),
+                    "selected_families": json.dumps(bundle.model_families),
+                    "conformal_alpha": CONFORMAL_ALPHA,
+                    "time_adjustment_baseline_month": bundle.time_adjustment_baseline_month,
+                    "xgboost_available": bundle.xgboost_available,
+                }
+            )
+            metrics = {
+                "cv_mae": weighted.get("cvMae"),
+                "cv_mape": weighted.get("cvMape"),
+                "cv_r2": weighted.get("cvR2"),
+                "holdout_mae": weighted.get("holdoutMae"),
+                "holdout_mape": weighted.get("holdoutMape"),
+                "holdout_r2": weighted.get("holdoutR2"),
+                "spatial_cv_mae": spatial,
+                "spatial_generalization_gap_pct": weighted.get("spatialGeneralizationGapPct"),
+            }
+            for property_type, summary in bundle.evaluation_summary["perType"].items():
+                metrics[f"holdout_mae__{property_type}"] = summary["holdout"]["mae"]
+            mlflow_tracking.log_metrics(metrics)
+            mlflow_tracking.log_dict_artifact(bundle.evaluation_summary, "evaluation_summary.json")
+            reference = mlflow_tracking.log_bundle_reference(artifact_path)
+            mlflow_tracking.register_model(
+                run.info.run_id,
+                name=REGISTRY_MODEL_NAME,
+                source=str(artifact_path),
+                tags={
+                    "artifact_path": str(artifact_path),
+                    "architecture": bundle.model_architecture,
+                    "model_version": bundle.model_version,
+                    "bundle_sha256": reference.get("bundle_sha256"),
+                    "spatial_cv_mae": spatial,
+                    "holdout_mae": weighted.get("holdoutMae"),
+                    "holdout_mape": weighted.get("holdoutMape"),
+                },
+            )
+    except Exception as exc:  # pragma: no cover - logging must never break training
+        print(f"MLflow training log skipped: {exc}")
+
+
 def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
     usable, row_counts, eda_summary, clusterer = _load_training_frame(data_path)
     if usable.empty:
@@ -802,31 +886,58 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
         time_adjustment_baseline_month=_time_adjustment_baseline_month(),
         xgboost_available=XGBOOST_AVAILABLE,
         xgboost_import_error=XGBOOST_IMPORT_ERROR,
+        model_architecture=DEFAULT_ARCHITECTURE,
     )
 
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     with ARTIFACT_PATH.open("wb") as artifact_file:
         pickle.dump(bundle, artifact_file)
 
+    _log_training_run(bundle, ARTIFACT_PATH, market=MARKET_ID)
+
     return bundle
+
+
+def _load_pickle_safe(path: Path) -> HalifaxModelBundle | None:
+    """Load a Halifax bundle pickle, requiring conformal calibrations. Returns None on failure."""
+    try:
+        with Path(path).open("rb") as artifact_file:
+            bundle = pickle.load(artifact_file)
+    except Exception:
+        return None
+    if isinstance(bundle, HalifaxModelBundle) and getattr(bundle, "conformal_calibrations", None):
+        return bundle
+    return None
 
 
 def load_bundle(force_retrain: bool = False, data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
     global _BUNDLE
 
+    # 1) Process singleton — unchanged hot path.
     if _BUNDLE is not None and not force_retrain and _BUNDLE.data_path == data_path:
         return _BUNDLE
 
-    if not force_retrain and ARTIFACT_PATH.exists():
-        try:
-            with ARTIFACT_PATH.open("rb") as artifact_file:
-                bundle = pickle.load(artifact_file)
-            if isinstance(bundle, HalifaxModelBundle) and bundle.data_path == data_path:
+    # 2) Registry-driven selection (only when explicitly enabled). Never raises.
+    if not force_retrain and model_registry is not None and model_registry.registry_enabled():
+        resolved = model_registry.resolve_production(REGISTRY_MODEL_NAME)
+        if resolved is not None:
+            bundle = _load_pickle_safe(resolved.local_path)
+            if bundle is not None:
+                bundle.registry_version = resolved.version
+                bundle.registry_stage = resolved.stage
                 _BUNDLE = bundle
                 return bundle
-        except Exception:
-            pass
 
+    # 3) Local committed bundle fallback — the CI / offline / public-build path.
+    if not force_retrain and ARTIFACT_PATH.exists():
+        bundle = _load_pickle_safe(ARTIFACT_PATH)
+        if bundle is not None and bundle.data_path == data_path:
+            bundle.registry_version = None
+            bundle.registry_stage = None
+            _BUNDLE = bundle
+            return bundle
+
+    # 4) Last resort: train fresh (force_retrain skips registry + local above).
     _BUNDLE = train_bundle(data_path=data_path)
     return _BUNDLE
 
@@ -1064,7 +1175,7 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
     return {
-        "modelVersion": bundle.model_version,
+        "modelVersion": _served_model_version(bundle),
         "trainingMode": bundle.training_mode,
         "modelFamily": bundle.model_families[property_type],
         "modelScope": property_type,
@@ -1116,6 +1227,19 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _served_model_version(bundle: HalifaxModelBundle) -> str:
+    version = getattr(bundle, "registry_version", None)
+    stage = getattr(bundle, "registry_stage", None)
+    architecture = getattr(bundle, "model_architecture", DEFAULT_ARCHITECTURE)
+    if version and stage:
+        return f"{bundle.model_version}@{stage}#{version} ({architecture})"
+    return bundle.model_version
+
+
+def _registry_source(bundle: HalifaxModelBundle) -> str:
+    return "mlflow" if getattr(bundle, "registry_version", None) else "local-artifact"
+
+
 def halifax_health_payload() -> dict[str, Any]:
     bundle = load_bundle()
     return {
@@ -1123,7 +1247,11 @@ def halifax_health_payload() -> dict[str, Any]:
         "service": "model-service",
         "market": MARKET_ID,
         "marketLabel": MARKET_LABEL,
-        "modelVersion": bundle.model_version,
+        "modelVersion": _served_model_version(bundle),
+        "modelArchitecture": getattr(bundle, "model_architecture", DEFAULT_ARCHITECTURE),
+        "registryStage": getattr(bundle, "registry_stage", None),
+        "registryVersion": getattr(bundle, "registry_version", None),
+        "registrySource": _registry_source(bundle),
         "trainingMode": bundle.training_mode,
         "dataPath": bundle.data_path,
         "trainedAt": bundle.trained_at,

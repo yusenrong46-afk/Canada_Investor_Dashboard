@@ -8,6 +8,7 @@ import { analyzeDeal } from "./dealAnalysis";
 import { buildDemoDealAnalyze, buildDemoEstimate, buildDemoPlan, buildDemoSimulate, demoModeEnabled, getDemoMetrics } from "./demo";
 import { buildEvidenceResponse, evidenceQuerySchema } from "./evidence";
 import { buildExperimentsResponse } from "./experiments";
+import { buildRegistryResponse } from "./registry";
 import { buildMapResponse } from "./map";
 import { buildMarketsResponse } from "./marketsRoute";
 import { buildSalePlan, estimateProperty, simulateScenario } from "./model";
@@ -92,6 +93,14 @@ app.get("/api/map", (req, res, next) => {
 app.get("/api/experiments", (_req, res, next) => {
   try {
     res.json(buildExperimentsResponse());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/registry", (_req, res, next) => {
+  try {
+    res.json(buildRegistryResponse());
   } catch (error) {
     next(error);
   }

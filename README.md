@@ -232,6 +232,30 @@ The warehouse is written to `data/warehouse/property_analytics.duckdb`, a build 
 
 The scripts do not invent missing metrics. If a model artifact or data file is missing, the report says exactly what is missing.
 
+## MLflow Tracking & Model Registry
+
+Experiment and production training are tracked in a local, SQLite-backed MLflow store with a model
+registry that drives production model selection:
+
+- The experiment lab logs every `local`/`pooled`/`hybrid` run, so model history is kept (the DuckDB
+  leaderboard is overwritten each run; MLflow is the history of record).
+- Production bundles (`vancouver-base-price`, `halifax-base-price`) are registered, and a documented
+  promotion policy (lowest **spatial CV MAE**, with a holdout-MAPE guardrail) transitions the best
+  version to `Production`.
+- In live mode, `MODEL_REGISTRY_ENABLED=1` makes the model service serve the registry's Production
+  model (with a safe fallback to the committed bundle); the served version/architecture is surfaced
+  in `/health` and in the `modelVersion` field.
+
+```bash
+.venv/bin/python scripts/train_production_bundles.py   # train + log + register
+.venv/bin/python scripts/promote_models.py             # promote the spatial-CV winner
+.venv/bin/python scripts/export_registry_snapshot.py   # refresh data/exports/model_registry.json
+pnpm mlflow:ui                                          # browse runs + registry at :5000
+```
+
+See [docs/mlflow.md](docs/mlflow.md) for the store layout, naming, policy rationale, and the
+MLflow 2-vs-3 pin.
+
 ## Limitations
 
 - The Vancouver model predicts listing price, not final sale price. The Halifax model predicts a time-adjusted real sale price, but the adjustment index is HRM-wide.

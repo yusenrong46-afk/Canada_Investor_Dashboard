@@ -1,0 +1,37 @@
+{
+  "status": "ready",
+  "generatedAt": "2026-06-17T20:55:34.320428+00:00",
+  "trackingStore": "sqlite:///mlflow/tracking.db",
+  "policy": {
+    "primaryMetric": "spatialCvMae",
+    "direction": "lower-is-better",
+    "guardrail": "holdoutMape may not regress more than 0.02 vs the incumbent Production version",
+    "rationale": "GroupKFold-by-FSA spatial CV measures generalization to unseen postal areas, the failure mode that matters for valuation \u2014 so we do not reward a model that memorized FSAs."
+  },
+  "models": [
+    {
+      "name": "vancouver-base-price",
+      "market": "vancouver",
+      "productionVersion": 1,
+      "modelVersionTag": "vancouver-base-price-v5",
+      "stage": "Production",
+      "modelArchitecture": "local-per-type",
+      "spatialCvMae": 432059.4484885413,
+      "holdoutMae": 331348.38501617993,
+      "holdoutMape": 0.12641251242877688,
+      "runId": "efdda861661c42d4805ceec47aa1975e"
+    },
+    {
+      "name": "halifax-base-price",
+      "market": "halifax_maritimes",
+      "productionVersion": 1,
+      "modelVersionTag": "halifax-base-price-v1",
+      "stage": "Production",
+      "modelArchitecture": "local-per-type",
+      "spatialCvMae": 133958.81719389427,
+      "holdoutMae": 101780.56197595004,
+      "holdoutMape": 0.18832699391086127,
+      "runId": "4e0034e185614bbf991bb0123d13bf8b"
+    }
+  ]
+}

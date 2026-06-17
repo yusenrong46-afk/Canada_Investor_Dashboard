@@ -1,6 +1,6 @@
 # Model Experiment Lab Report
 
-Generated: 2026-06-10T03:18:37.028166+00:00
+Generated: 2026-06-17T20:41:35.776072+00:00
 
 Warehouse: `/Users/thomas/Documents/canadian-investor-dashboard/data/warehouse/property_analytics.duckdb`
 

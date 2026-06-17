@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import pickle
@@ -25,6 +26,16 @@ from common.conformal import ConformalCalibration, calibrate_split_conformal
 from common.explain import shap_drivers
 
 try:
+    from common import mlflow_tracking
+except Exception:  # pragma: no cover - MLflow is strictly optional
+    mlflow_tracking = None
+
+try:
+    from common import registry as model_registry
+except Exception:  # pragma: no cover - registry resolver is optional
+    model_registry = None
+
+try:
     from xgboost import XGBRegressor
 
     XGBOOST_AVAILABLE = True
@@ -37,7 +48,17 @@ except Exception as exc:  # pragma: no cover - depends on local OpenMP runtime
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "models"
 ARTIFACT_PATH = ARTIFACT_DIR / "vancouver_base_price_bundle_v5.pkl"
+POOLED_ARTIFACT_PATH = ARTIFACT_DIR / "vancouver_base_price_pooled_bundle_v5.pkl"
 MODEL_VERSION = "vancouver-base-price-v5"
+POOLED_MODEL_VERSION = "vancouver-base-price-pooled-v5"
+# Production architectures the registry can choose between. "local-per-type" trains one model
+# per property type (the original); "pooled-features" trains a single model across all types with
+# propertyType as a feature, so sparse types borrow strength — the within-market analog of the
+# cross-market pooling the experiment lab found wins on spatial CV.
+ARCHITECTURE_LOCAL = "local-per-type"
+ARCHITECTURE_POOLED = "pooled-features"
+DEFAULT_ARCHITECTURE = ARCHITECTURE_LOCAL
+REGISTRY_MODEL_NAME = "vancouver-base-price"
 TRAINING_MODE = "vancouver-real-listings"
 LOCATION_FEATURE_VERSION = "latlon-polynomial-cluster-v1"
 CLUSTER_COUNT = 12
@@ -64,6 +85,9 @@ NUMERIC_FEATURES = [
     "ageYears",
 ]
 CATEGORICAL_FEATURES = ["postalFsa", "submarketCluster"]
+# The pooled architecture additionally lets the model see the property type, so one model can
+# serve every type. SHAP already understands a "propertyType" categorical (see common/explain.py).
+POOLED_CATEGORICAL_FEATURES = CATEGORICAL_FEATURES + ["propertyType"]
 POSTAL_CODE_PATTERN = re.compile(r"^[A-Z]\d[A-Z]\d[A-Z]\d$")
 VANCOUVER_PREFIXES = ("V5", "V6")
 
@@ -100,6 +124,8 @@ class VancouverModelBundle:
     market_index_path: str
     xgboost_available: bool
     xgboost_import_error: str | None
+    # Defaulted last so older pickles (which lack it) still unpickle; read via getattr fallback.
+    model_architecture: str = DEFAULT_ARCHITECTURE
 
 
 _BUNDLE: VancouverModelBundle | None = None
@@ -511,11 +537,34 @@ def _build_preprocessor() -> ColumnTransformer:
     )
 
 
-def _build_candidate_pipelines() -> dict[str, Pipeline]:
+def _build_pooled_preprocessor() -> ColumnTransformer:
+    numeric_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+        ],
+    )
+
+    categorical_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("encoder", _safe_ohe()),
+        ],
+    )
+
+    return ColumnTransformer(
+        transformers=[
+            ("num", numeric_pipeline, NUMERIC_FEATURES),
+            ("cat", categorical_pipeline, POOLED_CATEGORICAL_FEATURES),
+        ],
+        remainder="drop",
+    )
+
+
+def _build_candidate_pipelines(preprocessor_factory=_build_preprocessor) -> dict[str, Pipeline]:
     pipelines: dict[str, Pipeline] = {
         "random-forest": Pipeline(
             [
-                ("prep", _build_preprocessor()),
+                ("prep", preprocessor_factory()),
                 (
                     "model",
                     RandomForestRegressor(
@@ -532,7 +581,7 @@ def _build_candidate_pipelines() -> dict[str, Pipeline]:
     if XGBOOST_AVAILABLE:
         pipelines["xgboost"] = Pipeline(
             [
-                ("prep", _build_preprocessor()),
+                ("prep", preprocessor_factory()),
                 (
                     "model",
                     XGBRegressor(
@@ -809,10 +858,83 @@ def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple
     return selected_pipeline, selected_family, candidate_metrics, calibration, evaluation
 
 
-def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
-    usable, row_counts, eda_summary, clusterer = _load_training_frame(data_path)
-    if usable.empty:
-        raise ValueError("No Vancouver training rows were found after cleaning the CSV")
+def _train_pooled_models(
+    usable: pd.DataFrame,
+    eda_summary: dict[str, Any],
+) -> tuple[
+    dict[str, Pipeline],
+    dict[str, str],
+    dict[str, dict[str, dict[str, Any]]],
+    dict[str, float],
+    dict[str, ConformalCalibration],
+    dict[str, dict[str, Any]],
+]:
+    """Train ONE model across all property types (propertyType becomes a feature) and present it
+    through the same per-type bundle structure the serving path expects. Conformal bands are still
+    calibrated per property type by slicing the pooled holdout; the same fitted model is stored under
+    every type key, so estimate_property's `bundle.models[type].predict(...)` is unchanged."""
+    feature_columns = NUMERIC_FEATURES + POOLED_CATEGORICAL_FEATURES
+    feature_frame = usable[feature_columns].copy()
+    target = usable["logPrice"]
+    prices = usable["price"]
+    types = usable["propertyType"]
+
+    # One pooled 80/20 split, stratified by property type so every type appears in the holdout.
+    stratify = types if types.nunique() > 1 else None
+    train_index, test_index = train_test_split(
+        usable.index.to_numpy(),
+        test_size=0.2,
+        random_state=42,
+        stratify=stratify,
+    )
+    x_train = feature_frame.loc[train_index]
+    x_test = feature_frame.loc[test_index]
+    y_train = target.loc[train_index].to_numpy(dtype=float)
+
+    pipeline_builders = _build_candidate_pipelines(_build_pooled_preprocessor)
+
+    # Family selection by pooled 5-fold CV MAE in price space.
+    cv_splitter = KFold(n_splits=5, shuffle=True, random_state=42)
+    cv_scores: dict[str, dict[str, float]] = {}
+    for candidate_name, pipeline in pipeline_builders.items():
+        fold_maes: list[float] = []
+        for cv_train_pos, cv_valid_pos in cv_splitter.split(x_train):
+            candidate = clone(pipeline)
+            candidate.fit(x_train.iloc[cv_train_pos], y_train[cv_train_pos])
+            cv_predicted = np.exp(candidate.predict(x_train.iloc[cv_valid_pos]))
+            cv_actual = prices.loc[x_train.index[cv_valid_pos]].to_numpy(dtype=float)
+            fold_maes.append(float(mean_absolute_error(cv_actual, cv_predicted)))
+        cv_scores[candidate_name] = {"maeMean": float(np.mean(fold_maes)), "folds": float(len(fold_maes))}
+
+    if not XGBOOST_AVAILABLE:
+        cv_scores.pop("xgboost", None)
+    selected_family = min(cv_scores, key=lambda name: cv_scores[name]["maeMean"])
+    selected_cv_mae = cv_scores[selected_family]["maeMean"]
+    cv_folds = int(cv_scores[selected_family]["folds"])
+
+    # Holdout fit on the pooled training rows, then the final model on every row (this serves).
+    holdout_model = clone(pipeline_builders[selected_family])
+    holdout_model.fit(x_train, y_train)
+    holdout_pred_all = np.exp(holdout_model.predict(x_test))
+    holdout_actual_all = prices.loc[test_index].to_numpy(dtype=float)
+
+    final_model = clone(pipeline_builders[selected_family])
+    final_model.fit(feature_frame, target.to_numpy(dtype=float))
+
+    # Spatial CV on the pooled training rows, grouped by postal FSA.
+    pooled_spatial_mae: float | None = None
+    train_fsa_groups = usable.loc[train_index, "postalFsa"]
+    if train_fsa_groups.nunique() >= 2:
+        spatial_splitter = GroupKFold(n_splits=min(5, int(train_fsa_groups.nunique())))
+        spatial_maes: list[float] = []
+        for spatial_train_pos, spatial_valid_pos in spatial_splitter.split(x_train, groups=train_fsa_groups):
+            spatial_candidate = clone(pipeline_builders[selected_family])
+            spatial_candidate.fit(x_train.iloc[spatial_train_pos], y_train[spatial_train_pos])
+            spatial_predicted = np.exp(spatial_candidate.predict(x_train.iloc[spatial_valid_pos]))
+            spatial_actual = prices.loc[x_train.index[spatial_valid_pos]].to_numpy(dtype=float)
+            spatial_maes.append(float(mean_absolute_error(spatial_actual, spatial_predicted)))
+        if spatial_maes:
+            pooled_spatial_mae = float(np.mean(spatial_maes))
 
     models: dict[str, Pipeline] = {}
     model_families: dict[str, str] = {}
@@ -821,20 +943,212 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
     conformal_calibrations: dict[str, ConformalCalibration] = {}
     per_type_summary: dict[str, dict[str, Any]] = {}
 
+    holdout_types = usable.loc[test_index, "propertyType"].to_numpy()
     for property_type, frame in usable.groupby("propertyType"):
-        model, family, metrics, calibration, evaluation = _train_property_type_model(property_type, frame)
-        models[property_type] = model
-        model_families[property_type] = family
-        candidate_metrics[property_type] = metrics
-        confidence_error_ratios[property_type] = float(calibration.ratio)
-        conformal_calibrations[property_type] = calibration
+        type_mask = holdout_types == property_type
+        type_predicted = holdout_pred_all[type_mask]
+        type_actual = holdout_actual_all[type_mask]
+        # Sparse holdout slices fall back to the full pooled holdout so the band stays trustworthy.
+        if type_actual.size >= 20:
+            holdout_metrics = _evaluate_predictions(type_actual, type_predicted)
+            calibration = calibrate_split_conformal(type_actual, type_predicted, alpha=0.2)
+            bootstrap_summary = _bootstrap_metric_summary(type_actual, type_predicted)
+            holdout_rows = int(type_actual.size)
+        else:
+            holdout_metrics = _evaluate_predictions(holdout_actual_all, holdout_pred_all)
+            calibration = calibrate_split_conformal(holdout_actual_all, holdout_pred_all, alpha=0.2)
+            bootstrap_summary = _bootstrap_metric_summary(holdout_actual_all, holdout_pred_all)
+            holdout_rows = int(holdout_actual_all.size)
+
+        spatial_gap_pct = None
+        if pooled_spatial_mae is not None and selected_cv_mae > 0:
+            spatial_gap_pct = float((pooled_spatial_mae - selected_cv_mae) / selected_cv_mae * 100)
+
+        evaluation: dict[str, Any] = {
+            "propertyType": property_type,
+            "selectedModel": selected_family,
+            "trainingRows": int(len(frame)),
+            "holdoutRows": holdout_rows,
+            "cv": {
+                "folds": cv_folds,
+                "maeMean": selected_cv_mae,
+                "maeStd": 0.0,
+                "rmseMean": holdout_metrics["rmse"],
+                "rmseStd": 0.0,
+                "mapeMean": holdout_metrics["mape"],
+                "mapeStd": 0.0,
+                "r2Mean": holdout_metrics["r2"],
+                "r2Std": 0.0,
+            },
+            "holdout": {
+                "rows": holdout_rows,
+                "mae": holdout_metrics["mae"],
+                "rmse": holdout_metrics["rmse"],
+                "mape": holdout_metrics["mape"],
+                "r2": holdout_metrics["r2"],
+            },
+            "bootstrap": bootstrap_summary,
+            "randomCvMae": selected_cv_mae,
+            "spatialCvMae": pooled_spatial_mae,
+            "spatialGeneralizationGapPct": spatial_gap_pct,
+            "validationStrategy": {
+                "trainHoldoutSplit": "pooled 80/20 stratified by property type across all Vancouver listings",
+                "crossValidation": f"{cv_folds}-fold pooled cross-validation across all Vancouver property types",
+                "spatialCrossValidation": (
+                    "GroupKFold by postal FSA on the pooled Vancouver training rows"
+                    if pooled_spatial_mae is not None
+                    else "not run: too few distinct postal FSA in the pooled Vancouver training rows"
+                ),
+                "bootstrap": f"{bootstrap_summary['repeats']} bootstrap resamples on the Vancouver {property_type} holdout predictions",
+            },
+        }
 
         missingness_for_type = eda_summary["missingnessByPropertyType"].get(property_type, {})
         outlier_for_type = eda_summary["outlierRemoval"]["byPropertyType"].get(property_type, {})
         evaluation["ageYearsMissingRate"] = float(missingness_for_type.get("ageYears", {}).get("missingRate", 0.0))
         evaluation["outlierRemovedRate"] = float(outlier_for_type.get("removedRate", 0.0))
         evaluation["outlierRemovedRows"] = int(outlier_for_type.get("removed", 0))
+
+        models[property_type] = final_model
+        model_families[property_type] = selected_family
+        candidate_metrics[property_type] = {
+            selected_family: {"available": True, "cv": evaluation["cv"], "holdout": evaluation["holdout"]}
+        }
+        confidence_error_ratios[property_type] = float(calibration.ratio)
+        conformal_calibrations[property_type] = calibration
         per_type_summary[property_type] = evaluation
+
+    return (
+        models,
+        model_families,
+        candidate_metrics,
+        confidence_error_ratios,
+        conformal_calibrations,
+        per_type_summary,
+    )
+
+
+def _weighted_spatial_cv_mae(bundle: VancouverModelBundle) -> float | None:
+    items = [
+        {"value": summary["spatialCvMae"], "weight": summary.get("trainingRows", 1)}
+        for summary in bundle.evaluation_summary["perType"].values()
+        if summary.get("spatialCvMae") is not None
+    ]
+    return _weighted_average(items) if items else None
+
+
+def _artifact_path_for(architecture: str) -> Path:
+    return POOLED_ARTIFACT_PATH if architecture == ARCHITECTURE_POOLED else ARTIFACT_PATH
+
+
+def _model_version_for(architecture: str) -> str:
+    return POOLED_MODEL_VERSION if architecture == ARCHITECTURE_POOLED else MODEL_VERSION
+
+
+def _log_training_run(bundle: VancouverModelBundle, artifact_path: Path, market: str = "vancouver") -> None:
+    """Log + register this trained bundle in MLflow, only when a deliberate training run opted in
+    (MLFLOW_LOG_TRAINING=1). New registry versions land in stage None — promotion is separate."""
+    if mlflow_tracking is None or not mlflow_tracking.training_logging_enabled():
+        return
+    try:
+        mlflow_tracking.configure(mlflow_tracking.EXPERIMENT_PROD)
+        weighted = bundle.evaluation_summary["overallWeightedMetrics"]
+        spatial = _weighted_spatial_cv_mae(bundle)
+        run_stamp = bundle.trained_at.replace(":", "").replace("-", "")
+        tags = mlflow_tracking.common_tags(
+            {
+                "experiment_family": "production",
+                "market": market,
+                "model_architecture": bundle.model_architecture,
+                "model_version": bundle.model_version,
+            }
+        )
+        with mlflow_tracking.start_run(run_name=f"{market}/{bundle.model_version}/{run_stamp}", tags=tags) as run:
+            mlflow_tracking.log_params(
+                {
+                    "model_version": bundle.model_version,
+                    "training_mode": bundle.training_mode,
+                    "architecture": bundle.model_architecture,
+                    "data_path": bundle.data_path,
+                    "cluster_count": bundle.cluster_count,
+                    "location_feature_version": bundle.location_feature_version,
+                    "property_types": ",".join(sorted(bundle.models.keys())),
+                    "selected_families": json.dumps(bundle.model_families),
+                    "conformal_alpha": 0.2,
+                    "xgboost_available": bundle.xgboost_available,
+                }
+            )
+            metrics = {
+                "cv_mae": weighted.get("cvMae"),
+                "cv_mape": weighted.get("cvMape"),
+                "cv_r2": weighted.get("cvR2"),
+                "holdout_mae": weighted.get("holdoutMae"),
+                "holdout_mape": weighted.get("holdoutMape"),
+                "holdout_r2": weighted.get("holdoutR2"),
+                "spatial_cv_mae": spatial,
+            }
+            for property_type, summary in bundle.evaluation_summary["perType"].items():
+                metrics[f"holdout_mae__{property_type}"] = summary["holdout"]["mae"]
+            mlflow_tracking.log_metrics(metrics)
+            mlflow_tracking.log_dict_artifact(bundle.evaluation_summary, "evaluation_summary.json")
+            reference = mlflow_tracking.log_bundle_reference(artifact_path)
+            mlflow_tracking.register_model(
+                run.info.run_id,
+                name=REGISTRY_MODEL_NAME,
+                source=str(artifact_path),
+                tags={
+                    "artifact_path": str(artifact_path),
+                    "architecture": bundle.model_architecture,
+                    "model_version": bundle.model_version,
+                    "bundle_sha256": reference.get("bundle_sha256"),
+                    "spatial_cv_mae": spatial,
+                    "holdout_mae": weighted.get("holdoutMae"),
+                    "holdout_mape": weighted.get("holdoutMape"),
+                },
+            )
+    except Exception as exc:  # pragma: no cover - logging must never break training
+        print(f"MLflow training log skipped: {exc}")
+
+
+def train_bundle(
+    data_path: str = DEFAULT_DATA_PATH,
+    architecture: str = DEFAULT_ARCHITECTURE,
+) -> VancouverModelBundle:
+    usable, row_counts, eda_summary, clusterer = _load_training_frame(data_path)
+    if usable.empty:
+        raise ValueError("No Vancouver training rows were found after cleaning the CSV")
+
+    if architecture == ARCHITECTURE_POOLED:
+        (
+            models,
+            model_families,
+            candidate_metrics,
+            confidence_error_ratios,
+            conformal_calibrations,
+            per_type_summary,
+        ) = _train_pooled_models(usable, eda_summary)
+    else:
+        models: dict[str, Pipeline] = {}
+        model_families: dict[str, str] = {}
+        candidate_metrics: dict[str, dict[str, dict[str, Any]]] = {}
+        confidence_error_ratios: dict[str, float] = {}
+        conformal_calibrations: dict[str, ConformalCalibration] = {}
+        per_type_summary: dict[str, dict[str, Any]] = {}
+
+        for property_type, frame in usable.groupby("propertyType"):
+            model, family, metrics, calibration, evaluation = _train_property_type_model(property_type, frame)
+            models[property_type] = model
+            model_families[property_type] = family
+            candidate_metrics[property_type] = metrics
+            confidence_error_ratios[property_type] = float(calibration.ratio)
+            conformal_calibrations[property_type] = calibration
+
+            missingness_for_type = eda_summary["missingnessByPropertyType"].get(property_type, {})
+            outlier_for_type = eda_summary["outlierRemoval"]["byPropertyType"].get(property_type, {})
+            evaluation["ageYearsMissingRate"] = float(missingness_for_type.get("ageYears", {}).get("missingRate", 0.0))
+            evaluation["outlierRemovedRate"] = float(outlier_for_type.get("removedRate", 0.0))
+            evaluation["outlierRemovedRows"] = int(outlier_for_type.get("removed", 0))
+            per_type_summary[property_type] = evaluation
 
     overall_weighted_metrics = {
         "cvMae": _weighted_average(
@@ -912,7 +1226,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         evaluation_summary=evaluation_summary,
         confidence_error_ratios=confidence_error_ratios,
         conformal_calibrations=conformal_calibrations,
-        model_version=MODEL_VERSION,
+        model_version=_model_version_for(architecture),
         training_mode=TRAINING_MODE,
         data_path=data_path,
         trained_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
@@ -938,39 +1252,64 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         market_index_path=DEFAULT_MARKET_INDEX_PATH,
         xgboost_available=XGBOOST_AVAILABLE,
         xgboost_import_error=XGBOOST_IMPORT_ERROR,
+        model_architecture=architecture,
     )
 
+    artifact_path = _artifact_path_for(architecture)
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    with ARTIFACT_PATH.open("wb") as artifact_file:
+    with artifact_path.open("wb") as artifact_file:
         pickle.dump(bundle, artifact_file)
 
+    _log_training_run(bundle, artifact_path, market="vancouver")
+
     return bundle
+
+
+def _load_pickle_safe(path: Path) -> VancouverModelBundle | None:
+    """Load a bundle pickle, rejecting pre-v5 artifacts that lack conformal calibrations so we
+    never serve confidence bands without a coverage guarantee. Returns None on any failure."""
+    try:
+        with Path(path).open("rb") as artifact_file:
+            bundle = pickle.load(artifact_file)
+    except Exception:
+        return None
+    if isinstance(bundle, VancouverModelBundle) and getattr(bundle, "conformal_calibrations", None):
+        return bundle
+    return None
 
 
 def load_bundle(force_retrain: bool = False, data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
     global _BUNDLE
 
+    # 1) Process singleton — unchanged hot path.
     if _BUNDLE is not None and not force_retrain and _BUNDLE.data_path == data_path:
         _BUNDLE.market_index_path = DEFAULT_MARKET_INDEX_PATH
         return _BUNDLE
 
-    if not force_retrain and ARTIFACT_PATH.exists():
-        try:
-            with ARTIFACT_PATH.open("rb") as artifact_file:
-                bundle = pickle.load(artifact_file)
-            # Pre-v5 artifacts lack conformal calibrations; force retrain rather than serve
-            # confidence bands without a coverage guarantee.
-            if (
-                isinstance(bundle, VancouverModelBundle)
-                and bundle.data_path == data_path
-                and getattr(bundle, "conformal_calibrations", None)
-            ):
+    # 2) Registry-driven selection (only when explicitly enabled). The promotion policy decides
+    #    which architecture/version is Production; we load that local bundle. Never raises.
+    if not force_retrain and model_registry is not None and model_registry.registry_enabled():
+        resolved = model_registry.resolve_production(REGISTRY_MODEL_NAME)
+        if resolved is not None:
+            bundle = _load_pickle_safe(resolved.local_path)
+            if bundle is not None:
+                bundle.registry_version = resolved.version
+                bundle.registry_stage = resolved.stage
                 bundle.market_index_path = DEFAULT_MARKET_INDEX_PATH
                 _BUNDLE = bundle
                 return bundle
-        except Exception:
-            pass
 
+    # 3) Local committed bundle fallback — the CI / offline / public-build path.
+    if not force_retrain and ARTIFACT_PATH.exists():
+        bundle = _load_pickle_safe(ARTIFACT_PATH)
+        if bundle is not None and bundle.data_path == data_path:
+            bundle.registry_version = None
+            bundle.registry_stage = None
+            bundle.market_index_path = DEFAULT_MARKET_INDEX_PATH
+            _BUNDLE = bundle
+            return bundle
+
+    # 4) Last resort: train fresh (force_retrain skips registry + local above).
     _BUNDLE = train_bundle(data_path=data_path)
     return _BUNDLE
 
@@ -1250,6 +1589,8 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
                 "lat_sq": property_data["lat_sq"],
                 "lon_sq": property_data["lon_sq"],
                 "ageYears": property_data["ageYears"],
+                # Used by the pooled architecture; the local preprocessor drops it (remainder="drop").
+                "propertyType": property_type,
             },
         ],
     )
@@ -1304,7 +1645,7 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
     return {
-        "modelVersion": bundle.model_version,
+        "modelVersion": _served_model_version(bundle),
         "trainingMode": bundle.training_mode,
         "modelFamily": bundle.model_families[property_type],
         "modelScope": property_type,
@@ -1353,12 +1694,31 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _served_model_version(bundle: VancouverModelBundle) -> str:
+    """Enrich the modelVersion *value* (still a string) with registry stage/version + architecture
+    when serving from the registry; otherwise the plain version, so demo/public snapshots don't drift."""
+    version = getattr(bundle, "registry_version", None)
+    stage = getattr(bundle, "registry_stage", None)
+    architecture = getattr(bundle, "model_architecture", DEFAULT_ARCHITECTURE)
+    if version and stage:
+        return f"{bundle.model_version}@{stage}#{version} ({architecture})"
+    return bundle.model_version
+
+
+def _registry_source(bundle: VancouverModelBundle) -> str:
+    return "mlflow" if getattr(bundle, "registry_version", None) else "local-artifact"
+
+
 def health_payload() -> dict[str, Any]:
     bundle = load_bundle()
     return {
         "ok": True,
         "service": "model-service",
-        "modelVersion": bundle.model_version,
+        "modelVersion": _served_model_version(bundle),
+        "modelArchitecture": getattr(bundle, "model_architecture", DEFAULT_ARCHITECTURE),
+        "registryStage": getattr(bundle, "registry_stage", None),
+        "registryVersion": getattr(bundle, "registry_version", None),
+        "registrySource": _registry_source(bundle),
         "trainingMode": bundle.training_mode,
         "dataPath": bundle.data_path,
         "trainedAt": bundle.trained_at,

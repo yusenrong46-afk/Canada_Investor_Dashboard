@@ -17,6 +17,7 @@
     "typecheck": "pnpm -r typecheck",
     "dev:model": ".venv/bin/python artifacts/model-service/app.py",
     "dev:api": "pnpm --filter @vvl/api-server dev",
-    "dev:web": "pnpm --filter @vvl/home-value-planner dev"
+    "dev:web": "pnpm --filter @vvl/home-value-planner dev",
+    "mlflow:ui": ".venv/bin/mlflow ui --backend-store-uri sqlite:///$PWD/mlflow/tracking.db --default-artifact-root file://$PWD/mlflow/artifacts --port 5000"
   }
 }

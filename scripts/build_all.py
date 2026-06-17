@@ -68,6 +68,20 @@ BUILD_STEPS = [
         script=SCRIPTS_DIR / "run_model_experiments.py",
         inputs=(WAREHOUSE_PATH,),
     ),
+    # The next three steps need MLflow + raw training data; each self-skips (exit 0) when those
+    # are absent, so a fresh clone without private data still completes the build cleanly.
+    BuildStep(
+        name="train production bundles (MLflow)",
+        script=SCRIPTS_DIR / "train_production_bundles.py",
+    ),
+    BuildStep(
+        name="promote registry models",
+        script=SCRIPTS_DIR / "promote_models.py",
+    ),
+    BuildStep(
+        name="registry snapshot export",
+        script=SCRIPTS_DIR / "export_registry_snapshot.py",
+    ),
     BuildStep(
         name="model metrics report",
         script=SCRIPTS_DIR / "generate_model_report.py",

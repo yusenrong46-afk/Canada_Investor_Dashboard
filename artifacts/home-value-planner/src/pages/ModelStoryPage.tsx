@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { ModelExperimentsResponse } from "@vvl/shared";
+import type { ModelExperimentsResponse, ModelRegistryResponse } from "@vvl/shared";
 
-import { getModelExperiments } from "../api/client";
+import { getModelExperiments, getModelRegistry } from "../api/client";
 import { SectionCard } from "../components/SectionCard";
 import { formatCurrency, formatPercent } from "../lib/format";
 
@@ -14,6 +14,7 @@ const experimentLabels: Record<string, string> = {
 
 export function ModelStoryPage() {
   const [experiments, setExperiments] = useState<ModelExperimentsResponse | null>(null);
+  const [registry, setRegistry] = useState<ModelRegistryResponse | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -28,12 +29,23 @@ export function ModelStoryPage() {
         // The model lab section simply stays hidden when the endpoint is unreachable.
       });
 
+    getModelRegistry()
+      .then((response) => {
+        if (active) {
+          setRegistry(response);
+        }
+      })
+      .catch(() => {
+        // The registry section stays hidden when the endpoint is unreachable.
+      });
+
     return () => {
       active = false;
     };
   }, []);
 
   const experimentsReady = experiments?.status === "ready" ? experiments : null;
+  const registryReady = registry?.status === "ready" ? registry : null;
   const leaderboardRows = experimentsReady ? experimentsReady.rows.filter((row) => row.propertyType === "All") : [];
   const modelRows = [
     ["Base model", "Vancouver listing data", "3,518 usable rows", "As-is listing value by property type."],
@@ -156,6 +168,48 @@ export function ModelStoryPage() {
           </ul>
           <p className="mt-4 text-xs leading-5 text-muted">
             Source: {experimentsReady.source} · Generated {new Date(experimentsReady.generatedAt).toLocaleDateString("en-CA")}
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {registryReady && registryReady.models.length ? (
+        <SectionCard
+          title="Model registry: what is in production"
+          eyebrow="MLflow"
+          description="Production bundles are tracked and versioned in an MLflow registry. A promotion policy selects the architecture that wins on spatial generalization, so the served model is a data-driven choice, not a hardcoded one."
+        >
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-[11px] uppercase tracking-[0.14em] text-muted">
+                  <th className="py-3 pr-4 font-bold">Model</th>
+                  <th className="py-3 pr-4 font-bold">Production</th>
+                  <th className="py-3 pr-4 font-bold">Architecture</th>
+                  <th className="py-3 pr-4 font-bold">Spatial CV MAE</th>
+                  <th className="py-3 font-bold">Holdout MAPE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {registryReady.models.map((model) => (
+                  <tr key={model.name} className="border-b border-line/60 even:bg-canvas">
+                    <td className="py-3 pr-4 font-semibold text-ink">{model.market}</td>
+                    <td className="py-3 pr-4 tabular-nums">
+                      v{model.productionVersion}
+                      <span className="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-700">
+                        {model.stage}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">{model.modelArchitecture ?? "—"}</td>
+                    <td className="py-3 pr-4 tabular-nums">{model.spatialCvMae != null ? formatCurrency(model.spatialCvMae) : "—"}</td>
+                    <td className="py-3 tabular-nums">{model.holdoutMape != null ? formatPercent(model.holdoutMape * 100, 1) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-4 text-xs leading-5 text-muted">
+            Promotion policy: lowest {registryReady.policy.primaryMetric} ({registryReady.policy.direction}); guardrail —{" "}
+            {registryReady.policy.guardrail}. Generated {new Date(registryReady.generatedAt).toLocaleDateString("en-CA")}.
           </p>
         </SectionCard>
       ) : null}

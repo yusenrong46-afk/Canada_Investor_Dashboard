@@ -9,6 +9,7 @@ import type {
   MarketsResponse,
   MarketTrendResponse,
   ModelExperimentsResponse,
+  ModelRegistryResponse,
   PlannedFlag,
   PlanResponse,
   PropertyInput,
@@ -90,4 +91,8 @@ export async function getMarketMap(market: string): Promise<MarketMapResponse> {
 
 export async function getModelExperiments(): Promise<ModelExperimentsResponse> {
   return apiFetch<ModelExperimentsResponse>(`${apiBase}/experiments`);
+}
+
+export async function getModelRegistry(): Promise<ModelRegistryResponse> {
+  return apiFetch<ModelRegistryResponse>(`${apiBase}/registry`);
 }

@@ -14,6 +14,18 @@ DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.
 DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "model_experiments.json"
 DEFAULT_REPORT_PATH = REPO_ROOT / "reports" / "model_experiments_report.md"
 
+# Optional MLflow tracking: the lab's primary outputs (DuckDB/JSON/MD) never depend on it.
+# The helper lives under the model service; make it importable without hard-coupling.
+import sys
+
+_MODEL_SERVICE_DIR = REPO_ROOT / "artifacts" / "model-service"
+if str(_MODEL_SERVICE_DIR) not in sys.path:
+    sys.path.insert(0, str(_MODEL_SERVICE_DIR))
+try:
+    from common import mlflow_tracking
+except Exception:  # pragma: no cover - MLflow helper is strictly optional
+    mlflow_tracking = None
+
 EXPERIMENTS = ("local", "pooled", "hybrid")
 TARGET_COLUMN = "log_target_value"
 NUMERIC_FEATURES = [
@@ -528,6 +540,86 @@ def _write_report(
     report_path.write_text("\n".join(lines))
 
 
+def _log_experiments_to_mlflow(
+    rows: list[dict[str, Any]],
+    family: str,
+    run_at: datetime,
+    target_names: dict[str, str],
+    conclusions: list[str],
+) -> None:
+    """Log each (architecture x market) as a nested MLflow run so the lab keeps a longitudinal
+    history (the DuckDB table is overwritten every run). Purely additive — never raises into
+    the lab's primary outputs."""
+    if mlflow_tracking is None or not mlflow_tracking.available():
+        return
+    try:
+        mlflow_tracking.configure(mlflow_tracking.EXPERIMENT_LAB)
+        all_rows = [row for row in rows if row["propertyType"] == "All"]
+        markets = sorted({row["market"] for row in all_rows})
+        winners = {
+            market: min(
+                (row for row in all_rows if row["market"] == market),
+                key=lambda row: row["holdoutMae"],
+            )["experiment"]
+            for market in markets
+        }
+        run_stamp = run_at.strftime("%Y%m%dT%H%M%SZ")
+        sha7 = mlflow_tracking.common_tags().get("git_sha7", "nogit")
+        parent_name = f"lab/{sha7}/{run_stamp}"
+        with mlflow_tracking.start_run(
+            run_name=parent_name,
+            tags=mlflow_tracking.common_tags({"experiment_family": "lab", "family": family}),
+        ):
+            mlflow_tracking.set_tags(
+                {"target_semantics_caveat": TARGET_SEMANTICS_CAVEAT, "markets": ",".join(markets)}
+            )
+            mlflow_tracking.log_dict_artifact({"conclusions": conclusions}, "conclusions.json")
+            slice_rows = [row for row in rows if row["propertyType"] != "All"]
+            if slice_rows:
+                mlflow_tracking.log_dict_artifact({"slices": slice_rows}, "slices.json")
+            for row in all_rows:
+                is_pooled = row["experiment"] in ("pooled", "hybrid")
+                categorical = POOLED_CATEGORICAL_FEATURES if is_pooled else LOCAL_CATEGORICAL_FEATURES
+                child_tags = mlflow_tracking.common_tags(
+                    {
+                        "experiment_family": "lab",
+                        "market": row["market"],
+                        "architecture": row["experiment"],
+                        "is_market_winner": "true" if winners.get(row["market"]) == row["experiment"] else "false",
+                    }
+                )
+                with mlflow_tracking.start_run(
+                    run_name=f"{row['experiment']}-{row['market']}",
+                    nested=True,
+                    tags=child_tags,
+                ):
+                    mlflow_tracking.log_params(
+                        {
+                            "architecture": row["experiment"],
+                            "market": row["market"],
+                            "family": row["family"],
+                            "target_column": TARGET_COLUMN,
+                            "target_name": target_names.get(row["market"]),
+                            "numeric_features": ",".join(NUMERIC_FEATURES),
+                            "categorical_features": ",".join(categorical),
+                            "holdout_fraction": HOLDOUT_FRACTION,
+                            "random_state": RANDOM_STATE,
+                            "max_spatial_folds": MAX_SPATIAL_FOLDS,
+                            "n_train": row["trainingRows"],
+                            "n_holdout": row["holdoutRows"],
+                        }
+                    )
+                    mlflow_tracking.log_metrics(
+                        {
+                            "holdout_mae": row["holdoutMae"],
+                            "holdout_mape": row["holdoutMape"],
+                            "spatial_cv_mae": row["spatialCvMae"],
+                        }
+                    )
+    except Exception as exc:  # pragma: no cover - logging must never break the lab
+        print(f"MLflow logging skipped: {exc}")
+
+
 def run_model_experiments(
     *,
     warehouse_path: Path = DEFAULT_WAREHOUSE_PATH,
@@ -565,6 +657,7 @@ def run_model_experiments(
     export_path.parent.mkdir(parents=True, exist_ok=True)
     export_path.write_text(json.dumps(payload) + "\n")
     _write_report(report_path, payload, target_names, family, skipped, warehouse_path)
+    _log_experiments_to_mlflow(rows, family, run_at, target_names, conclusions)
 
     print(f"Wrote {len(rows)} experiment rows to fact_model_experiments in {warehouse_path}")
     print(f"Wrote {export_path}")
