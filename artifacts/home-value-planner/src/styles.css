@@ -8,7 +8,8 @@
   }
 
   body {
-    @apply m-0 bg-canvas font-sans text-body antialiased;
+    @apply m-0 bg-canvas-wash bg-canvas font-sans text-body antialiased;
+    background-attachment: fixed;
   }
 
   * {
@@ -17,9 +18,8 @@
 }
 
 @layer components {
-  /* Surfaces */
   .card {
-    @apply rounded-card border border-line bg-surface shadow-card;
+    @apply rounded-card border border-line/90 bg-surface shadow-card;
   }
 
   .card-pad {
@@ -27,42 +27,46 @@
   }
 
   .hero-panel {
-    @apply rounded-card border border-line bg-surface p-6 shadow-hero sm:p-8;
+    @apply rounded-card border border-line/90 bg-surface bg-hero-fade p-6 shadow-hero sm:p-8;
   }
 
-  /* Typography */
   .eyebrow {
-    @apply text-[11px] font-extrabold uppercase tracking-[0.16em] text-brand-600;
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-600;
   }
 
   .metric-num {
-    @apply font-display tabular-nums text-ink;
+    @apply font-display tabular-nums tracking-tight text-ink;
   }
 
-  /* Form controls */
   .field {
-    @apply w-full rounded-field border border-line bg-surface px-4 py-3 text-sm font-medium text-ink shadow-xs outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100;
+    @apply w-full rounded-field border border-line bg-surface px-3.5 py-2.5 text-sm font-medium text-ink shadow-xs outline-none transition focus:border-brand-400 focus:ring-4 focus:ring-brand-100;
   }
 
   .label {
-    @apply text-xs font-extrabold uppercase tracking-[0.16em] text-muted;
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted;
   }
 
   .range-field {
-    @apply h-2 w-full cursor-pointer appearance-none rounded-pill bg-brand-100 accent-brand-600;
+    @apply h-2 w-full cursor-pointer appearance-none rounded-field bg-brand-100 accent-brand-600;
   }
 
-  /* Buttons */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-field bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-slate-300;
+    @apply inline-flex items-center justify-center gap-2 rounded-field bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-muted;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-field border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-body transition hover:border-slate-300 hover:text-ink disabled:cursor-not-allowed disabled:text-muted;
+    @apply inline-flex items-center justify-center gap-2 rounded-field border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-body transition hover:border-brand-200 hover:text-ink disabled:cursor-not-allowed disabled:text-muted;
   }
 
-  /* Repeated key/value row */
   .data-row {
     @apply flex items-center justify-between gap-4 rounded-field bg-canvas px-4 py-3;
+  }
+
+  .nav-link {
+    @apply rounded-field px-3 py-2 text-sm font-semibold text-body transition hover:bg-brand-50 hover:text-ink;
+  }
+
+  .nav-link-active {
+    @apply bg-brand-50 text-brand-700;
   }
 }

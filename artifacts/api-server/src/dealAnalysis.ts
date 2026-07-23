@@ -1,5 +1,8 @@
-import type { DealAnalyzeRequest, DealAnalyzeResponse, DealLabel, DealRiskFlag, EstimateResponse, PlanResponse } from "@vvl/shared";
+import { WIDE_CONFIDENCE_RATIO, type DealAnalyzeRequest, type DealAnalyzeResponse, type DealLabel, type DealRiskFlag, type EstimateResponse, type PlanResponse } from "@vvl/shared";
 
+import { buildDealAnalyze, computeDealTargetPrice } from "./dealBuilder";
+export { computeDealRobustness, ROBUSTNESS_DRAWS } from "./dealRobustness";
+export type { DealRobustnessInputs } from "./dealRobustness";
 import { buildSalePlan, estimateProperty } from "./model";
 
 function percent(numerator: number, denominator: number): number {
@@ -9,21 +12,16 @@ function percent(numerator: number, denominator: number): number {
   return numerator / denominator;
 }
 
-function roundPercent(value: number): number {
-  return Number(value.toFixed(4));
-}
-
 function buildRiskFlags(
   request: DealAnalyzeRequest,
   estimate: EstimateResponse,
   plan: PlanResponse,
   afterPlanValue: number,
-  grossUpsidePercent: number,
+  netUpsidePercent: number,
 ): DealRiskFlag[] {
   const flags: DealRiskFlag[] = [];
   const askingPremium = percent(request.askingPrice - estimate.baseValue, estimate.baseValue);
 
-  // Deal flags keep the investor-facing verdict explainable instead of returning only a score.
   if (askingPremium > 0.05) {
     flags.push({
       level: "danger",
@@ -44,25 +42,33 @@ function buildRiskFlags(
     });
   }
 
-  if (grossUpsidePercent < 0) {
+  if (netUpsidePercent < 0) {
     flags.push({
       level: "danger",
-      label: "No modeled upside",
-      detail: "The guardrailed after-plan value is below the asking price.",
+      label: "No modeled net upside after renovation cost",
+      detail: "The guardrailed after-plan value does not cover the asking price plus planned renovation spend.",
     });
-  } else if (grossUpsidePercent < 0.04) {
+  } else if (netUpsidePercent < 0.04) {
     flags.push({
       level: "warning",
-      label: "Thin upside",
-      detail: "The estimated gross upside is under 4%, before transaction costs, financing, taxes, or surprises.",
+      label: "Thin net upside",
+      detail: "The modeled margin after renovation spend is under 4%, before transaction costs, financing, taxes, or surprises.",
     });
   }
 
-  if (plan.targetAssessment === "Unlikely") {
+  if ((plan.plannedSpend ?? 0) > request.budget) {
+    flags.push({
+      level: "danger",
+      label: "Committed scope exceeds the renovation budget",
+      detail: `Selected work is costed at ${(plan.plannedSpend ?? 0).toLocaleString("en-CA")} dollars against an ${request.budget.toLocaleString("en-CA")} dollar budget.`,
+    });
+  }
+
+  if (plan.targetAssessment === "Below target") {
     flags.push({
       level: "warning",
       label: "Target looks difficult",
-      detail: "The Seattle-observed uplift plan does not appear to reach the target price inside the current budget and timeline.",
+      detail: "The observed-evidence uplift plan does not appear to reach the target price inside the current budget and timeline.",
     });
   }
 
@@ -74,7 +80,7 @@ function buildRiskFlags(
     });
   }
 
-  if (estimate.confidenceRatio >= 0.16) {
+  if (estimate.confidenceRatio >= WIDE_CONFIDENCE_RATIO) {
     flags.push({
       level: "warning",
       label: "Wide model confidence range",
@@ -82,26 +88,45 @@ function buildRiskFlags(
     });
   }
 
-  flags.push({
-    level: "info",
-    label: "Renovation upside uses observed Seattle resale data",
-    detail: "The uplift layer predicts a percentage from real Seattle repeat-sale and permit records, then applies it to the Vancouver base estimate.",
-  });
+  if (plan.upliftConfidenceLow != null && plan.upliftConfidenceLow <= 0 && (plan.plannedSpend ?? 0) > 0) {
+    flags.push({
+      level: "warning",
+      label: "Observed renovation range includes no uplift",
+      detail: "The lower observed renovation outcome is zero or negative. Treat the point estimate as a screening median, not a guaranteed return.",
+    });
+  }
+
+  flags.push(
+    estimate.market === "halifax_maritimes"
+      ? {
+          level: "info",
+          label: "Halifax uplift is one broad permit-renovation signal",
+          detail: "Kitchen, bathroom, energy, maintenance, and roof selections share the same HRM permit-linked repeat-sale category and do not stack as separate measured effects.",
+        }
+      : {
+          level: "info",
+          label: "Renovation evidence transfers from Seattle to Vancouver",
+          detail: "The uplift layer uses Seattle repeat-sale and permit records, then transfers the percentage to the Vancouver listing-value estimate. Review this cross-market assumption manually.",
+        },
+  );
 
   return flags;
 }
 
-export function labelDeal(grossUpsidePercent: number, valueGapPercent: number, flags: DealRiskFlag[]): DealLabel {
+export function labelDeal(netUpsidePercent: number, valueGapPercent: number, flags: DealRiskFlag[]): DealLabel {
   const hasDanger = flags.some((flag) => flag.level === "danger");
+  const hasWarning = flags.some((flag) => flag.level === "warning");
 
-  // Thresholds are conservative because transaction costs, financing, taxes, and surprises are not modeled yet.
-  if (grossUpsidePercent < 0 || (hasDanger && grossUpsidePercent < 0.06)) {
+  if (netUpsidePercent < 0 || (hasDanger && netUpsidePercent < 0.06)) {
     return "Pass for now";
   }
-  if (grossUpsidePercent >= 0.08 && valueGapPercent >= -0.02 && !hasDanger) {
-    return "Strong lead";
+  if (hasDanger) {
+    return "Needs caution";
   }
-  if (grossUpsidePercent >= 0.03 || valueGapPercent >= 0.02) {
+  if (netUpsidePercent >= 0.08 && valueGapPercent >= -0.02 && !hasDanger && !hasWarning) {
+    return "Worth review";
+  }
+  if (netUpsidePercent >= 0.03 || valueGapPercent >= 0.02) {
     return "Worth review";
   }
   return "Needs caution";
@@ -109,7 +134,7 @@ export function labelDeal(grossUpsidePercent: number, valueGapPercent: number, f
 
 export async function analyzeDeal(request: DealAnalyzeRequest): Promise<DealAnalyzeResponse> {
   const estimate = await estimateProperty(request);
-  const targetPrice = Math.max(request.askingPrice, estimate.baseValue) * 1.08;
+  const targetPrice = computeDealTargetPrice(request.askingPrice, estimate.baseValue);
   const plan = await buildSalePlan({
     ...request,
     targetPrice,
@@ -117,20 +142,26 @@ export async function analyzeDeal(request: DealAnalyzeRequest): Promise<DealAnal
 
   const afterPlanValue = Math.round(plan.achievableValue ?? estimate.baseValue);
   const modeledValueGap = Math.round(estimate.baseValue - request.askingPrice);
-  const estimatedGrossUpside = Math.round(afterPlanValue - request.askingPrice);
-  const valueGapPercent = roundPercent(percent(modeledValueGap, request.askingPrice));
-  const grossUpsidePercent = roundPercent(percent(estimatedGrossUpside, request.askingPrice));
-  const riskFlags = buildRiskFlags(request, estimate, plan, afterPlanValue, grossUpsidePercent);
+  const valueGapPercent = Number(percent(modeledValueGap, request.askingPrice).toFixed(4));
+  const netUpsidePercent = Number(percent(Math.round(afterPlanValue - request.askingPrice) - (plan.plannedSpend ?? 0), request.askingPrice).toFixed(4));
 
-  return {
-    dealLabel: labelDeal(grossUpsidePercent, valueGapPercent, riskFlags),
-    modeledValueGap,
-    valueGapPercent,
-    afterPlanValue,
-    estimatedGrossUpside,
-    grossUpsidePercent,
-    riskFlags,
+  return buildDealAnalyze({
+    request,
     estimate,
     plan,
-  };
+    provenance: {
+      engineType: "composite",
+      evidenceLevel: "mixed",
+      validationStatus: "unvalidated",
+      version: "live-deal-screening-v1",
+      sourceIds: [],
+      limitations: [
+        "Deal screening excludes transaction, financing, tax, operating, vacancy, carrying, and sale costs.",
+        "The seeded triangular stress test is illustrative and does not produce calibrated probabilities.",
+      ],
+    },
+    buildRiskFlags: ({ plan: planResult, afterPlanValue: afterPlan, netUpsidePercent: netUpside }) =>
+      buildRiskFlags(request, estimate, planResult, afterPlan, netUpside),
+    chooseLabel: (netUpside, valueGap, flags) => labelDeal(netUpside, valueGap, flags),
+  });
 }

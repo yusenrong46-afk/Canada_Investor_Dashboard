@@ -20,8 +20,8 @@ describe("estimate response contract", () => {
     expect(response.modelQuality.validationSummary.missingnessNotes.length).toBeGreaterThan(0);
   });
 
-  it("keeps the deal analyzer contract in demo mode", () => {
-    const response = buildPublicDealAnalyze({
+  it("keeps the deal analyzer contract in demo mode", async () => {
+    const response = await buildPublicDealAnalyze({
       postalCode: "V6B 1X9",
       propertyType: "Condo",
       livingAreaSqft: 708,

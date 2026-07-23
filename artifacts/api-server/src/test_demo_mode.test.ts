@@ -60,8 +60,8 @@ describe("public interactive mode helpers", () => {
     expect(largerCondo.trainingMode).toBe("public-interactive-estimator");
   });
 
-  it("builds a public plan from budget and timeline inputs", () => {
-    const response = buildPublicPlan({
+  it("builds a public plan from budget and timeline inputs", async () => {
+    const response = await buildPublicPlan({
       ...sampleProperty,
       plannedFlags: ["renovatedKitchen"],
       targetPrice: 850000,
@@ -74,8 +74,8 @@ describe("public interactive mode helpers", () => {
     expect(response.plannedSpend).toBeLessThanOrEqual(85000);
   });
 
-  it("keeps the deal analyzer interactive and not demo-labeled", () => {
-    const response = buildPublicDealAnalyze({
+  it("keeps the deal analyzer interactive and not demo-labeled", async () => {
+    const response = await buildPublicDealAnalyze({
       ...sampleProperty,
       askingPrice: 735000,
       budget: 85000,

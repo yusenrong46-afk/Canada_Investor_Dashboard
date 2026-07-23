@@ -1,139 +1,147 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 import { ArrowRight } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { detectMarket } from "@vvl/shared";
 
 import { postImproveValue } from "../api/client";
+import { CostVsValueNote } from "../components/CostVsValueNote";
+import { HalifaxUpliftCaveat } from "../components/HalifaxUpliftCaveat";
 import { ImprovementFlagPicker } from "../components/ImprovementFlagPicker";
+import { InlineAlert } from "../components/InlineAlert";
 import { MetricCard } from "../components/MetricCard";
+import { ProvenanceBadge } from "../components/ProvenanceBadge";
+import { ResultSkeleton } from "../components/ResultSkeleton";
 import { SectionCard } from "../components/SectionCard";
+import { usePropertySession } from "../context/PropertySessionContext";
+import { dataSourceLabels, shortDataPath } from "../lib/dataSources";
 import { formatCurrency, formatPercent } from "../lib/format";
-import type { EstimateResponse, ImproveValueResponse, PlannedFlag, PropertyInput } from "../types";
+import { firstPropertyValidationMessage } from "../lib/propertyValidation";
+import { upliftUnavailableMessage } from "../lib/marketLabels";
+import { buildRequestKey } from "../lib/requestKey";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
+import { useLatestRequest } from "../lib/useLatestRequest";
+import type { ImproveValueResponse } from "../types";
 
-interface ImproveValuePageProps {
-  property: PropertyInput;
-  estimate: EstimateResponse | null;
-  plannedFlags: PlannedFlag[];
-  onPlannedFlagsChange: (flags: PlannedFlag[]) => void;
-}
+export function ImproveValuePage() {
+  const { property, estimate, plannedFlags, setPlannedFlags, propertyValidation, apiMode } = usePropertySession();
+  const debouncedProperty = useDebouncedValue(property, 400);
+  const debouncedFlags = useDebouncedValue(plannedFlags, 400);
 
-const dataSourceLabels: Record<string, string> = {
-  seattlePermits: "Seattle building permits",
-  kingCountySales: "King County sales",
-  kingCountyResidentialBuildings: "King County residential buildings",
-};
+  const visibleKey = buildRequestKey({ property, plannedFlags });
+  const fetchKey = buildRequestKey({ property: debouncedProperty, plannedFlags: debouncedFlags });
+  const fetchImprove = useCallback(
+    (signal: AbortSignal) =>
+      postImproveValue(
+        {
+          ...debouncedProperty,
+          plannedFlags: debouncedFlags,
+          horizonMonths: 9,
+        },
+        signal,
+      ),
+    [debouncedFlags, debouncedProperty],
+  );
 
-function shortDataPath(path: string): string {
-  const marker = "/data/raw/";
-  const markerIndex = path.indexOf(marker);
-  return markerIndex >= 0 ? `data/raw/${path.slice(markerIndex + marker.length)}` : path;
-}
-
-export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFlagsChange }: ImproveValuePageProps) {
-  const [result, setResult] = useState<ImproveValueResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-
-    postImproveValue({
-      ...property,
-      plannedFlags,
-      horizonMonths: 9,
-    })
-      .then((response) => {
-        if (active) {
-          setResult(response);
-        }
-      })
-      .catch((caughtError: Error) => {
-        if (active) {
-          setError(caughtError.message);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [plannedFlags, property]);
-
-  const drivers = result?.topUpliftDrivers ?? [];
-  const hasResult = result?.status === "ready";
-  const dataMissing = result?.status === "data-missing";
-  const dataSources = Object.entries(result?.dataSources ?? {});
+  const { data: freshResult, loading, error } = useLatestRequest<ImproveValueResponse>(
+    visibleKey,
+    fetchKey,
+    propertyValidation.valid,
+    fetchImprove,
+  );
+  const drivers = freshResult?.topUpliftDrivers ?? [];
+  const hasResult = freshResult?.status === "ready";
+  const dataMissing = freshResult?.status === "data-missing";
+  const dataSources = Object.entries(freshResult?.dataSources ?? {});
+  const validationMessage = propertyValidation.valid ? null : firstPropertyValidationMessage(propertyValidation);
+  const asIsValue = freshResult?.baseValue ?? estimate?.baseValue;
+  const market = estimate?.market ?? detectMarket(property.postalCode);
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <div className="eyebrow">2. Improve value</div>
         <h1 className="font-display text-3xl text-ink">What can I do to improve value?</h1>
-        <p className="max-w-2xl text-sm leading-6 text-muted">
-          Pick realistic improvements and see the estimated value impact on top of the current price estimate.
-        </p>
+        <p className="max-w-2xl text-sm leading-6 text-muted">Pick realistic improvements and see modeled sale-price impact.</p>
       </div>
 
-      {error ? (
-        <div className="rounded-card border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">{error}</div>
+      {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+
+      {validationMessage ? (
+        <InlineAlert>{`Fix the home details on Estimate before calculating improvements. ${validationMessage}`}</InlineAlert>
       ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[380px,minmax(0,1fr)]">
-        <SectionCard
-          title="Choose improvements"
-          eyebrow="Your changes"
-          description="Select the work you could realistically finish before selling."
-        >
-          <ImprovementFlagPicker plannedFlags={plannedFlags} onChange={onPlannedFlagsChange} />
+        <SectionCard title="Choose improvements">
+          <ImprovementFlagPicker plannedFlags={plannedFlags} onChange={setPlannedFlags} />
+          {market === "halifax_maritimes" ? <HalifaxUpliftCaveat variant="improve" /> : null}
         </SectionCard>
 
-        <div className="space-y-6">
+        <div className="space-y-6" aria-busy={loading}>
           <MetricCard
             variant="hero"
             tone="success"
             label="Added value"
-            value={hasResult && result.upliftValue != null ? formatCurrency(result.upliftValue) : loading ? "Updating" : dataMissing ? "Data needed" : "Choose work"}
+            value={
+              hasResult && freshResult.upliftValue != null
+                ? formatCurrency(freshResult.upliftValue)
+                : validationMessage
+                  ? "Fix inputs"
+                  : loading
+                    ? "Updating…"
+                    : dataMissing
+                      ? "Data needed"
+                      : "Choose work"
+            }
             hint={
-              hasResult && result.upliftPercent != null
-                ? `${formatPercent(result.upliftPercent * 100)} estimated uplift on top of the current price estimate`
-                : dataMissing
-                  ? "Waiting for real Seattle/King County CSVs"
-                  : "Estimated value from selected work"
+              hasResult && freshResult.upliftPercent != null
+                ? `${formatPercent(freshResult.upliftPercent * 100)} estimated uplift on top of the current price estimate`
+                : validationMessage
+                  ? "Improvement results are paused until home details are valid"
+                  : dataMissing
+                    ? "Waiting for the market's real observed-uplift data"
+                    : "Estimated value from selected work"
             }
           />
 
+          {hasResult ? (
+            <CostVsValueNote
+              plannedFlags={debouncedFlags}
+              upliftValue={freshResult.upliftValue}
+              market={market}
+              nonAdditiveUplift={market === "halifax_maritimes"}
+            />
+          ) : null}
+
           <div className="grid gap-4 md:grid-cols-2">
-            <MetricCard label="Current as-is value" value={estimate ? formatCurrency(estimate.baseValue) : "Loading"} hint="From the live base model" />
             <MetricCard
               label="After improvements"
               value={
-                hasResult && result.finalValueGuardrailed != null
-                  ? formatCurrency(result.finalValueGuardrailed)
-                  : loading
-                    ? "Updating"
-                    : dataMissing
-                      ? "Pending data"
-                      : "Choose work"
+                hasResult && freshResult.finalValueGuardrailed != null
+                  ? formatCurrency(freshResult.finalValueGuardrailed)
+                  : validationMessage
+                    ? "Fix inputs"
+                    : loading
+                      ? "Updating"
+                      : dataMissing
+                        ? "Pending data"
+                        : "Choose work"
               }
               hint={dataMissing ? "No fake uplift is shown" : "Capped by local market headroom"}
             />
+            <MetricCard
+              label="As-is value"
+              value={asIsValue != null ? formatCurrency(asIsValue) : validationMessage ? "Fix inputs" : "Loading"}
+              hint={apiMode === "live-model" ? "From the live base model" : "From the current screening estimate"}
+            />
           </div>
 
-          <SectionCard
-            title="Highest-impact changes"
-            eyebrow="Result"
-            description="The list shows which selected improvements are doing the most work."
-          >
+          {hasResult && freshResult.provenance ? <ProvenanceBadge provenance={freshResult.provenance} /> : null}
+
+          <SectionCard title={market === "halifax_maritimes" ? "Observed renovation evidence" : "Highest-impact changes"}>
             {hasResult ? (
               <div className="space-y-4">
                 <p className="rounded-field border border-brand-200 bg-brand-50 px-4 py-3 text-sm leading-6 text-brand-800">
-                  {result.evidenceSummary ??
-                    "Uplift uses available observed renovation patterns when data exists, then applies the estimated percentage to this Vancouver listing-value estimate."}
+                  {freshResult.evidenceSummary ??
+                    "Uplift is a screening estimate applied to the current property value. Assumed costs are defaults, not quotes."}
                 </p>
                 <div className="grid gap-3">
                   {drivers.length ? (
@@ -156,12 +164,14 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
                   )}
                 </div>
               </div>
+            ) : loading ? (
+              <ResultSkeleton rows={4} />
             ) : (
               <div className="space-y-4">
                 <div className="rounded-field border border-warning/30 bg-warning/10 p-4 text-sm leading-6 text-body">
                   <div className="font-semibold text-ink">{dataMissing ? "Real uplift data is not loaded yet." : "Choose improvements to estimate value impact."}</div>
                   <p className="mt-2">
-                    {result?.message ?? "Select improvements to estimate value impact from the Seattle observed uplift model."}
+                    {freshResult?.message ?? "Select improvements to estimate value impact from the observed uplift model."}
                   </p>
                 </div>
 
@@ -179,10 +189,6 @@ export function ImproveValuePage({ property, estimate, plannedFlags, onPlannedFl
                         </div>
                       ))}
                     </div>
-                    <p className="mt-4 text-sm leading-6 text-muted">
-                      This is intentional: the project now uses observed repeat-sale uplift only, so it shows no added value until the real
-                      Seattle/King County data exists locally.
-                    </p>
                   </div>
                 ) : null}
               </div>

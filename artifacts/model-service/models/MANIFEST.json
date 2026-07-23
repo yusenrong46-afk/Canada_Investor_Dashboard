@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "filename": "vancouver_base_price_bundle_v5.pkl",
+      "sha256": "9ff82234d969995a10e2c5175105754213d45358ed136a7d4e55b887a54c9876",
+      "sizeBytes": 10203908,
+      "modelVersion": "vancouver-base-price-v5",
+      "trainedAt": "2026-07-18T20:02:06Z",
+      "pythonVersion": "3.11",
+      "sklearnVersion": "1.6.1",
+      "xgboostVersion": "3.3.0",
+      "status": "approved"
+    },
+    {
+      "filename": "halifax_base_price_bundle_v1.pkl",
+      "sha256": "8ae4d9dc1ad214b67c8efa703ce2ad2a5d55f1f6472fe4f1d6c31f1cbda877c9",
+      "sizeBytes": 67296427,
+      "modelVersion": "halifax-base-price-v1",
+      "trainedAt": "2026-07-22T23:23:34Z",
+      "pythonVersion": "3.12.13",
+      "sklearnVersion": "1.6.1",
+      "xgboostVersion": "3.3.0",
+      "status": "approved"
+    }
+  ]
+}

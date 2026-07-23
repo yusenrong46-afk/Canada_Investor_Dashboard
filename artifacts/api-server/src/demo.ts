@@ -1,23 +1,13 @@
-import fs from "node:fs";
 import path from "node:path";
 
-import {
-  type DealAnalyzeResponse,
-  type DealLabel,
-  type DealRiskFlag,
-  type DemoMetricsResponse,
-  type EstimateResponse,
-  type PlannedFlag,
-  type PlanLineItem,
-  type PlanPhase,
-  type PlanRequest,
-  type PlanResponse,
-  type PropertyInput,
-  type SimulateRequest,
-  type SimulateResponse,
-} from "@vvl/shared";
+import { ZodError } from "zod/v4";
 
-export const demoModeEnabled = process.env.DEMO_MODE === "true" || process.env.DEMO_MODE === "1";
+import { detectMarket, marketCatalog, WIDE_CONFIDENCE_RATIO, resultProvenance, type DealAnalyzeResponse, type DealLabel, type DealRiskFlag, type DemoMetricsResponse, type EstimateResponse, type PlannedFlag, type PlanLineItem, type PlanPhase, type PlanRequest, type PlanResponse, type PropertyInput, type SimulateRequest, type SimulateResponse } from "@vvl/shared";
+
+import { buildDealAnalyze, computeDealTargetPrice } from "./dealBuilder";
+import { readRepoJson } from "./repoFiles";
+
+import { isDemoModeEnabled } from "./config";
 
 interface DemoProperty extends PropertyInput {
   id: string;
@@ -26,6 +16,14 @@ interface DemoProperty extends PropertyInput {
   targetPrice: number;
   timelineMonths: number;
   plannedFlags: PlannedFlag[];
+}
+
+// Demo sample JSON predates the multi-market contract: it stores Vancouver medians only under the deprecated keys.
+interface DemoMarketContextRow extends Omit<EstimateResponse["marketContext"], "cityMedianValue" | "cityMedianPricePerSqft"> {
+  cityMedianValue?: number;
+  cityMedianPricePerSqft?: number;
+  vancouverMedianValue: number;
+  vancouverMedianPricePerSqft: number;
 }
 
 interface DemoEstimateRow {
@@ -38,10 +36,10 @@ interface DemoEstimateRow {
   pricePerSqft: number;
   confidenceRatio: number;
   drivers: EstimateResponse["drivers"];
-  marketContext: EstimateResponse["marketContext"];
+  marketContext: DemoMarketContextRow;
 }
 
-interface DemoPlanFileRow extends Omit<PlanResponse, "phases"> {
+interface DemoPlanFileRow extends Omit<PlanResponse, "phases" | "provenance"> {
   propertyId: string;
   status: "ready";
   items: PlanLineItem[];
@@ -59,21 +57,22 @@ interface DemoPlansFile {
   plans: DemoPlanFileRow[];
 }
 
-function findRepoRoot(): string {
-  const candidates = [process.cwd(), path.resolve(process.cwd(), "../.."), path.resolve(process.cwd(), "../../..")];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(path.join(candidate, "demo", "sample_properties.json"))) {
-      return candidate;
-    }
-  }
-
-  return path.resolve(process.cwd(), "../..");
+function readDemoJson<T>(fileName: string): T {
+  return readRepoJson(path.join("demo", fileName)) as T;
 }
 
-function readDemoJson<T>(fileName: string): T {
-  const filePath = path.join(findRepoRoot(), "demo", fileName);
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+// Demo samples are Vancouver-only; ZodError keeps app.ts mapping this guard to a 400.
+function assertDemoMarketSupported(postalCode: string): void {
+  if (detectMarket(postalCode) === "halifax_maritimes") {
+    throw new ZodError([
+      {
+        code: "custom",
+        path: ["postalCode"],
+        message: "Demo mode has precomputed Vancouver samples only - use live or public mode for Halifax / Maritimes (B-prefix) postal codes.",
+        input: postalCode,
+      },
+    ]);
+  }
 }
 
 function demoProperties(): DemoProperty[] {
@@ -109,29 +108,26 @@ function chooseDemoPlan(property: PropertyInput): DemoPlanFileRow {
 }
 
 const demoModelQuality: EstimateResponse["modelQuality"] = {
-  trainingRows: 3518,
-  cvMae: 349029,
-  cvMape: 0.1389,
-  cvR2: 0.807,
-  holdoutMae: 331348,
-  holdoutMape: 0.1264,
-  holdoutR2: 0.821,
-  outlierRemovedRate: 0.0225,
+  trainingRows: 0,
+  cvMae: null,
+  cvMape: null,
+  cvR2: null,
+  holdoutMae: null,
+  holdoutMape: null,
+  holdoutR2: null,
+  outlierRemovedRate: null,
   validationSummary: {
-    trainHoldoutSplit: "80/20 stratified holdout from the saved Vancouver listing model artifact",
-    crossValidation: "Adaptive 3 or 5 fold cross-validation by property type",
-    bootstrap: "400 bootstrap resamples on holdout predictions",
+    trainHoldoutSplit: "Not applicable to precomputed demonstration output.",
+    crossValidation: "Not applicable to precomputed demonstration output.",
+    bootstrap: "Not applicable to precomputed demonstration output.",
     bootstrapRanges: {
-      mae: { mean: 331494, p05: 279671, p50: 329859, p95: 386064 },
-      mape: { mean: 0.1262, p05: 0.1135, p50: 0.1261, p95: 0.1395 },
-      r2: { mean: 0.8176, p05: 0.7564, p50: 0.8214, p95: 0.865 },
+      mae: { mean: null, p05: null, p50: null, p95: null },
+      mape: { mean: null, p05: null, p50: null, p95: null },
+      r2: { mean: null, p05: null, p50: null, p95: null },
     },
-    missingnessNotes: [
-      "Demo mode uses precomputed public samples.",
-      "The saved model predicts listing price, not final sale price.",
-    ],
-    locationFeatures: "Postal-code centroid, FSA, and submarket cluster features",
-    clusterCount: 12,
+    missingnessNotes: ["Demo mode uses precomputed public samples and makes no live-model validation claim."],
+    locationFeatures: "Not applicable to precomputed demonstration output.",
+    clusterCount: 0,
   },
 };
 
@@ -143,13 +139,26 @@ function demoMarketFreshness(): EstimateResponse["marketFreshness"] {
 }
 
 export function buildDemoEstimate(property: PropertyInput): EstimateResponse {
+  assertDemoMarketSupported(property.postalCode);
   const sample = chooseDemoEstimate(property);
+  const market = detectMarket(property.postalCode) ?? "vancouver";
 
   return {
+    provenance: resultProvenance({
+      engineType: "precomputed-demo",
+      evidenceLevel: "none",
+      validationStatus: "not-applicable",
+      version: "demo-sample-v1",
+      dataAsOf: null,
+      sourceIds: ["demo/sample_estimates.json"],
+      limitations: ["Stable demonstration output; not live inference and not current market evidence."],
+    }),
     modelVersion: "demo-sample-v1",
     trainingMode: "demo-safe-precomputed",
-    modelFamily: "random-forest",
+    modelFamily: "precomputed",
     modelScope: sample.propertyType,
+    market,
+    marketLabel: marketCatalog[market].label,
     baseValue: sample.baseValue,
     confidenceLow: sample.confidenceLow,
     confidenceHigh: sample.confidenceHigh,
@@ -158,7 +167,16 @@ export function buildDemoEstimate(property: PropertyInput): EstimateResponse {
     confidenceRatio: sample.confidenceRatio,
     modelQuality: demoModelQuality,
     drivers: sample.drivers,
-    marketContext: sample.marketContext,
+    marketContext: {
+      ...sample.marketContext,
+      cityMedianValue: sample.marketContext.cityMedianValue ?? sample.marketContext.vancouverMedianValue,
+      cityMedianPricePerSqft: sample.marketContext.cityMedianPricePerSqft ?? sample.marketContext.vancouverMedianPricePerSqft,
+    },
+    uncertainty: {
+      method: "sample-range",
+      calibrationNote: "Stable demonstration range only; it has no empirical coverage claim for this property.",
+    },
+    explanationMethod: "heuristic",
     marketFreshness: demoMarketFreshness(),
   };
 }
@@ -206,22 +224,33 @@ export function buildDemoSimulate(request: SimulateRequest): SimulateResponse {
   const upliftPercent = estimate.baseValue > 0 ? upliftValue / estimate.baseValue : 0;
 
   return {
+    provenance: resultProvenance({
+      engineType: "precomputed-demo",
+      evidenceLevel: "none",
+      validationStatus: "not-applicable",
+      version: "demo-uplift-sample-v1",
+      dataAsOf: null,
+      sourceIds: ["demo/sample_plans.json"],
+      limitations: ["Stable demonstration uplift; not live inference or observed evidence for this property."],
+    }),
     status: "ready",
     message: "Demo Mode: using precomputed sample uplift output.",
     modelVersion: "demo-uplift-sample-v1",
     trainingMode: "demo-safe-precomputed",
-    modelFamily: "random-forest",
-    evidenceLevel: "observed",
+    modelFamily: "precomputed",
+    evidenceLevel: "none",
     evidenceSummary: "Public demo sample based on the current app contract. Not a live uplift prediction.",
     baseValue: estimate.baseValue,
     upliftPercent,
-    upliftPercentConfidenceLow: Math.max(0, upliftPercent - 0.025),
-    upliftPercentConfidenceHigh: upliftPercent + 0.025,
+    treatedQuantileRange: {
+      lowPercent: Math.max(0, upliftPercent - 0.025),
+      highPercent: upliftPercent + 0.025,
+      lowValue: Math.max(0, upliftValue - 25000),
+      highValue: upliftValue + 25000,
+    },
     upliftValue,
     finalValueRaw,
     finalValueGuardrailed,
-    upliftConfidenceLow: Math.max(0, upliftValue - 25000),
-    upliftConfidenceHigh: upliftValue + 25000,
     ceilingFlag: finalValueRaw > finalValueGuardrailed,
     plannedFlags: request.plannedFlags ?? [],
     topUpliftDrivers: selectedItems.map((item) => ({
@@ -256,17 +285,26 @@ export function buildDemoPlan(request: PlanRequest): PlanResponse {
   const achievableValue = Math.min(estimate.baseValue + plannedUplift, estimate.marketContext.practicalCeiling);
   const gapToTarget = request.targetPrice - achievableValue;
 
-  let targetAssessment: PlanResponse["targetAssessment"] = "Unlikely";
+  let targetAssessment: PlanResponse["targetAssessment"] = "Below target";
   if (gapToTarget <= 0) {
-    targetAssessment = "Likely";
+    targetAssessment = "Meets target";
   } else if (gapToTarget / request.targetPrice <= 0.05) {
-    targetAssessment = "Stretch";
+    targetAssessment = "Near target";
   }
 
   return {
+    provenance: resultProvenance({
+      engineType: "precomputed-demo",
+      evidenceLevel: "none",
+      validationStatus: "not-applicable",
+      version: "demo-plan-sample-v1",
+      dataAsOf: null,
+      sourceIds: ["demo/sample_plans.json"],
+      limitations: ["Stable demonstration plan; costs and uplift are not current quotes or live evidence."],
+    }),
     status: "ready",
     message: "Demo Mode: using precomputed sample plan output.",
-    evidenceLevel: "observed",
+    evidenceLevel: "none",
     dataSources: {
       demo: "demo/sample_plans.json",
     },
@@ -293,16 +331,16 @@ function percent(numerator: number, denominator: number): number {
   return numerator / denominator;
 }
 
-function chooseDealLabel(grossUpsidePercent: number, flags: DealRiskFlag[]): DealLabel {
+function chooseDealLabel(netUpsidePercent: number, flags: DealRiskFlag[]): DealLabel {
   const hasDanger = flags.some((flag) => flag.level === "danger");
 
-  if (grossUpsidePercent < 0 || hasDanger) {
+  if (netUpsidePercent < 0 || hasDanger) {
     return "Pass for now";
   }
-  if (grossUpsidePercent >= 0.08) {
-    return "Strong lead";
+  if (netUpsidePercent >= 0.08) {
+    return "Worth review";
   }
-  if (grossUpsidePercent >= 0.03) {
+  if (netUpsidePercent >= 0.03) {
     return "Worth review";
   }
   return "Needs caution";
@@ -312,51 +350,75 @@ export function buildDemoDealAnalyze(
   request: PropertyInput & { askingPrice: number; budget: number; timelineMonths: number; plannedFlags?: PlannedFlag[] },
 ): DealAnalyzeResponse {
   const estimate = buildDemoEstimate(request);
-  const targetPrice = Math.max(request.askingPrice, estimate.baseValue) * 1.08;
+  const targetPrice = computeDealTargetPrice(request.askingPrice, estimate.baseValue);
   const plan = buildDemoPlan({
     ...request,
     targetPrice,
     plannedFlags: request.plannedFlags ?? [],
   });
-  const afterPlanValue = Math.round(plan.achievableValue ?? estimate.baseValue);
+
   const modeledValueGap = Math.round(estimate.baseValue - request.askingPrice);
-  const estimatedGrossUpside = Math.round(afterPlanValue - request.askingPrice);
   const valueGapPercent = Number(percent(modeledValueGap, request.askingPrice).toFixed(4));
-  const grossUpsidePercent = Number(percent(estimatedGrossUpside, request.askingPrice).toFixed(4));
-  const riskFlags: DealRiskFlag[] = [
-    {
-      level: modeledValueGap >= 0 ? "info" : "warning",
-      label: modeledValueGap >= 0 ? "Price is supported by sample estimate" : "Asking price is above sample estimate",
-      detail: "Demo mode compares asking price with a stable sample estimate.",
-    },
-    {
-      level: "info",
-      label: "Demo-safe output",
-      detail: "This response uses public sample JSON and does not require private data or model artifacts.",
-    },
-  ];
 
-  if (estimate.confidenceRatio >= 0.16) {
-    riskFlags.push({
-      level: "warning",
-      label: "Wide model confidence range",
-      detail: "This sample segment has a wider confidence band and needs comparable-sale review.",
-    });
-  }
-
-  return {
-    dealLabel: chooseDealLabel(grossUpsidePercent, riskFlags),
-    modeledValueGap,
-    valueGapPercent,
-    afterPlanValue,
-    estimatedGrossUpside,
-    grossUpsidePercent,
-    riskFlags,
+  return buildDealAnalyze({
+    request: { ...request, plannedFlags: request.plannedFlags ?? [] },
     estimate,
     plan,
-  };
+    provenance: {
+      engineType: "precomputed-demo",
+      evidenceLevel: "none",
+      validationStatus: "not-applicable",
+      version: "demo-deal-sample-v1",
+      sourceIds: ["demo/sample_estimates.json", "demo/sample_plans.json"],
+      limitations: ["Demonstration-only deal screening with incomplete transaction and carrying costs."],
+    },
+    buildRiskFlags: ({ netUpsidePercent }) => {
+      const riskFlags: DealRiskFlag[] = [
+        {
+          level: modeledValueGap >= 0 ? "info" : "warning",
+          label: modeledValueGap >= 0 ? "Price is supported by sample estimate" : "Asking price is above sample estimate",
+          detail: "Demo mode compares asking price with a stable sample estimate.",
+        },
+        {
+          level: "info",
+          label: "Demo-safe output",
+          detail: "This response uses public sample JSON and does not require private data or model artifacts.",
+        },
+      ];
+
+      if (estimate.confidenceRatio >= WIDE_CONFIDENCE_RATIO) {
+        riskFlags.push({
+          level: "warning",
+          label: "Wide model confidence range",
+          detail: "This sample segment has a wider confidence band and needs comparable-sale review.",
+        });
+      }
+
+      if (netUpsidePercent < 0.03) {
+        riskFlags.push({
+          level: netUpsidePercent < 0 ? "danger" : "warning",
+          label: "Thin net upside after renovation spend",
+          detail: "Closing costs, carrying costs, and financing are still excluded and could erase this margin.",
+        });
+      }
+
+      return riskFlags;
+    },
+    chooseLabel: (netUpsidePercent, _valueGapPercent, flags) => chooseDealLabel(netUpsidePercent, flags),
+  });
 }
 
 export function getDemoMetrics(): DemoMetricsResponse {
-  return readDemoJson<DemoMetricsResponse>("sample_metrics.json");
+  return {
+    ...readDemoJson<Omit<DemoMetricsResponse, "provenance">>("sample_metrics.json"),
+    provenance: resultProvenance({
+      engineType: "precomputed-demo",
+      evidenceLevel: "none",
+      validationStatus: "not-applicable",
+      version: "demo-insights-sample-v1",
+      dataAsOf: null,
+      sourceIds: ["demo/sample_metrics.json"],
+      limitations: ["Demonstration portfolio rows; not user, market-wide, or production portfolio data."],
+    }),
+  };
 }

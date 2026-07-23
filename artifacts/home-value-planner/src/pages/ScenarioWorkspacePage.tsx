@@ -1,18 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { MetricCard } from "../components/MetricCard";
 import { SectionCard } from "../components/SectionCard";
+import { usePropertySession } from "../context/PropertySessionContext";
+import { chartBarPrimary, chartBarSecondary, chartGridStroke, chartTickFill } from "../lib/chartTheme";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
 import { scenarioKeyDetails, summarizeScenarios, type ScenarioRecord, type ScenarioTag } from "../lib/scenarios";
 
 interface ScenarioWorkspacePageProps {
-  scenarios: ScenarioRecord[];
-  onUseScenario: (scenario: ScenarioRecord) => void;
-  onUpdateScenario: (scenario: ScenarioRecord) => void;
-  onDeleteScenario: (scenarioId: string) => void;
-  onClearScenarios: () => void;
+  scenarios?: ScenarioRecord[];
+  onUseScenario?: (scenario: ScenarioRecord) => void;
+  onUpdateScenario?: (scenario: ScenarioRecord) => void;
+  onDeleteScenario?: (scenarioId: string) => void;
+  onClearScenarios?: () => void;
 }
 
 const scenarioTags: ScenarioTag[] = ["Shortlist", "Watch", "Pass", "Needs review"];
@@ -36,9 +38,56 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenario, onDeleteScenario, onClearScenarios }: ScenarioWorkspacePageProps) {
+function scenarioUseRoute(scenario: ScenarioRecord): string {
+  return scenario.source === "deal-analyzer" ? "/deal-analyzer" : "/plan";
+}
+
+function ScenarioNoteField({ scenario, onUpdateScenario }: { scenario: ScenarioRecord; onUpdateScenario: (scenario: ScenarioRecord) => void }) {
+  const [draft, setDraft] = useState(scenario.note);
+
+  useEffect(() => {
+    setDraft(scenario.note);
+  }, [scenario.id, scenario.note]);
+
+  useEffect(() => {
+    if (draft === scenario.note) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      onUpdateScenario({ ...scenario, note: draft });
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [draft, onUpdateScenario, scenario]);
+
+  return (
+    <textarea
+      value={draft}
+      rows={2}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft !== scenario.note) {
+          onUpdateScenario({ ...scenario, note: draft });
+        }
+      }}
+      className="w-full rounded-field border border-line bg-surface px-3 py-2 text-xs text-body"
+      placeholder="Add a short investment note"
+      aria-describedby={`scenario-note-hint-${scenario.id}`}
+    />
+  );
+}
+
+export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
+  const session = usePropertySession();
+  const scenarios = props.scenarios ?? session.scenarios;
+  const onUseScenario = props.onUseScenario ?? session.useScenario;
+  const onUpdateScenario = props.onUpdateScenario ?? session.updateScenario;
+  const onDeleteScenario = props.onDeleteScenario ?? session.deleteScenario;
+  const onClearScenarios = props.onClearScenarios ?? session.clearScenarios;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const summary = useMemo(() => summarizeScenarios(scenarios), [scenarios]);
+  const latestScenario = scenarios[0];
   const selectedScenarios = scenarios.filter((scenario) => selectedIds.includes(scenario.id));
   const chartRows = scenarios.slice(0, 8).map((scenario) => ({
     title: scenario.title.replace(" plan", "").replace(" deal", ""),
@@ -100,7 +149,11 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenar
         </div>
         <button
           type="button"
-          onClick={onClearScenarios}
+          onClick={() => {
+            if (window.confirm("Clear all saved scenarios? This cannot be undone.")) {
+              onClearScenarios();
+            }
+          }}
           className="inline-flex items-center justify-center gap-2 rounded-field border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-muted transition hover:border-danger/30 hover:text-danger"
         >
           Clear all
@@ -115,6 +168,41 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenar
         <MetricCard label="Warnings" value={String(summary.warningCount)} hint="Risk and model review notes" />
       </div>
 
+      <SectionCard
+        title="Latest saved scenario"
+        eyebrow="Most recent"
+        description="The newest saved run is surfaced here so it is visible before the comparison chart."
+        aside={
+          <Link
+            to={scenarioUseRoute(latestScenario)}
+            onClick={() => onUseScenario(latestScenario)}
+            className="rounded-field border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:border-brand-300"
+          >
+            Use scenario
+          </Link>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr),repeat(3,minmax(0,1fr))]">
+          <div className="rounded-field bg-canvas px-4 py-3">
+            <div className="text-sm font-semibold text-ink">{latestScenario.title}</div>
+            <div className="mt-1 text-xs text-muted">{formatDate(latestScenario.createdAt)}</div>
+            <div className="mt-1 text-xs text-muted">{scenarioKeyDetails(latestScenario)}</div>
+          </div>
+          <div className="rounded-field bg-canvas px-4 py-3">
+            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Estimate</div>
+            <div className="mt-1 whitespace-nowrap font-semibold tabular-nums text-ink">{formatCurrency(latestScenario.estimatedValue)}</div>
+          </div>
+          <div className="rounded-field bg-canvas px-4 py-3">
+            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Upside</div>
+            <div className="mt-1 whitespace-nowrap font-semibold tabular-nums text-ink">{formatSignedCurrency(latestScenario.estimatedUpside)}</div>
+          </div>
+          <div className="rounded-field bg-canvas px-4 py-3">
+            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Verdict</div>
+            <div className="mt-1 font-semibold text-ink">{latestScenario.verdict}</div>
+          </div>
+        </div>
+      </SectionCard>
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr),minmax(340px,1fr)]">
         <SectionCard
           title="Scenario value comparison"
@@ -124,12 +212,12 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenar
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="title" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
+                <XAxis dataKey="title" tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
                 <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="estimatedValue" name="As-is estimate" fill="#0f766e" radius={[8, 8, 0, 0]} />
-                <Bar dataKey="achievableValue" name="Achievable value" fill="#0d9488" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="estimatedValue" name="As-is estimate" fill={chartBarPrimary} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="achievableValue" name="Achievable value" fill={chartBarSecondary} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -228,6 +316,7 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenar
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(scenario.id)}
+                      aria-label={`Compare ${scenario.title}`}
                       onChange={() => toggleSelected(scenario.id)}
                       className="h-4 w-4 rounded border-line text-brand-600 focus:ring-brand-200"
                     />
@@ -262,19 +351,16 @@ export function ScenarioWorkspacePage({ scenarios, onUseScenario, onUpdateScenar
                     </select>
                   </td>
                   <td className="min-w-56 py-3 pr-4">
-                    <textarea
-                      value={scenario.note}
-                      rows={2}
-                      onChange={(event) => onUpdateScenario({ ...scenario, note: event.target.value })}
-                      className="w-full rounded-field border border-line bg-surface px-3 py-2 text-xs text-body"
-                      placeholder="Add a short investment note"
-                    />
+                    <ScenarioNoteField scenario={scenario} onUpdateScenario={onUpdateScenario} />
+                    <p id={`scenario-note-hint-${scenario.id}`} className="mt-1 text-[11px] text-muted">
+                      Notes save on blur or after 600ms without typing.
+                    </p>
                   </td>
                   <td className="py-3 pr-4">{scenario.verdict}</td>
                   <td className="py-3">
                     <div className="flex flex-wrap gap-2">
                       <Link
-                        to="/plan"
+                        to={scenarioUseRoute(scenario)}
                         onClick={() => onUseScenario(scenario)}
                         className="rounded-field border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:border-brand-300"
                       >

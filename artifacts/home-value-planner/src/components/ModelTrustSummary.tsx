@@ -1,11 +1,21 @@
 interface ModelTrustSummaryProps {
   modeNote: string;
+  intervalMethod?: "conformal" | "error-ratio" | "sample-range";
 }
 
-export function ModelTrustSummary({ modeNote }: ModelTrustSummaryProps) {
+export function ModelTrustSummary({ modeNote, intervalMethod }: ModelTrustSummaryProps) {
+  const intervalLabel =
+    intervalMethod === "conformal"
+      ? "Split conformal (80% target)"
+      : intervalMethod === "sample-range"
+        ? "Stable demo range (no coverage claim)"
+        : intervalMethod === "error-ratio"
+          ? "Error-ratio heuristic"
+          : "Not provided";
   const rows = [
-    ["Prediction target", "Listing value, not final sale price"],
+    ["Prediction target", "Vancouver listing value; Halifax time-adjusted sale value"],
     ["Best use", "Deal screening and interview demo"],
+    ["Interval method", intervalLabel],
     ["Needs review", "Comparable sales, exact condition, financing, taxes, and closing costs"],
   ];
 

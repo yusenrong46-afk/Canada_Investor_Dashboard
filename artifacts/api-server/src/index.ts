@@ -1,10 +1,10 @@
 import "dotenv/config";
 
 import app from "./app";
+import { getConfig } from "./config";
 
-const host = process.env.API_HOST ?? (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
-const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
+const { apiHost, apiPort } = getConfig();
 
-app.listen(port, host, () => {
-  console.log(`API server listening on http://${host}:${port}`);
+app.listen(apiPort, apiHost, () => {
+  console.log(`API server listening on http://${apiHost}:${apiPort}`);
 });

@@ -6,6 +6,12 @@
     "node": "24.x",
     "pnpm": ">=9"
   },
+  "pnpm": {
+    "overrides": {
+      "qs": "6.15.2",
+      "body-parser": "2.3.0"
+    }
+  },
   "scripts": {
     "build": "pnpm -r build",
     "build:api": "pnpm --filter @vvl/api-server build",
@@ -13,6 +19,7 @@
     "build:web": "pnpm --filter @vvl/home-value-planner build",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "start:api": "pnpm --filter @vvl/api-server start",
+    "smoke:public-release": "node scripts/smoke_public_release.mjs",
     "test": "pnpm -r test && .venv/bin/python -m pytest",
     "typecheck": "pnpm -r typecheck",
     "dev:model": ".venv/bin/python artifacts/model-service/app.py",

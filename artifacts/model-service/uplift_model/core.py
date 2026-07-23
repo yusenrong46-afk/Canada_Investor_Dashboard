@@ -5,7 +5,7 @@ import os
 import pickle
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +19,21 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from common.artifact_loader import ModelArtifactError, load_approved_pickle
 from service import PROPERTY_TYPES, _parse_numeric, estimate_property
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "models"
-UPLIFT_ARTIFACT_PATH = ARTIFACT_DIR / "seattle_observed_uplift_bundle_v2.pkl"
+UPLIFT_ARTIFACT_PATH = Path(
+    os.environ.get(
+        "SEATTLE_UPLIFT_MODEL_ARTIFACT_PATH",
+        str(ARTIFACT_DIR / "seattle_observed_uplift_bundle_v2.pkl"),
+    )
+).expanduser()
 
 UPLIFT_MODEL_VERSION = "seattle-observed-percent-uplift-v2"
 UPLIFT_TRAINING_MODE = "seattle-repeat-sale-observed-only"
+TRANSFER_LIMITATION = "Transferred from Seattle/King County observations; no Vancouver transportability validation."
 
 SEATTLE_DATA_DIR = REPO_ROOT / "data" / "raw" / "seattle"
 DEFAULT_PERMITS_PATH = os.environ.get("SEATTLE_PERMITS_PATH", str(SEATTLE_DATA_DIR / "building_permits.csv"))
@@ -159,11 +166,19 @@ def _data_paths() -> UpliftDataPaths:
     )
 
 
+def _display_path(value: str | Path) -> str:
+    path = Path(value).expanduser()
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except (OSError, ValueError):
+        return path.name
+
+
 def _data_sources(paths: UpliftDataPaths) -> dict[str, str]:
     return {
-        "seattlePermits": str(paths.permits),
-        "kingCountySales": str(paths.sales),
-        "kingCountyResidentialBuildings": str(paths.buildings),
+        "seattlePermits": _display_path(paths.permits),
+        "kingCountySales": _display_path(paths.sales),
+        "kingCountyResidentialBuildings": _display_path(paths.buildings),
     }
 
 
@@ -709,13 +724,13 @@ def train_model(rows: pd.DataFrame) -> tuple[Pipeline, dict[str, Any], float]:
     predicted = pipeline.predict(test_x)
     mae = float(mean_absolute_error(test_y, predicted))
     evaluation = {
-        "trainingRows": int(len(rows)),
+        "trainingRows": int(len(train_x)),
         "holdoutRows": int(len(test_y)),
         "holdoutMaePercentPoints": round(mae * 100, 2),
         "holdoutR2": float(r2_score(test_y, predicted)) if len(test_y) > 1 else 0.0,
         "target": "market-adjusted uplift percent from real repeat sales",
+        "shippedModel": "train-only fitted model; holdout MAE is evaluation-only",
     }
-    pipeline.fit(x, y)
     return pipeline, evaluation, mae
 
 
@@ -745,7 +760,7 @@ def _train_uplift_bundle(paths: UpliftDataPaths) -> UpliftModelBundle:
         message="Seattle observed repeat-sale uplift model is ready.",
         model_version=UPLIFT_MODEL_VERSION,
         training_mode=UPLIFT_TRAINING_MODE,
-        trained_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        trained_at=datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         data_sources=_data_sources(paths),
         row_counts=row_counts,
         model=model,
@@ -770,32 +785,43 @@ def _validate_data_files(paths: UpliftDataPaths) -> None:
     require_real_csv(paths.buildings, "King County residential buildings")
 
 
-def load_uplift_bundle(force_retrain: bool = False) -> UpliftModelBundle:
+def train_uplift_bundle(paths: UpliftDataPaths | None = None) -> UpliftModelBundle:
+    """Train from real source files as an explicit offline build step."""
+
+    selected_paths = paths or _data_paths()
+    _validate_data_files(selected_paths)
+    bundle = _train_uplift_bundle(selected_paths)
+    if not bundle.ready:
+        raise ValueError(bundle.message)
+    return bundle
+
+
+def _bundle_validation_issues(bundle: UpliftModelBundle) -> list[str]:
+    issues: list[str] = []
+    if not getattr(bundle, "ready", False):
+        issues.append("bundle is not marked ready")
+    if getattr(bundle, "model_version", None) != UPLIFT_MODEL_VERSION:
+        issues.append(f"model version must be {UPLIFT_MODEL_VERSION}")
+    if getattr(bundle, "model", None) is None:
+        issues.append("fitted uplift model is missing")
+    return issues
+
+
+def load_uplift_bundle() -> UpliftModelBundle:
     global _UPLIFT_BUNDLE
     paths = _data_paths()
 
-    try:
-        _validate_data_files(paths)
-    except (FileNotFoundError, ValueError) as error:
-        _UPLIFT_BUNDLE = _missing_bundle(str(error), paths)
+    if _UPLIFT_BUNDLE is not None:
         return _UPLIFT_BUNDLE
 
-    if _UPLIFT_BUNDLE is not None and _UPLIFT_BUNDLE.ready and not force_retrain:
-        return _UPLIFT_BUNDLE
-
-    if not force_retrain and UPLIFT_ARTIFACT_PATH.exists():
-        try:
-            with UPLIFT_ARTIFACT_PATH.open("rb") as artifact_file:
-                bundle = pickle.load(artifact_file)
-            if isinstance(bundle, UpliftModelBundle) and bundle.model_version == UPLIFT_MODEL_VERSION:
-                _UPLIFT_BUNDLE = bundle
-                return bundle
-        except Exception:
-            pass
-
     try:
-        _UPLIFT_BUNDLE = _train_uplift_bundle(paths)
-    except (FileNotFoundError, ValueError) as error:
+        _UPLIFT_BUNDLE = load_approved_pickle(
+            UPLIFT_ARTIFACT_PATH,
+            expected_type=UpliftModelBundle,
+            artifact_label="Seattle uplift-model",
+            validate=_bundle_validation_issues,
+        )
+    except ModelArtifactError as error:
         _UPLIFT_BUNDLE = _missing_bundle(str(error), paths)
     return _UPLIFT_BUNDLE
 
@@ -810,7 +836,7 @@ def _planned_flags(payload: dict[str, Any]) -> list[str]:
 
 def _feature_row(payload: dict[str, Any], base_value: float, planned_flags: list[str], horizon_months: float) -> pd.DataFrame:
     year_built = _parse_numeric(payload.get("yearBuilt"))
-    age_at_permit = (datetime.utcnow().year - year_built) if year_built and year_built > 0 else np.nan
+    age_at_permit = (datetime.now(timezone.utc).year - year_built) if year_built and year_built > 0 else np.nan
     planned_cost = float(sum(IMPROVEMENT_CATALOG[flag]["defaultCost"] for flag in planned_flags))
 
     row = {
@@ -829,7 +855,17 @@ def _feature_row(payload: dict[str, Any], base_value: float, planned_flags: list
     return pd.DataFrame([row])
 
 
+def _treated_quantile_range(base_value: float, low_percent: float, high_percent: float) -> dict[str, Any]:
+    return {
+        "lowPercent": round(low_percent, 4),
+        "highPercent": round(high_percent, 4),
+        "lowValue": int(round(base_value * low_percent)),
+        "highValue": int(round(base_value * high_percent)),
+    }
+
+
 def _zero_uplift_response(payload: dict[str, Any], base_estimate: dict[str, Any], planned_flags: list[str]) -> dict[str, Any]:
+    base_value = int(base_estimate["baseValue"])
     return {
         "status": "ready",
         "modelVersion": UPLIFT_MODEL_VERSION,
@@ -837,20 +873,17 @@ def _zero_uplift_response(payload: dict[str, Any], base_estimate: dict[str, Any]
         "modelFamily": "random-forest",
         "evidenceLevel": "observed",
         "evidenceSummary": "No selected improvements, so uplift is zero. The trained uplift path uses real Seattle repeat-sale records only.",
-        "baseValue": int(base_estimate["baseValue"]),
+        "baseValue": base_value,
         "upliftPercent": 0.0,
-        "upliftPercentConfidenceLow": 0.0,
-        "upliftPercentConfidenceHigh": 0.0,
+        "treatedQuantileRange": _treated_quantile_range(base_value, 0.0, 0.0),
         "upliftValue": 0,
-        "finalValueRaw": int(base_estimate["baseValue"]),
-        "finalValueGuardrailed": int(base_estimate["baseValue"]),
-        "upliftConfidenceLow": 0,
-        "upliftConfidenceHigh": 0,
+        "finalValueRaw": base_value,
+        "finalValueGuardrailed": base_value,
         "ceilingFlag": False,
         "plannedFlags": planned_flags,
         "topUpliftDrivers": [],
         "observedShare": 1.0,
-        "methodNotes": ["No synthetic rows, proxy labels, or rule-based uplift are used."],
+        "methodNotes": ["No synthetic rows, proxy labels, or rule-based uplift are used.", TRANSFER_LIMITATION],
     }
 
 
@@ -860,7 +893,7 @@ def simulate_uplift(payload: dict[str, Any]) -> dict[str, Any]:
     if not planned_flags:
         return _zero_uplift_response(payload, base_estimate, planned_flags)
 
-    bundle = load_uplift_bundle(force_retrain=os.environ.get("UPLIFT_FORCE_RETRAIN") == "1")
+    bundle = load_uplift_bundle()
     if not bundle.ready or bundle.model is None:
         return {
             "status": "data-missing",
@@ -882,8 +915,6 @@ def simulate_uplift(payload: dict[str, Any]) -> dict[str, Any]:
     low_percent = uplift_percent - confidence_error
     high_percent = uplift_percent + confidence_error
     uplift_value = round(base_value * uplift_percent)
-    low_value = round(base_value * low_percent)
-    high_value = round(base_value * high_percent)
 
     driver_rows: list[dict[str, Any]] = []
     for flag in planned_flags:
@@ -911,20 +942,20 @@ def simulate_uplift(payload: dict[str, Any]) -> dict[str, Any]:
         "evidenceSummary": "Seattle-trained observed repeat-sale uplift percentage, applied to the Vancouver base estimate.",
         "baseValue": int(base_value),
         "upliftPercent": round(uplift_percent, 4),
-        "upliftPercentConfidenceLow": round(low_percent, 4),
-        "upliftPercentConfidenceHigh": round(high_percent, 4),
+        "treatedQuantileRange": _treated_quantile_range(base_value, low_percent, high_percent),
         "upliftValue": int(uplift_value),
         "finalValueRaw": int(final_value_raw),
         "finalValueGuardrailed": int(final_value_guardrailed),
-        "upliftConfidenceLow": int(low_value),
-        "upliftConfidenceHigh": int(high_value),
         "ceilingFlag": final_value_raw > practical_ceiling,
         "plannedFlags": planned_flags,
         "topUpliftDrivers": sorted(driver_rows, key=lambda item: abs(item["value"]), reverse=True),
         "observedShare": 1.0,
         "dataSources": bundle.data_sources,
         "rowCounts": bundle.row_counts,
-        "methodNotes": ["No synthetic rows, proxy labels, or rule-based uplift are used."],
+        "methodNotes": [
+            "No synthetic rows, proxy labels, or rule-based uplift are used.",
+            TRANSFER_LIMITATION,
+        ],
     }
 
 

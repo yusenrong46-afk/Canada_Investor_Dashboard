@@ -21,7 +21,7 @@ from uplift_service import (  # noqa: E402
     load_buildings,
     load_permits,
     load_sales,
-    load_uplift_bundle,
+    train_uplift_bundle,
 )
 
 
@@ -121,7 +121,7 @@ def validate_data() -> bool:
 
 
 def train_uplift_model() -> bool:
-    bundle = load_uplift_bundle(force_retrain=True)
+    bundle = train_uplift_bundle()
     print(f"\nTraining mode: {UPLIFT_TRAINING_MODE}")
     print(f"Status: {'ready' if bundle.ready else 'data-missing'}")
     print(bundle.message)

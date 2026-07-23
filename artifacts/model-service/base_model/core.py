@@ -5,7 +5,7 @@ import os
 import pickle
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +17,13 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import GroupKFold, KFold, StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
+
+from common.conformal import ConformalCalibration, calibrate_split_conformal
+from common.explain import shap_drivers
+from common.artifact_loader import extended_bundle_validation_issues, load_approved_pickle, upsert_manifest_entry, build_manifest_entry
 
 try:
     from xgboost import XGBRegressor
@@ -33,15 +37,21 @@ except Exception as exc:  # pragma: no cover - depends on local OpenMP runtime
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "models"
-ARTIFACT_PATH = ARTIFACT_DIR / "vancouver_base_price_bundle_v4.pkl"
-MODEL_VERSION = "vancouver-base-price-v4"
+ARTIFACT_PATH = Path(
+    os.environ.get(
+        "VANCOUVER_MODEL_ARTIFACT_PATH",
+        str(ARTIFACT_DIR / "vancouver_base_price_bundle_v5.pkl"),
+    )
+).expanduser()
+MODEL_VERSION = "vancouver-base-price-v5"
 TRAINING_MODE = "vancouver-real-listings"
 LOCATION_FEATURE_VERSION = "latlon-polynomial-cluster-v1"
 CLUSTER_COUNT = 12
+TEMPORAL_HOLDOUT_MONTHS = 6
 BOOTSTRAP_REPEATS = 400
 DEFAULT_DATA_PATH = os.environ.get(
     "VANCOUVER_LISTINGS_CSV_PATH",
-    "/Users/thomas/Downloads/CanadaHousingData/data_bc.csv",
+    str(REPO_ROOT / "data" / "processed" / "vancouver_base_model_training.csv"),
 )
 DEFAULT_MARKET_INDEX_PATH = os.environ.get(
     "VANCOUVER_MARKET_INDEX_CSV_PATH",
@@ -73,6 +83,7 @@ class VancouverModelBundle:
     candidate_metrics: dict[str, dict[str, dict[str, Any]]]
     evaluation_summary: dict[str, Any]
     confidence_error_ratios: dict[str, float]
+    conformal_calibrations: dict[str, ConformalCalibration]
     model_version: str
     training_mode: str
     data_path: str
@@ -99,6 +110,15 @@ class VancouverModelBundle:
 
 
 _BUNDLE: VancouverModelBundle | None = None
+
+
+def _display_path(value: str | Path) -> str:
+    """Return provenance without leaking a developer's absolute machine path."""
+    path = Path(value).expanduser()
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except (OSError, ValueError):
+        return path.name
 
 
 def _safe_ohe() -> OneHotEncoder:
@@ -164,7 +184,7 @@ def _age_from_year_built(year_built: Any) -> float | None:
     if parsed is None:
         return None
 
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
     if parsed < 1800 or parsed > current_year:
         return None
 
@@ -172,7 +192,7 @@ def _age_from_year_built(year_built: Any) -> float | None:
 
 
 def _derive_age_years(year_built: pd.Series, approx_age: pd.Series) -> pd.Series:
-    current_year = datetime.utcnow().year
+    current_year = datetime.now(timezone.utc).year
     year_based_age = current_year - year_built.astype(float)
     year_based_age = year_based_age.where(year_built.between(1800, current_year))
     clean_approx_age = approx_age.where(approx_age.between(0, 225))
@@ -290,40 +310,46 @@ def _safe_median(series: pd.Series, fallback: float) -> float:
     return float(value)
 
 
-def _remove_segment_outliers(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
+def _segment_outlier_mask(frame: pd.DataFrame, bounds_from: pd.DataFrame) -> pd.Series:
     keep_mask = pd.Series(True, index=frame.index, dtype=bool)
-    removal_reasons = pd.DataFrame(
-        False,
-        index=frame.index,
-        columns=["typePricePerSqft", "typeLivingArea", "localPricePerSqft"],
-    )
 
-    before_counts = frame.groupby("propertyType").size().to_dict()
-
-    for property_type, group in frame.groupby("propertyType"):
+    for property_type, group in bounds_from.groupby("propertyType"):
         if len(group) < 25:
             continue
 
         psf_low, psf_high = _iqr_bounds(group["pricePerSqft"], multiplier=3.0)
         area_low, area_high = _iqr_bounds(group["livingAreaSqft"], multiplier=3.5)
+        type_rows = frame.loc[frame["propertyType"].eq(property_type)]
+        if type_rows.empty:
+            continue
 
-        type_psf_mask = group["pricePerSqft"].between(psf_low, psf_high)
-        type_area_mask = group["livingAreaSqft"].between(area_low, area_high)
-
-        keep_mask.loc[group.index] &= type_psf_mask & type_area_mask
-        removal_reasons.loc[group.index, "typePricePerSqft"] = ~type_psf_mask
-        removal_reasons.loc[group.index, "typeLivingArea"] = ~type_area_mask
+        type_psf_mask = type_rows["pricePerSqft"].between(psf_low, psf_high)
+        type_area_mask = type_rows["livingAreaSqft"].between(area_low, area_high)
+        keep_mask.loc[type_rows.index] &= type_psf_mask & type_area_mask
 
         for postal_fsa, local_group in group.groupby("postalFsa"):
             if len(local_group) < 40:
                 continue
 
             local_low, local_high = _iqr_bounds(local_group["pricePerSqft"], multiplier=3.5)
-            local_mask = local_group["pricePerSqft"].between(local_low, local_high)
-            keep_mask.loc[local_group.index] &= local_mask
-            removal_reasons.loc[local_group.index, "localPricePerSqft"] = ~local_mask
+            local_rows = type_rows.loc[type_rows["postalFsa"].eq(postal_fsa)]
+            if local_rows.empty:
+                continue
+            local_mask = local_rows["pricePerSqft"].between(local_low, local_high)
+            keep_mask.loc[local_rows.index] &= local_mask
 
-    filtered = frame.loc[keep_mask].copy()
+    return keep_mask
+
+
+def _remove_segment_outliers(
+    frame: pd.DataFrame,
+    *,
+    bounds_from: pd.DataFrame | None = None,
+    apply_filter: bool = True,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    bounds_frame = bounds_from if bounds_from is not None else frame
+    keep_mask = _segment_outlier_mask(frame, bounds_frame)
+    before_counts = frame.groupby("propertyType").size().to_dict()
     removed_mask = ~keep_mask
 
     by_property_type: dict[str, dict[str, Any]] = {}
@@ -341,15 +367,57 @@ def _remove_segment_outliers(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[st
     summary = {
         "removedRows": int(removed_mask.sum()),
         "keptRows": int(keep_mask.sum()),
-        "removedRate": float(removed_mask.mean()),
-        "byReason": {
-            column: int(removal_reasons.loc[removed_mask, column].sum())
-            for column in removal_reasons.columns
-        },
+        "removedRate": float(removed_mask.mean()) if len(frame) else 0.0,
+        "byReason": {},
         "byPropertyType": by_property_type,
     }
 
-    return filtered, summary
+    if not apply_filter:
+        return frame.copy(), summary
+
+    return frame.loc[keep_mask].copy(), summary
+
+
+def _random_holdout_indices(frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    price_strata = _build_price_strata(frame["price"])
+    stratify = price_strata if price_strata.nunique() > 1 else None
+    train_index, test_index = train_test_split(
+        frame.index.to_numpy(),
+        test_size=0.2,
+        random_state=42,
+        stratify=stratify,
+    )
+    return train_index, test_index
+
+
+def _temporal_holdout_indices(
+    frame: pd.DataFrame,
+    date_column: str,
+    months: int = TEMPORAL_HOLDOUT_MONTHS,
+) -> tuple[np.ndarray, np.ndarray, str]:
+    dates = pd.to_datetime(frame[date_column], errors="coerce")
+    dated_mask = dates.notna()
+    if not dated_mask.any():
+        train_index, test_index = _random_holdout_indices(frame)
+        return train_index, test_index, f"random 80/20 stratified by price band (no usable {date_column})"
+
+    dated_frame = frame.loc[dated_mask]
+    dates = dates.loc[dated_mask]
+    cutoff = dates.max() - pd.DateOffset(months=months)
+    test_mask = dates >= cutoff
+    train_mask = ~test_mask
+    train_index = dated_frame.index[train_mask.to_numpy()].to_numpy()
+    test_index = dated_frame.index[test_mask.to_numpy()].to_numpy()
+
+    if len(train_index) < 20 or len(test_index) < 5:
+        train_index, test_index = _random_holdout_indices(frame)
+        return train_index, test_index, f"random 80/20 stratified by price band (temporal holdout too small)"
+
+    undated_excluded = int((~dated_mask).sum())
+    strategy = f"temporal holdout: last {months} months of {date_column}"
+    if undated_excluded:
+        strategy += f"; {undated_excluded} undated rows excluded from train and holdout"
+    return train_index, test_index, strategy
 
 
 def _engineer_location_features(frame: pd.DataFrame, clusterer: KMeans | None = None) -> tuple[pd.DataFrame, KMeans]:
@@ -370,7 +438,7 @@ def _engineer_location_features(frame: pd.DataFrame, clusterer: KMeans | None = 
     return enriched, clusterer
 
 
-def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], dict[str, Any], KMeans]:
+def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], dict[str, Any]]:
     source = pd.read_csv(data_path, low_memory=False)
     total_rows = len(source)
 
@@ -438,26 +506,20 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
 
     usable_pre_outlier = usable_pre_outlier[
         usable_pre_outlier["livingAreaSqft"].between(250, 10_000)
-        & usable_pre_outlier["bedrooms"].between(0, 10)
-        & usable_pre_outlier["bathrooms"].between(0, 10)
+        & usable_pre_outlier["bedrooms"].between(1, 10)
+        & usable_pre_outlier["bathrooms"].between(1, 10)
         & usable_pre_outlier["price"].between(100_000, 25_000_000)
         & usable_pre_outlier["latitude"].between(48.9, 49.4)
         & usable_pre_outlier["longitude"].between(-123.4, -122.8)
         & usable_pre_outlier["postalFsa"].fillna("").str.startswith(VANCOUVER_PREFIXES)
     ].copy()
 
-    usable_pre_outlier["ageYears"] = usable_pre_outlier["ageYears"].where(usable_pre_outlier["ageYears"].between(0, 225))
+    usable_pre_outlier["ageYears"] = usable_pre_outlier["ageYears"].where(usable_pre_outlier["ageYears"].between(0, 150))
     if usable_pre_outlier["ageYears"].notna().sum() == 0:
         usable_pre_outlier["ageYears"] = 0.0
     usable_pre_outlier["pricePerSqft"] = usable_pre_outlier["price"] / usable_pre_outlier["livingAreaSqft"]
-
-    usable, outlier_summary = _remove_segment_outliers(usable_pre_outlier)
-    usable["ageYears"] = usable["ageYears"].where(usable["ageYears"].between(0, 225))
-    if usable["ageYears"].notna().sum() == 0:
-        usable["ageYears"] = 0.0
-    usable["pricePerSqft"] = usable["price"] / usable["livingAreaSqft"]
+    usable = usable_pre_outlier.copy()
     usable["logPrice"] = np.log(usable["price"])
-    usable, clusterer = _engineer_location_features(usable)
 
     row_counts = {
         "totalRows": int(total_rows),
@@ -476,12 +538,10 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
         "missingnessByPropertyType": missingness_by_property_type,
         "trainingDateRange": training_date_range,
         "targetDistributionBeforeOutlierRemoval": _distribution_summary(usable_pre_outlier["price"]),
-        "targetDistributionAfterOutlierRemoval": _distribution_summary(usable["price"]),
-        "pricePerSqftDistributionAfterOutlierRemoval": _distribution_summary(usable["pricePerSqft"]),
-        "outlierRemoval": outlier_summary,
+        "pricePerSqftDistributionBeforeOutlierRemoval": _distribution_summary(usable["pricePerSqft"]),
     }
 
-    return usable, row_counts, eda_summary, clusterer
+    return usable, row_counts, eda_summary
 
 
 def _build_preprocessor() -> ColumnTransformer:
@@ -626,13 +686,17 @@ def _bootstrap_metric_summary(actual: np.ndarray, predicted: np.ndarray, repeats
 
 
 def _build_group_stats(group: pd.DataFrame) -> dict[str, Any]:
-    prices = np.sort(group["price"].to_numpy(dtype=float))
+    prices = group["price"].to_numpy(dtype=float)
+    if len(prices) == 0:
+        price_percentiles = [0.0] * 101
+    else:
+        price_percentiles = np.percentile(prices, np.arange(101)).tolist()
     return {
         "count": int(len(group)),
-        "medianPrice": float(np.median(prices)),
-        "medianPricePerSqft": float(np.median(group["pricePerSqft"].to_numpy(dtype=float))),
-        "practicalCeiling": float(np.quantile(prices, 0.95)),
-        "pricesSorted": prices,
+        "medianPrice": float(np.median(prices)) if len(prices) else 0.0,
+        "medianPricePerSqft": float(np.median(group["pricePerSqft"].to_numpy(dtype=float))) if len(group) else 0.0,
+        "practicalCeiling": float(np.quantile(prices, 0.95)) if len(prices) else 0.0,
+        "pricePercentiles": price_percentiles,
     }
 
 
@@ -653,24 +717,27 @@ def _weighted_average(items: list[dict[str, float]]) -> float:
     return float(sum(item["weight"] * item["value"] for item in items) / total_weight)
 
 
-def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple[Pipeline, str, dict[str, dict[str, Any]], float, dict[str, Any]]:
-    feature_frame = frame[NUMERIC_FEATURES + CATEGORICAL_FEATURES].copy()
+def _train_property_type_model(
+    property_type: str,
+    frame: pd.DataFrame,
+    *,
+    temporal_train_index: np.ndarray,
+    temporal_test_index: np.ndarray,
+    temporal_split_strategy: str,
+) -> tuple[Pipeline, str, dict[str, dict[str, Any]], ConformalCalibration, dict[str, Any]]:
+    train_frame_raw = frame.loc[temporal_train_index].copy()
+    holdout_frame = frame.loc[temporal_test_index].copy()
+    train_frame, outlier_summary = _remove_segment_outliers(train_frame_raw, bounds_from=train_frame_raw)
+
+    feature_columns = NUMERIC_FEATURES + CATEGORICAL_FEATURES
     target = frame["logPrice"]
-    price_strata = _build_price_strata(frame["price"])
+    price_strata = _build_price_strata(train_frame["price"])
 
-    stratify = price_strata if price_strata.nunique() > 1 else None
-    train_index, test_index = train_test_split(
-        frame.index.to_numpy(),
-        test_size=0.2,
-        random_state=42,
-        stratify=stratify,
-    )
-
-    x_train = feature_frame.loc[train_index]
-    x_test = feature_frame.loc[test_index]
-    y_train = target.loc[train_index].to_numpy(dtype=float)
-    actual_prices = frame.loc[test_index, "price"].to_numpy(dtype=float)
-    train_strata = price_strata.loc[train_index]
+    x_train = train_frame[feature_columns]
+    x_test = holdout_frame[feature_columns]
+    y_train = train_frame["logPrice"].to_numpy(dtype=float)
+    actual_prices = holdout_frame["price"].to_numpy(dtype=float)
+    train_strata = price_strata.loc[train_frame.index]
     cv_splitter = _select_cv_splitter(train_strata)
 
     candidate_metrics: dict[str, dict[str, Any]] = {}
@@ -694,7 +761,7 @@ def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple
             candidate = clone(pipeline)
             candidate.fit(x_train.loc[cv_train_index], target.loc[cv_train_index].to_numpy(dtype=float))
             cv_predicted = np.exp(candidate.predict(x_train.loc[cv_valid_index]))
-            cv_actual = frame.loc[cv_valid_index, "price"].to_numpy(dtype=float)
+            cv_actual = train_frame.loc[cv_valid_index, "price"].to_numpy(dtype=float)
             cv_metrics = _evaluate_predictions(cv_actual, cv_predicted)
             cv_mae.append(cv_metrics["mae"])
             cv_rmse.append(cv_metrics["rmse"])
@@ -719,7 +786,7 @@ def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple
                 "r2Std": float(np.std(cv_r2)),
             },
             "holdout": {
-                "rows": int(len(test_index)),
+                "rows": int(len(temporal_test_index)),
                 "mae": holdout_metrics["mae"],
                 "rmse": holdout_metrics["rmse"],
                 "mape": holdout_metrics["mape"],
@@ -741,31 +808,78 @@ def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple
     )
 
     selected_pipeline = clone(pipeline_builders[selected_family])
-    selected_pipeline.fit(feature_frame, target.to_numpy(dtype=float))
+    selected_pipeline.fit(x_train, y_train)
 
-    confidence_error_ratio = float(
-        np.clip(
-            np.quantile(candidate_metrics[selected_family].pop("_errorRatios"), 0.7),
-            0.08,
-            0.24,
-        ),
-    )
-    holdout_predictions = np.array(candidate_metrics[selected_family].pop("_holdoutPredictions"), dtype=float)
+    holdout_predictions = np.array(candidate_metrics[selected_family]["_holdoutPredictions"], dtype=float)
+    calibration = calibrate_split_conformal(actual_prices, holdout_predictions, alpha=0.2)
     bootstrap_summary = _bootstrap_metric_summary(actual_prices, holdout_predictions)
 
     selected_metrics = candidate_metrics[selected_family]
+    random_cv_mae = float(selected_metrics["cv"]["maeMean"])
+
+    random_train_index, random_test_index = _random_holdout_indices(frame)
+    random_train_raw = frame.loc[random_train_index].copy()
+    random_test = frame.loc[random_test_index].copy()
+    random_train, _ = _remove_segment_outliers(random_train_raw, bounds_from=random_train_raw)
+    random_x_train = random_train[feature_columns]
+    random_x_test = random_test[feature_columns]
+    random_model = clone(pipeline_builders[selected_family])
+    random_model.fit(random_x_train, random_train["logPrice"].to_numpy(dtype=float))
+    random_predicted = np.exp(random_model.predict(random_x_test))
+    random_actual = random_test["price"].to_numpy(dtype=float)
+    random_holdout_metrics = _evaluate_predictions(random_actual, random_predicted)
+
+    train_fsa_groups = train_frame["postalFsa"]
+    distinct_fsas = int(train_fsa_groups.nunique())
+    spatial_cv_mae: float | None = None
+    spatial_gap_pct: float | None = None
+    spatial_folds = 0
+    if distinct_fsas >= 2:
+        spatial_splitter = GroupKFold(n_splits=min(5, distinct_fsas))
+        spatial_mae: list[float] = []
+        for spatial_train_pos, spatial_valid_pos in spatial_splitter.split(x_train, groups=train_fsa_groups):
+            spatial_train_index = x_train.index[spatial_train_pos]
+            spatial_valid_index = x_train.index[spatial_valid_pos]
+            spatial_candidate = clone(pipeline_builders[selected_family])
+            spatial_candidate.fit(x_train.loc[spatial_train_index], target.loc[spatial_train_index].to_numpy(dtype=float))
+            spatial_predicted = np.exp(spatial_candidate.predict(x_train.loc[spatial_valid_index]))
+            spatial_actual = train_frame.loc[spatial_valid_index, "price"].to_numpy(dtype=float)
+            spatial_mae.append(float(mean_absolute_error(spatial_actual, spatial_predicted)))
+        spatial_folds = len(spatial_mae)
+        spatial_cv_mae = float(np.mean(spatial_mae))
+        if random_cv_mae > 0:
+            spatial_gap_pct = float((spatial_cv_mae - random_cv_mae) / random_cv_mae * 100)
+
     evaluation = {
         "propertyType": property_type,
         "selectedModel": selected_family,
-        "trainingRows": int(len(frame)),
+        "trainingRows": int(len(train_frame)),
         "holdoutRows": int(selected_metrics["holdout"]["rows"]),
         "cv": selected_metrics["cv"],
         "holdout": selected_metrics["holdout"],
+        "randomHoldout": {
+            "rows": int(len(random_test_index)),
+            "mae": random_holdout_metrics["mae"],
+            "rmse": random_holdout_metrics["rmse"],
+            "mape": random_holdout_metrics["mape"],
+            "r2": random_holdout_metrics["r2"],
+        },
         "bootstrap": bootstrap_summary,
+        "randomCvMae": random_cv_mae,
+        "spatialCvMae": spatial_cv_mae,
+        "spatialGeneralizationGapPct": spatial_gap_pct,
+        "outlierRemoval": outlier_summary,
         "validationStrategy": {
-            "trainHoldoutSplit": f"80/20 stratified by price band within Vancouver {property_type} listings",
-            "crossValidation": f"{selected_metrics['cv']['folds']}-fold cross-validation inside Vancouver {property_type} listings",
-            "bootstrap": f"{bootstrap_summary['repeats']} bootstrap resamples on the Vancouver {property_type} holdout predictions",
+            "trainHoldoutSplit": f"{temporal_split_strategy} within Vancouver {property_type} listings; IQR outlier bounds from train only",
+            "crossValidation": f"{selected_metrics['cv']['folds']}-fold cross-validation inside Vancouver {property_type} training rows",
+            "randomHoldoutSplit": "secondary 80/20 stratified by price band with train-only IQR bounds",
+            "spatialCrossValidation": (
+                f"{spatial_folds}-fold GroupKFold grouped by postal FSA on Vancouver {property_type} training rows"
+                if spatial_folds
+                else f"not run: only {distinct_fsas} distinct postal FSA in Vancouver {property_type} training rows"
+            ),
+            "bootstrap": f"{bootstrap_summary['repeats']} bootstrap resamples on the Vancouver {property_type} temporal holdout predictions",
+            "shippedModel": "train-only fitted model; conformal calibration covers this model on unseen holdout rows",
         },
     }
 
@@ -773,33 +887,52 @@ def _train_property_type_model(property_type: str, frame: pd.DataFrame) -> tuple
         metric.pop("_errorRatios", None)
         metric.pop("_holdoutPredictions", None)
 
-    return selected_pipeline, selected_family, candidate_metrics, confidence_error_ratio, evaluation
+    return selected_pipeline, selected_family, candidate_metrics, calibration, evaluation
 
 
 def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
-    usable, row_counts, eda_summary, clusterer = _load_training_frame(data_path)
+    usable, row_counts, eda_summary = _load_training_frame(data_path)
     if usable.empty:
         raise ValueError("No Vancouver training rows were found after cleaning the CSV")
+
+    temporal_train_index, temporal_test_index, temporal_split_strategy = _temporal_holdout_indices(usable, "listingDate")
+    train_stats_frame = usable.loc[temporal_train_index].copy()
+    clusterer = KMeans(n_clusters=CLUSTER_COUNT, random_state=42, n_init=20)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        clusterer.fit(usable.loc[temporal_train_index, ["latitude", "longitude"]].to_numpy(dtype=float))
+    usable, _ = _engineer_location_features(usable, clusterer)
 
     models: dict[str, Pipeline] = {}
     model_families: dict[str, str] = {}
     candidate_metrics: dict[str, dict[str, dict[str, Any]]] = {}
     confidence_error_ratios: dict[str, float] = {}
+    conformal_calibrations: dict[str, ConformalCalibration] = {}
     per_type_summary: dict[str, dict[str, Any]] = {}
+    outlier_summaries: dict[str, dict[str, Any]] = {}
 
     for property_type, frame in usable.groupby("propertyType"):
-        model, family, metrics, confidence_ratio, evaluation = _train_property_type_model(property_type, frame)
+        type_train_index = frame.index.intersection(temporal_train_index).to_numpy()
+        type_test_index = frame.index.intersection(temporal_test_index).to_numpy()
+        model, family, metrics, calibration, evaluation = _train_property_type_model(
+            property_type,
+            frame,
+            temporal_train_index=type_train_index,
+            temporal_test_index=type_test_index,
+            temporal_split_strategy=temporal_split_strategy,
+        )
         models[property_type] = model
         model_families[property_type] = family
         candidate_metrics[property_type] = metrics
-        confidence_error_ratios[property_type] = confidence_ratio
+        confidence_error_ratios[property_type] = float(calibration.ratio)
+        conformal_calibrations[property_type] = calibration
 
         missingness_for_type = eda_summary["missingnessByPropertyType"].get(property_type, {})
-        outlier_for_type = eda_summary["outlierRemoval"]["byPropertyType"].get(property_type, {})
+        outlier_for_type = evaluation.get("outlierRemoval", {}).get("byPropertyType", {}).get(property_type, {})
         evaluation["ageYearsMissingRate"] = float(missingness_for_type.get("ageYears", {}).get("missingRate", 0.0))
         evaluation["outlierRemovedRate"] = float(outlier_for_type.get("removedRate", 0.0))
         evaluation["outlierRemovedRows"] = int(outlier_for_type.get("removed", 0))
         per_type_summary[property_type] = evaluation
+        outlier_summaries[property_type] = evaluation.get("outlierRemoval", {})
 
     overall_weighted_metrics = {
         "cvMae": _weighted_average(
@@ -820,28 +953,40 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         "holdoutR2": _weighted_average(
             [{"value": summary["holdout"]["r2"], "weight": summary["holdoutRows"]} for summary in per_type_summary.values()],
         ),
+        "randomHoldoutMae": _weighted_average(
+            [{"value": summary["randomHoldout"]["mae"], "weight": summary["randomHoldout"]["rows"]} for summary in per_type_summary.values()],
+        ),
     }
 
     evaluation_summary = {
         "selectedModels": model_families,
         "overallWeightedMetrics": overall_weighted_metrics,
         "validationStrategy": {
-            "trainHoldoutSplit": "80/20 stratified by price band within each property type",
+            "trainHoldoutSplit": temporal_split_strategy,
             "crossValidation": "adaptive 3 or 5 fold cross-validation per property type",
-            "bootstrap": f"{BOOTSTRAP_REPEATS} bootstrap resamples on each selected holdout prediction set",
+            "randomHoldoutSplit": "secondary 80/20 stratified by price band per property type",
+            "bootstrap": f"{BOOTSTRAP_REPEATS} bootstrap resamples on each selected temporal holdout prediction set",
+            "shippedModel": "train-only fitted models; conformal intervals cover the shipped models on unseen holdout rows",
         },
         "perType": per_type_summary,
-        "eda": eda_summary,
+        "eda": {
+            **eda_summary,
+            "outlierRemoval": {
+                "status": "train-only-bounds",
+                "message": "IQR outlier thresholds are computed on the temporal training split only; holdout rows are never dropped for metrics.",
+                "byPropertyType": outlier_summaries,
+            },
+        },
     }
 
-    global_age_median = _safe_median(usable["ageYears"], 0.0)
+    global_age_median = _safe_median(train_stats_frame["ageYears"], 0.0)
     age_medians = (
-        usable.groupby("propertyType")["ageYears"]
+        train_stats_frame.groupby("propertyType")["ageYears"]
         .median()
         .fillna(global_age_median)
         .to_dict()
     )
-    numeric_medians = usable[NUMERIC_FEATURES].median(numeric_only=True).fillna(0).to_dict()
+    numeric_medians = train_stats_frame[NUMERIC_FEATURES].median(numeric_only=True).fillna(0).to_dict()
     type_feature_medians = {
         property_type: {
             "livingAreaSqft": float(frame["livingAreaSqft"].median()),
@@ -849,26 +994,26 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
             "bathrooms": float(frame["bathrooms"].median()),
             "ageYears": _safe_median(frame["ageYears"], numeric_medians["ageYears"]),
         }
-        for property_type, frame in usable.groupby("propertyType")
+        for property_type, frame in train_stats_frame.groupby("propertyType")
     }
     type_price_medians = {
         property_type: float(frame["price"].median())
-        for property_type, frame in usable.groupby("propertyType")
+        for property_type, frame in train_stats_frame.groupby("propertyType")
     }
 
     full_postal_stats = {
         (postal, property_type): _build_group_stats(frame)
-        for (postal, property_type), frame in usable.groupby(["postalCode", "propertyType"])
+        for (postal, property_type), frame in train_stats_frame.groupby(["postalCode", "propertyType"])
     }
     fsa_stats = {
         (postal_fsa, property_type): _build_group_stats(frame)
-        for (postal_fsa, property_type), frame in usable.groupby(["postalFsa", "propertyType"])
+        for (postal_fsa, property_type), frame in train_stats_frame.groupby(["postalFsa", "propertyType"])
     }
     type_stats = {
         property_type: _build_group_stats(frame)
-        for property_type, frame in usable.groupby("propertyType")
+        for property_type, frame in train_stats_frame.groupby("propertyType")
     }
-    city_stats = _build_group_stats(usable)
+    city_stats = _build_group_stats(train_stats_frame)
 
     bundle = VancouverModelBundle(
         models=models,
@@ -876,19 +1021,20 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         candidate_metrics=candidate_metrics,
         evaluation_summary=evaluation_summary,
         confidence_error_ratios=confidence_error_ratios,
+        conformal_calibrations=conformal_calibrations,
         model_version=MODEL_VERSION,
         training_mode=TRAINING_MODE,
         data_path=data_path,
-        trained_at=datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        trained_at=datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         row_counts=row_counts,
         location_clusterer=clusterer,
         cluster_count=CLUSTER_COUNT,
         location_feature_version=LOCATION_FEATURE_VERSION,
-        full_postal_centroids=_centroid_lookup(usable.groupby("postalCode")),
-        fsa_centroids=_centroid_lookup(usable.groupby("postalFsa")),
+        full_postal_centroids=_centroid_lookup(train_stats_frame.groupby("postalCode")),
+        fsa_centroids=_centroid_lookup(train_stats_frame.groupby("postalFsa")),
         vancouver_centroid=(
-            float(usable["latitude"].median()),
-            float(usable["longitude"].median()),
+            float(train_stats_frame["latitude"].median()),
+            float(train_stats_frame["longitude"].median()),
         ),
         age_medians={key: float(value) for key, value in age_medians.items()},
         numeric_medians={key: float(value) for key, value in numeric_medians.items()},
@@ -908,28 +1054,40 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
     with ARTIFACT_PATH.open("wb") as artifact_file:
         pickle.dump(bundle, artifact_file)
 
+    upsert_manifest_entry(
+        ARTIFACT_PATH,
+        build_manifest_entry(
+            ARTIFACT_PATH,
+            model_version=bundle.model_version,
+            trained_at=bundle.trained_at,
+        ),
+    )
+
     return bundle
 
 
-def load_bundle(force_retrain: bool = False, data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
+def _bundle_validation_issues(bundle: VancouverModelBundle) -> list[str]:
+    return extended_bundle_validation_issues(
+        bundle,
+        expected_model_version=MODEL_VERSION,
+        expected_location_feature_version=LOCATION_FEATURE_VERSION,
+    )
+
+
+def load_bundle() -> VancouverModelBundle:
     global _BUNDLE
 
-    if _BUNDLE is not None and not force_retrain and _BUNDLE.data_path == data_path:
+    if _BUNDLE is not None:
         _BUNDLE.market_index_path = DEFAULT_MARKET_INDEX_PATH
         return _BUNDLE
 
-    if not force_retrain and ARTIFACT_PATH.exists():
-        try:
-            with ARTIFACT_PATH.open("rb") as artifact_file:
-                bundle = pickle.load(artifact_file)
-            if isinstance(bundle, VancouverModelBundle) and bundle.data_path == data_path:
-                bundle.market_index_path = DEFAULT_MARKET_INDEX_PATH
-                _BUNDLE = bundle
-                return bundle
-        except Exception:
-            pass
-
-    _BUNDLE = train_bundle(data_path=data_path)
+    _BUNDLE = load_approved_pickle(
+        ARTIFACT_PATH,
+        expected_type=VancouverModelBundle,
+        artifact_label="Vancouver base-model",
+        validate=_bundle_validation_issues,
+    )
+    _BUNDLE.market_index_path = DEFAULT_MARKET_INDEX_PATH
     return _BUNDLE
 
 
@@ -991,8 +1149,8 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
     if not path.exists():
         return {
             "status": "not-applied",
-            "message": f"No real current-market index CSV found at {path}. Base estimate uses the Vancouver listing data only.",
-            "dataSource": str(path),
+            "message": "No real current-market index CSV was found. Base estimate uses the Vancouver listing data only.",
+            "dataSource": _display_path(path),
         }
 
     try:
@@ -1001,7 +1159,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
         return {
             "status": "not-applied",
             "message": f"Could not read the real market index CSV: {exc}",
-            "dataSource": str(path),
+            "dataSource": _display_path(path),
         }
 
     date_column = _first_existing_name(source, ["date", "Date", "month", "Month", "period", "Period", "reportDate", "Report Date"])
@@ -1014,7 +1172,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
         return {
             "status": "not-applied",
             "message": "Market index CSV must include a date/month/period column and a benchmark price, HPI, or index column.",
-            "dataSource": str(path),
+            "dataSource": _display_path(path),
         }
 
     market = pd.DataFrame(
@@ -1046,7 +1204,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
         return {
             "status": "not-applied",
             "message": "Market index CSV did not contain enough usable real rows to calculate a current adjustment.",
-            "dataSource": str(path),
+            "dataSource": _display_path(path),
         }
 
     market = market.groupby("period", as_index=False)["value"].mean().sort_values("period")
@@ -1055,7 +1213,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
         return {
             "status": "not-applied",
             "message": "Training listing dates were not available, so no current-market adjustment was applied.",
-            "dataSource": str(path),
+            "dataSource": _display_path(path),
         }
 
     baseline_candidates = market[market["period"] <= baseline_period]
@@ -1068,7 +1226,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
             "message": "Market index CSV is not newer than the training listing data, so no current adjustment was needed.",
             "baselinePeriod": baseline_row["period"].date().isoformat(),
             "latestPeriod": latest_row["period"].date().isoformat(),
-            "dataSource": str(path),
+            "dataSource": _display_path(path),
         }
 
     multiplier = float(latest_row["value"] / baseline_row["value"])
@@ -1078,7 +1236,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
             "message": "Market index multiplier looked outside a safe range, so the real-data adjustment was not applied.",
             "baselinePeriod": baseline_row["period"].date().isoformat(),
             "latestPeriod": latest_row["period"].date().isoformat(),
-            "dataSource": str(path),
+            "dataSource": _display_path(path),
         }
 
     return {
@@ -1087,16 +1245,18 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
         "multiplier": round(multiplier, 4),
         "baselinePeriod": baseline_row["period"].date().isoformat(),
         "latestPeriod": latest_row["period"].date().isoformat(),
-        "dataSource": str(path),
+        "dataSource": _display_path(path),
     }
 
 
-def _percentile_rank(value: float, sorted_prices: np.ndarray) -> float:
-    if len(sorted_prices) == 0:
+def _percentile_rank(value: float, price_percentiles: list[float] | np.ndarray) -> float:
+    percentiles = np.asarray(price_percentiles, dtype=float)
+    if len(percentiles) < 2:
         return 50.0
 
-    rank = np.searchsorted(sorted_prices, value, side="right") / len(sorted_prices)
-    return float(np.clip(rank * 100, 1, 99))
+    ranks = np.linspace(0, 100, len(percentiles))
+    rank = float(np.interp(value, percentiles, ranks))
+    return float(np.clip(rank, 1, 99))
 
 
 def _driver_candidates(
@@ -1147,7 +1307,7 @@ def _driver_candidates(
 
     filtered = [driver for driver in drivers if abs(driver["value"]) >= 5_000]
     top_drivers = sorted(filtered, key=lambda item: abs(item["value"]), reverse=True)[:6]
-    return [{"label": item["label"], "value": round(float(item["value"]))} for item in top_drivers]
+    return [{"label": item["label"], "value": round(float(item["value"])), "source": "heuristic"} for item in top_drivers]
 
 
 def _normalize_request(payload: dict[str, Any], bundle: VancouverModelBundle) -> dict[str, Any]:
@@ -1158,6 +1318,11 @@ def _normalize_request(payload: dict[str, Any], bundle: VancouverModelBundle) ->
     postal_code = _normalize_postal_code(payload.get("postalCode"))
     if postal_code is None or not postal_code.startswith(VANCOUVER_PREFIXES):
         raise ValueError("postalCode must be a Vancouver postal code in V5 or V6")
+    if postal_code[:3] not in bundle.fsa_centroids:
+        raise ValueError(
+            f"postal FSA {postal_code[:3]} is outside the Vancouver model's observed training geography; "
+            "no estimate was produced"
+        )
 
     living_area = _parse_numeric(payload.get("livingAreaSqft"))
     bedrooms = _parse_numeric(payload.get("bedrooms"))
@@ -1173,7 +1338,12 @@ def _normalize_request(payload: dict[str, Any], bundle: VancouverModelBundle) ->
         raise ValueError("bathrooms must be zero or greater")
 
     latitude, longitude = _resolve_centroid(bundle, postal_code)
-    if age_years is None:
+    age_missing_rate = float(bundle.evaluation_summary["perType"].get(property_type, {}).get("ageYearsMissingRate", 1.0))
+    if age_missing_rate >= 0.95:
+        # The Vancouver source has no usable age signal. Keep inference inside the training domain
+        # instead of feeding a user-entered value the fitted model never saw.
+        age_years = bundle.age_medians.get(property_type, bundle.numeric_medians["ageYears"])
+    elif age_years is None:
         age_years = bundle.age_medians.get(property_type, bundle.numeric_medians["ageYears"])
 
     return {
@@ -1224,8 +1394,24 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     price_per_sqft = round(base_value / max(property_data["livingAreaSqft"], 1), 2)
 
     local_scope, local_area_label, local_stats = _choose_market_stats(bundle, property_data["postalCode"], property_type)
-    percentile_rank = _percentile_rank(raw_base_value, local_stats["pricesSorted"])
+    percentile_rank = _percentile_rank(raw_base_value, local_stats["pricePercentiles"])
     practical_ceiling = round(max(base_value, local_stats["practicalCeiling"] * market_multiplier))
+
+    calibration = bundle.conformal_calibrations[property_type]
+    if calibration.empirical_coverage is not None:
+        calibration_note = (
+            f"Split conformal on {calibration.calibration_rows} holdout listings; "
+            f"coverage checked on {calibration.coverage_rows} held-back rows"
+        )
+    else:
+        calibration_note = (
+            f"Split conformal on {calibration.calibration_rows} holdout listings; "
+            "too few rows remained to verify coverage empirically"
+        )
+
+    drivers, explanation_method = shap_drivers(bundle.models[property_type], feature_frame, base_value)
+    if drivers is None:
+        drivers = _driver_candidates(property_data, bundle, local_stats, market_multiplier)
 
     quality_summary = bundle.evaluation_summary["perType"][property_type]
     age_years_missing_rate = float(quality_summary["ageYearsMissingRate"])
@@ -1239,7 +1425,12 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
             "r2": quality_summary["bootstrap"]["r2"],
         },
         "missingnessNotes": [
-            f"Year built or age was missing in {age_years_missing_rate * 100:.1f}% of Vancouver {property_type.lower()} listings and is median-imputed by property type when not provided."
+            (
+                f"Year built or age was missing in {age_years_missing_rate * 100:.1f}% of Vancouver {property_type.lower()} listings, "
+                "so user-entered year built is not used by this model."
+                if age_years_missing_rate >= 0.95
+                else f"Year built or age was missing in {age_years_missing_rate * 100:.1f}% of Vancouver {property_type.lower()} listings and is median-imputed by property type when not provided."
+            )
         ],
         "locationFeatures": f"{bundle.location_feature_version} with {bundle.cluster_count} Vancouver submarket clusters",
         "clusterCount": bundle.cluster_count,
@@ -1250,6 +1441,8 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
         "trainingMode": bundle.training_mode,
         "modelFamily": bundle.model_families[property_type],
         "modelScope": property_type,
+        "market": "vancouver",
+        "marketLabel": "Vancouver",
         "baseValue": base_value,
         "confidenceLow": confidence_low,
         "confidenceHigh": confidence_high,
@@ -1267,12 +1460,21 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
             "outlierRemovedRate": float(quality_summary["outlierRemovedRate"]),
             "validationSummary": validation_summary,
         },
-        "drivers": _driver_candidates(property_data, bundle, local_stats, market_multiplier),
+        "uncertainty": {
+            "method": "conformal",
+            "targetCoverage": round(float(calibration.target_coverage), 4),
+            "empiricalCoverage": round(float(calibration.empirical_coverage), 4) if calibration.empirical_coverage is not None else None,
+            "calibrationNote": calibration_note,
+        },
+        "explanationMethod": explanation_method,
+        "drivers": drivers,
         "marketContext": {
             "localAreaLabel": local_area_label,
             "localAreaScope": local_scope,
             "localMedianValue": round(local_stats["medianPrice"] * market_multiplier),
             "localMedianPricePerSqft": round(local_stats["medianPricePerSqft"] * market_multiplier, 2),
+            "cityMedianValue": round(bundle.city_stats["medianPrice"] * market_multiplier),
+            "cityMedianPricePerSqft": round(bundle.city_stats["medianPricePerSqft"] * market_multiplier, 2),
             "vancouverMedianValue": round(bundle.city_stats["medianPrice"] * market_multiplier),
             "vancouverMedianPricePerSqft": round(bundle.city_stats["medianPricePerSqft"] * market_multiplier, 2),
             "percentileRank": round(percentile_rank, 1),
@@ -1284,18 +1486,29 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def health_payload() -> dict[str, Any]:
+def slim_health_payload() -> dict[str, Any]:
     bundle = load_bundle()
     return {
         "ok": True,
+        "market": "vancouver",
+        "modelVersion": bundle.model_version,
+        "trainedAt": bundle.trained_at,
+        "rowCounts": bundle.row_counts,
+    }
+
+
+def metrics_payload() -> dict[str, Any]:
+    bundle = load_bundle()
+    return {
+        "market": "vancouver",
         "service": "model-service",
         "modelVersion": bundle.model_version,
         "trainingMode": bundle.training_mode,
-        "dataPath": bundle.data_path,
+        "dataPath": _display_path(bundle.data_path),
         "trainedAt": bundle.trained_at,
         "rowCounts": bundle.row_counts,
         "trainingDateRange": bundle.training_date_range,
-        "marketIndexPath": bundle.market_index_path,
+        "marketIndexPath": _display_path(bundle.market_index_path),
         "modelFamilies": bundle.model_families,
         "perTypeCandidateMetrics": bundle.candidate_metrics,
         "overallWeightedMetrics": bundle.evaluation_summary["overallWeightedMetrics"],
@@ -1305,3 +1518,7 @@ def health_payload() -> dict[str, Any]:
         "xgboostAvailable": bundle.xgboost_available,
         "xgboostImportError": bundle.xgboost_import_error,
     }
+
+
+def health_payload() -> dict[str, Any]:
+    return slim_health_payload()

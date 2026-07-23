@@ -1,4 +1,4 @@
-import type { DealAnalyzeResponse, EstimateResponse, PlannedFlag, PlanResponse, PropertyInput } from "@vvl/shared";
+import { API_CONTRACT_VERSION, improvementFlagValues, propertyTypeValues, type DealAnalyzeResponse, type EstimateResponse, type PlannedFlag, type PlanResponse, type PropertyInput } from "@vvl/shared";
 
 export type ScenarioSource = "plan" | "deal-analyzer";
 export type ScenarioRiskLevel = "Low" | "Medium" | "High";
@@ -39,6 +39,51 @@ export interface ScenarioRecord {
   note: string;
   warnings: string[];
   modelVersion?: string;
+  contractVersion?: string;
+}
+
+export const SCENARIO_STORE_VERSION = 1 as const;
+
+export type ScenarioStore = {
+  version: typeof SCENARIO_STORE_VERSION;
+  data: ScenarioRecord[];
+};
+
+function isScenarioRecord(value: unknown): value is ScenarioRecord {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  const record = value as ScenarioRecord;
+  return (
+    typeof record.id === "string" &&
+    typeof record.createdAt === "string" &&
+    (record.source === "plan" || record.source === "deal-analyzer") &&
+    typeof record.title === "string" &&
+    typeof record.property === "object" &&
+    record.property != null &&
+    propertyTypeValues.includes(record.property.propertyType) &&
+    Array.isArray(record.plannedFlags) &&
+    record.plannedFlags.every((flag) => improvementFlagValues.includes(flag)) &&
+    typeof record.estimatedValue === "number" &&
+    typeof record.achievableValue === "number" &&
+    typeof record.budget === "number" &&
+    typeof record.timelineMonths === "number" &&
+    typeof record.verdict === "string" &&
+    (record.riskLevel === "Low" || record.riskLevel === "Medium" || record.riskLevel === "High") &&
+    (record.tag === "Shortlist" || record.tag === "Watch" || record.tag === "Pass" || record.tag === "Needs review") &&
+    typeof record.note === "string" &&
+    Array.isArray(record.warnings)
+  );
+}
+
+export function isScenarioStore(value: unknown): value is ScenarioStore {
+  if (typeof value !== "object" || value == null) {
+    return false;
+  }
+
+  const store = value as ScenarioStore;
+  return store.version === SCENARIO_STORE_VERSION && Array.isArray(store.data) && store.data.every(isScenarioRecord);
 }
 
 export interface ScenarioSummary {
@@ -51,7 +96,26 @@ export interface ScenarioSummary {
 }
 
 function nowId(): string {
-  return `scenario-${Date.now()}-${Math.round(Math.random() * 100000)}`;
+  return crypto.randomUUID();
+}
+
+export function migrateScenarioStore(raw: unknown): ScenarioStore | null {
+  if (isScenarioStore(raw)) {
+    return {
+      version: SCENARIO_STORE_VERSION,
+      data: raw.data.map(cleanScenario).filter(isScenarioRecord),
+    };
+  }
+
+  if (Array.isArray(raw)) {
+    const data = raw
+      .map((entry) => (typeof entry === "object" && entry != null ? cleanScenario(entry as ScenarioRecord) : null))
+      .filter((scenario): scenario is ScenarioRecord => scenario != null && isScenarioRecord(scenario));
+
+    return { version: SCENARIO_STORE_VERSION, data };
+  }
+
+  return null;
 }
 
 function median(values: number[]): number {
@@ -82,10 +146,10 @@ function propertyLabel(property: PropertyInput): string {
 
 function riskFromPlan(plan: PlanResponse, estimate: EstimateResponse, warnings: string[]): ScenarioRiskLevel {
   // Saved scenarios carry a simple risk label so the workspace can compare runs without re-calling the API.
-  if (plan.targetAssessment === "Unlikely" || estimate.confidenceRatio >= 0.18 || warnings.length >= 3) {
+  if (plan.targetAssessment === "Below target" || estimate.confidenceRatio >= 0.18 || warnings.length >= 3) {
     return "High";
   }
-  if (plan.targetAssessment === "Stretch" || estimate.confidenceRatio >= 0.14 || warnings.length > 0) {
+  if (plan.targetAssessment === "Near target" || estimate.confidenceRatio >= 0.14 || warnings.length > 0) {
     return "Medium";
   }
   return "Low";
@@ -102,17 +166,17 @@ function riskFromDeal(deal: DealAnalyzeResponse): ScenarioRiskLevel {
 }
 
 function tagFromPlan(plan: PlanResponse): ScenarioTag {
-  if (plan.targetAssessment === "Likely") {
+  if (plan.targetAssessment === "Meets target") {
     return "Shortlist";
   }
-  if (plan.targetAssessment === "Unlikely") {
+  if (plan.targetAssessment === "Below target") {
     return "Pass";
   }
   return "Watch";
 }
 
 function tagFromDeal(deal: DealAnalyzeResponse): ScenarioTag {
-  if (deal.dealLabel === "Strong lead") {
+  if (deal.dealLabel === "Worth review" && deal.netUpsidePercent >= 0.08 && !deal.riskFlags.some((flag) => flag.level !== "info")) {
     return "Shortlist";
   }
   if (deal.dealLabel === "Pass for now") {
@@ -128,40 +192,59 @@ function defaultNote(warnings: string[]): string {
   return "Saved for comparison.";
 }
 
-function warningNotesFromPlan(plan: PlanResponse, estimate: EstimateResponse): string[] {
+function warningNotesFromPlanWithoutEstimate(plan: PlanResponse): string[] {
   const warnings: string[] = [];
-
-  // These warnings are intentionally plain-language because they surface directly in the investor workspace.
-  if (estimate.confidenceRatio >= 0.16) {
-    warnings.push("Wide estimate confidence range");
+  if (plan.targetAssessment === "Near target") {
+    warnings.push("Target price is near the modeled achievable value");
   }
-  if (plan.targetAssessment === "Stretch") {
-    warnings.push("Target price is a stretch");
-  }
-  if (plan.targetAssessment === "Unlikely") {
-    warnings.push("Target price looks unlikely");
+  if (plan.targetAssessment === "Below target") {
+    warnings.push("Target price is below the modeled achievable value");
   }
   if ((plan.plannedSpend ?? 0) <= 0) {
     warnings.push("No positive-value plan fit the current budget and timeline");
+  }
+  return warnings;
+}
+
+function warningNotesFromPlan(plan: PlanResponse, estimate: EstimateResponse): string[] {
+  const warnings = warningNotesFromPlanWithoutEstimate(plan);
+
+  // These warnings are intentionally plain-language because they surface directly in the investor workspace.
+  if (estimate.confidenceRatio >= 0.16) {
+    warnings.unshift("Wide estimate confidence range");
   }
 
   return warnings;
 }
 
+function riskFromPlanWarningsOnly(plan: PlanResponse, warnings: string[]): ScenarioRiskLevel {
+  if (plan.targetAssessment === "Below target" || warnings.length >= 2) {
+    return "High";
+  }
+  if (plan.targetAssessment === "Near target" || warnings.length) {
+    return "Medium";
+  }
+  return "Low";
+}
+
 export function createPlanScenario(input: {
   property: PropertyInput;
   plannedFlags: PlannedFlag[];
-  estimate: EstimateResponse;
+  estimate?: EstimateResponse | null;
   plan: PlanResponse;
   targetPrice: number;
   budget: number;
   timelineMonths: number;
 }): ScenarioRecord {
-  const warnings = warningNotesFromPlan(input.plan, input.estimate);
-  const achievableValue = input.plan.achievableValue ?? input.estimate.baseValue;
+  const baseValue = input.plan.baseValue ?? input.estimate?.baseValue;
+  if (baseValue == null) {
+    throw new Error("Plan scenario requires a base value");
+  }
+  const warnings = input.estimate ? warningNotesFromPlan(input.plan, input.estimate) : warningNotesFromPlanWithoutEstimate(input.plan);
+  const achievableValue = input.plan.achievableValue ?? baseValue;
   const plannedSpend = input.plan.plannedSpend ?? 0;
-  const estimatedUpside = Math.round(achievableValue - input.estimate.baseValue);
-  const upsidePercent = input.estimate.baseValue > 0 ? estimatedUpside / input.estimate.baseValue : 0;
+  const estimatedUpside = Math.round(achievableValue - baseValue);
+  const upsidePercent = baseValue > 0 ? estimatedUpside / baseValue : 0;
 
   return {
     id: nowId(),
@@ -170,9 +253,9 @@ export function createPlanScenario(input: {
     title: `${propertyLabel(input.property)} plan`,
     property: input.property,
     plannedFlags: input.plannedFlags,
-    estimatedValue: Math.round(input.estimate.baseValue),
+    estimatedValue: Math.round(baseValue),
     achievableValue: Math.round(achievableValue),
-    pricePerSqft: Math.round(input.estimate.pricePerSqft),
+    pricePerSqft: Math.round(input.estimate?.pricePerSqft ?? baseValue / Math.max(input.property.livingAreaSqft, 1)),
     targetPrice: input.targetPrice,
     budget: input.budget,
     timelineMonths: input.timelineMonths,
@@ -180,11 +263,12 @@ export function createPlanScenario(input: {
     estimatedUpside,
     upsidePercent,
     verdict: input.plan.targetAssessment ?? "Needs review",
-    riskLevel: riskFromPlan(input.plan, input.estimate, warnings),
+    riskLevel: input.estimate ? riskFromPlan(input.plan, input.estimate, warnings) : riskFromPlanWarningsOnly(input.plan, warnings),
     tag: tagFromPlan(input.plan),
     note: defaultNote(warnings),
     warnings,
-    modelVersion: input.estimate.modelVersion,
+    modelVersion: input.estimate?.modelVersion,
+    contractVersion: API_CONTRACT_VERSION,
   };
 }
 
@@ -212,14 +296,15 @@ export function createDealScenario(input: {
     budget: input.budget,
     timelineMonths: input.timelineMonths,
     plannedSpend: input.deal.plan.plannedSpend ?? 0,
-    estimatedUpside: Math.round(input.deal.estimatedGrossUpside),
-    upsidePercent: input.deal.grossUpsidePercent,
+    estimatedUpside: Math.round(input.deal.estimatedNetUpside),
+    upsidePercent: input.deal.netUpsidePercent,
     verdict: input.deal.dealLabel,
     riskLevel: riskFromDeal(input.deal),
     tag: tagFromDeal(input.deal),
     note: defaultNote(warnings),
     warnings,
     modelVersion: input.deal.estimate.modelVersion,
+    contractVersion: API_CONTRACT_VERSION,
   };
 }
 

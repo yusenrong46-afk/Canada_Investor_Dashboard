@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             charts: ["recharts"],
             icons: ["lucide-react"],
+            map: ["leaflet", "react-leaflet"],
             react: ["react", "react-dom", "react-router-dom"],
           },
         },

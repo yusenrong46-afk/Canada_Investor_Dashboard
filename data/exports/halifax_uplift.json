@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-07-22T21:52:05Z",
+  "source": "PVSC Parcel Sales History repeat-sale pairs joined to HRM geolocated building permits (<= 30 m)",
+  "method": "Repeat-sale pairs are consecutive sales of the same PVSC assessment account at least 180 days apart; pairs are dropped when either sale is below $100,000 or the price ratio falls outside [0.5, 5.0] (non-market transfers). Both sale prices in each pair are time-adjusted to 2026-05 with the HRM monthly median sale-price index (3-month rolling median smoothing), so the pair ratio removes market drift. Permits join to dwellings by the nearest PVSC dwelling point within 30 m (the PID-to-civic-address join fails because the identifier formats differ). A pair is treated for a category when a permit of that PRIMARY_WORK_SCOPE was issued strictly between its two sale dates; 'New Building' permits are excluded as teardown/redevelopment rather than improvement of an existing dwelling, and pairs with a New Building permit between sales are removed from the treated sets. Controls are pairs with no permit of any scope between sales. Excess uplift per category is the median treated time-adjusted ratio minus the median control time-adjusted ratio, with p25/p75 taken from the treated distribution minus the control median. Measured control median adjusted ratio: 1.0352 (sanity-checked within +/-10% of 1.0). Co-occurrence of Renovation and Addition between the same sales is unvalidated and not summed. Spatial permit matching leaves a large unmatched share, so treated pairs are a selected subset of geolocatable permits.",
+  "baselineMonth": "2026-05",
+  "minTreatedPairs": 100,
+  "permitMatchRate": 0.5504,
+  "coOccurrenceNote": "Renovation and Addition co-occurrence is unvalidated; when both are ready the API serves the single dominant category instead of summing them.",
+  "selectionBiasNote": "Permit\u2192dwelling spatial match is incomplete within 30 m; unmatched permits never enter treated sets, so measured uplift is conditional on geolocatable permits and may over-represent well-matched parcels.",
+  "categories": {
+    "Renovation": {
+      "status": "ready",
+      "treatedPairs": 131,
+      "controlPairs": 16445,
+      "medianExcessUpliftPercent": 0.1209,
+      "p25ExcessUpliftPercent": -0.0041,
+      "p75ExcessUpliftPercent": 0.5594,
+      "medianPermitValue": 35750,
+      "note": "Median time-adjusted repeat-sale ratio of 131 treated Renovation pairs minus the 16445-pair control median (1.0352). p25/p75 come from the treated distribution minus the control median, so the band reflects observed spread, not model error."
+    },
+    "Addition": {
+      "status": "insufficient-data",
+      "treatedPairs": 37,
+      "controlPairs": 16445,
+      "medianExcessUpliftPercent": null,
+      "p25ExcessUpliftPercent": null,
+      "p75ExcessUpliftPercent": null,
+      "medianPermitValue": null,
+      "note": "Only 37 treated Addition pairs were measured; 100 are required before the Addition uplift is reported."
+    }
+  },
+  "flagCategoryMap": {
+    "renovatedKitchen": "Renovation",
+    "renovatedBathrooms": "Renovation",
+    "energyEfficient": "Renovation",
+    "deferredMaintenanceResolved": "Renovation",
+    "roofIssueResolved": "Renovation",
+    "legalSuiteAdded": "Addition"
+  }
+}

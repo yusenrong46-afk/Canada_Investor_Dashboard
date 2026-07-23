@@ -1,3 +1,13 @@
+import type { z } from "zod/v4";
+
+import type {
+  marketEvidenceFileSchema,
+  marketEvidenceRowSchema,
+  marketTrendPointSchema,
+  marketTrendResponseSchema,
+} from "./schemas";
+import type { EvidenceLevel, ResultProvenance } from "./provenance";
+
 export type PropertyType = "Detached" | "Townhouse" | "Condo" | "Duplex";
 export type PlannedFlag =
   | "renovatedKitchen"
@@ -22,6 +32,7 @@ export type EstimateRequest = PropertyInput;
 export interface Driver {
   label: string;
   value: number;
+  source?: "shap" | "heuristic";
 }
 
 export interface MarketContextResponse {
@@ -29,8 +40,12 @@ export interface MarketContextResponse {
   localAreaScope: "postal-code" | "fsa" | "city-property-type" | "city";
   localMedianValue: number;
   localMedianPricePerSqft: number;
-  vancouverMedianValue: number;
-  vancouverMedianPricePerSqft: number;
+  cityMedianValue: number;
+  cityMedianPricePerSqft: number;
+  /** @deprecated use cityMedianValue */
+  vancouverMedianValue?: number;
+  /** @deprecated use cityMedianPricePerSqft */
+  vancouverMedianPricePerSqft?: number;
   percentileRank: number;
   practicalCeiling: number;
   premiumGap: number;
@@ -38,10 +53,10 @@ export interface MarketContextResponse {
 }
 
 export interface MetricRangeSummary {
-  mean: number;
-  p05: number;
-  p50: number;
-  p95: number;
+  mean: number | null;
+  p05: number | null;
+  p50: number | null;
+  p95: number | null;
 }
 
 export interface ValidationSummary {
@@ -60,21 +75,32 @@ export interface ValidationSummary {
 
 export interface ModelQuality {
   trainingRows: number;
-  cvMae: number;
-  cvMape: number;
-  cvR2: number;
-  holdoutMae: number;
-  holdoutMape: number;
-  holdoutR2: number;
-  outlierRemovedRate: number;
+  cvMae: number | null;
+  cvMape: number | null;
+  cvR2: number | null;
+  holdoutMae: number | null;
+  holdoutMape: number | null;
+  holdoutR2: number | null;
+  outlierRemovedRate: number | null;
   validationSummary: ValidationSummary;
 }
 
+export interface EstimateUncertainty {
+  method: "conformal" | "error-ratio" | "sample-range";
+  /** Only present for calibrated intervals with an explicit coverage target. */
+  targetCoverage?: number;
+  empiricalCoverage?: number | null;
+  calibrationNote?: string;
+}
+
 export interface EstimateResponse {
+  provenance: ResultProvenance;
   modelVersion: string;
   trainingMode: string;
-  modelFamily: "xgboost" | "random-forest";
+  modelFamily: "xgboost" | "random-forest" | "rules" | "precomputed";
   modelScope: PropertyType;
+  market: string;
+  marketLabel: string;
   baseValue: number;
   confidenceLow: number;
   confidenceHigh: number;
@@ -84,8 +110,10 @@ export interface EstimateResponse {
   modelQuality: ModelQuality;
   drivers: Driver[];
   marketContext: MarketContextResponse;
+  uncertainty?: EstimateUncertainty;
+  explanationMethod?: "shap" | "heuristic";
   marketFreshness?: {
-    status: "adjusted" | "not-applied";
+    status: "adjusted" | "not-applied" | "embedded-in-target";
     message: string;
     multiplier?: number;
     baselinePeriod?: string;
@@ -103,23 +131,31 @@ export interface UpliftDriver {
   rationale?: string;
 }
 
+export interface TreatedQuantileRange {
+  /** P25 of observed treated outcomes minus control median — spread, not estimation error. */
+  lowPercent: number;
+  /** P75 of observed treated outcomes minus control median — spread, not estimation error. */
+  highPercent: number;
+  lowValue: number;
+  highValue: number;
+}
+
 export interface SimulateResponse {
+  provenance: ResultProvenance;
   status: "ready" | "data-missing";
   message?: string;
   modelVersion?: string;
   trainingMode?: string;
-  modelFamily?: "xgboost" | "random-forest";
-  evidenceLevel?: "observed";
+  modelFamily?: "xgboost" | "random-forest" | "rules" | "precomputed";
+  evidenceLevel?: EvidenceLevel;
   evidenceSummary?: string;
   baseValue?: number;
   upliftPercent?: number;
-  upliftPercentConfidenceLow?: number;
-  upliftPercentConfidenceHigh?: number;
+  /** Spread of observed treated outcomes (p25–p75), not a calibrated confidence interval. */
+  treatedQuantileRange?: TreatedQuantileRange;
   upliftValue?: number;
   finalValueRaw?: number;
   finalValueGuardrailed?: number;
-  upliftConfidenceLow?: number;
-  upliftConfidenceHigh?: number;
   ceilingFlag?: boolean;
   plannedFlags?: PlannedFlag[];
   topUpliftDrivers?: UpliftDriver[];
@@ -146,6 +182,8 @@ export interface PlanLineItem {
   projectedUpliftPercent?: number;
   projectedFinalValue: number;
   valueRecoveryRate: number;
+  /** Whether the user already selected this work or the planner added it. */
+  origin?: "committed" | "recommended";
 }
 
 export interface PlanPhase {
@@ -163,23 +201,26 @@ export interface PlanRequest extends SimulateRequest {
 }
 
 export interface PlanResponse {
+  provenance: ResultProvenance;
   status: "ready" | "data-missing";
   message?: string;
-  evidenceLevel?: "observed";
+  evidenceLevel?: EvidenceLevel;
   dataSources?: Record<string, string>;
   methodNotes?: string[];
-  targetAssessment?: "Likely" | "Stretch" | "Unlikely";
+  targetAssessment?: "Meets target" | "Near target" | "Below target";
   baseValue?: number;
   achievableValue?: number;
   targetPrice?: number;
   gapToTarget?: number;
   plannedSpend?: number;
   plannedMonths?: number;
+  upliftConfidenceLow?: number;
+  upliftConfidenceHigh?: number;
   items?: PlanLineItem[];
   phases?: PlanPhase[];
 }
 
-export type DealLabel = "Strong lead" | "Worth review" | "Needs caution" | "Pass for now";
+export type DealLabel = "Worth review" | "Needs caution" | "Pass for now";
 export type RiskLevel = "info" | "warning" | "danger";
 
 export interface DealRiskFlag {
@@ -188,17 +229,74 @@ export interface DealRiskFlag {
   detail: string;
 }
 
+/** Seeded triangular stress test over explicitly supplied ranges. Draw shares
+ * are assumption-based diagnostics, not calibrated probabilities. */
+export interface DealRobustness {
+  method: "seeded-triangular-stress-test";
+  draws: number;
+  positiveUpsideShare: number;
+  /** Share of seeded draws that reach the target; null when no target was given. */
+  targetAchievableShare: number | null;
+  upsideP10: number;
+  upsideP50: number;
+  upsideP90: number;
+  note: string;
+}
+
 export interface DealAnalyzeResponse {
+  provenance: ResultProvenance;
   dealLabel: DealLabel;
   modeledValueGap: number;
   valueGapPercent: number;
   afterPlanValue: number;
   estimatedGrossUpside: number;
   grossUpsidePercent: number;
+  estimatedNetUpside: number;
+  netUpsidePercent: number;
   riskFlags: DealRiskFlag[];
   estimate: EstimateResponse;
   plan: PlanResponse;
+  robustness?: DealRobustness;
 }
+
+export interface MarketMapCell {
+  h3: string;
+  /** Six [lat, lng] vertices of the H3 cell. */
+  boundary: [number, number][];
+  rows: number;
+  medianValue: number;
+  medianPricePerSqft: number;
+}
+
+export interface MarketMapMarket {
+  market: string;
+  label: string;
+  zoom: number;
+  center: [number, number];
+  pricePerSqftDomain: [number, number];
+  cells: MarketMapCell[];
+}
+
+export type MarketMapResponse =
+  | ({ status: "ready"; generatedAt: string; source: string } & MarketMapMarket)
+  | { status: "unavailable"; message: string };
+
+export interface ModelExperimentRow {
+  experiment: "local" | "pooled" | "hybrid";
+  market: string;
+  propertyType: string;
+  family: string;
+  trainingRows: number;
+  holdoutRows: number;
+  holdoutMae: number;
+  holdoutMape: number;
+  spatialCvMae: number | null;
+  notes?: string;
+}
+
+export type ModelExperimentsResponse =
+  | { status: "ready"; generatedAt: string; source: string; rows: ModelExperimentRow[]; conclusions: string[] }
+  | { status: "unavailable"; message: string };
 
 export interface DemoInsightRow {
   id: string;
@@ -217,6 +315,7 @@ export interface DemoInsightRow {
 }
 
 export interface DemoMetricsResponse {
+  provenance: ResultProvenance;
   mode: "demo-safe" | "public-interactive";
   note: string;
   summary: {
@@ -228,4 +327,31 @@ export interface DemoMetricsResponse {
   };
   rows: DemoInsightRow[];
   dataQualityNotes: string[];
+}
+
+export type ApiRuntimeMode = "live-model" | "public-interactive" | "demo-samples";
+
+export interface ApiHealthResponse {
+  ok: true;
+  service: "api-server";
+  mode: ApiRuntimeMode;
+  contractVersion: string;
+  modelServiceReady?: boolean;
+}
+
+export type MarketEvidenceRow = z.infer<typeof marketEvidenceRowSchema>;
+export type MarketEvidenceFile = z.infer<typeof marketEvidenceFileSchema>;
+export type MarketTrendPoint = z.infer<typeof marketTrendPointSchema>;
+export type MarketTrendResponse = z.infer<typeof marketTrendResponseSchema>;
+
+export interface MarketsResponse {
+  markets: Array<{
+    id: string;
+    label: string;
+    region: string;
+    status: "available" | "live-only";
+    postalPlaceholder: string;
+    valuationBasis: string;
+    note?: string;
+  }>;
 }

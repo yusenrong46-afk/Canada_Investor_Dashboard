@@ -1,2 +1,6 @@
 packages:
   - artifacts/*
+
+publicHoistPattern:
+  - "*eslint*"
+  - "*prettier*"

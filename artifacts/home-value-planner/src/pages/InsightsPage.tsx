@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
 import type { DemoMetricsResponse } from "@vvl/shared";
 
 import { getInsights } from "../api/client";
 import { DataQualityPanel } from "../components/DataQualityPanel";
+import { InlineAlert } from "../components/InlineAlert";
 import { MetricCard } from "../components/MetricCard";
 import { ModelTrustSummary } from "../components/ModelTrustSummary";
 import { SectionCard } from "../components/SectionCard";
+import { usePropertySession } from "../context/PropertySessionContext";
+import { chartGridStroke, chartTickFill } from "../lib/chartTheme";
 import { formatCurrency, formatSignedCurrency } from "../lib/format";
 import { summarizeScenarios, type ScenarioRecord } from "../lib/scenarios";
 
@@ -31,10 +35,6 @@ interface InsightData {
   summary: DemoMetricsResponse["summary"];
   rows: InsightRow[];
   dataQualityNotes: string[];
-}
-
-interface InsightsPageProps {
-  scenarios: ScenarioRecord[];
 }
 
 function average(values: number[]): number {
@@ -93,18 +93,28 @@ function buildScenarioInsightData(scenarios: ScenarioRecord[]): InsightData {
     })),
     dataQualityNotes: [
       "Insights are calculated from saved user scenarios in this browser.",
-      "The base model estimates listing value, not final sale price.",
+      "Target semantics vary by market: Vancouver estimates listing value; Halifax estimates time-adjusted sale value.",
       "Saved scenarios still need comparable-sale review and transaction-cost checks.",
     ],
   };
 }
 
-export function InsightsPage({ scenarios }: InsightsPageProps) {
+export function InsightsPage() {
+  const { scenarios, estimate, apiMode } = usePropertySession();
+  const intervalMethod = estimate?.uncertainty?.method;
   const [data, setData] = useState<DemoMetricsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+
+    if (apiMode !== "demo-samples") {
+      setData(null);
+      setError(null);
+      return () => {
+        active = false;
+      };
+    }
 
     getInsights()
       .then((response) => {
@@ -121,7 +131,7 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [apiMode]);
 
   const displayData = useMemo<InsightData | null>(() => {
     if (scenarios.length) {
@@ -131,9 +141,45 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
   }, [data, scenarios]);
   const typeRows = useMemo(() => (displayData ? buildTypeRows(displayData) : []), [displayData]);
   const pricePerSqftRows = useMemo(() => (displayData ? buildPricePerSqftRows(displayData) : []), [displayData]);
+  const hasSmallSavedSample = scenarios.length > 0 && scenarios.length < 3;
 
   if (error) {
-    return <div className="rounded-card border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">{error}</div>;
+    return <InlineAlert tone="error">{error}</InlineAlert>;
+  }
+
+  if (!scenarios.length && (apiMode === "live-model" || apiMode === "public-interactive")) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <div className="eyebrow">Market &amp; Investment Insights</div>
+          <h1 className="font-display text-3xl text-ink">Build insights from real saved scenarios</h1>
+          <p className="max-w-3xl text-sm leading-6 text-muted">
+            {apiMode === "live-model" ? "Live" : "Public"} mode does not insert starter properties into this view. Run Estimate, Plan, or Deal and save at least three scenarios to compare them here.
+          </p>
+        </div>
+        <SectionCard
+          title="No saved scenarios yet"
+          eyebrow="Get started"
+          description="This view builds from your own saved runs — sample rows only appear in explicit demo mode."
+        >
+          <div className="space-y-4">
+            <div className="data-row text-sm text-muted">Save a scenario from Plan or Deal Analyzer to begin comparing.</div>
+            <div className="flex flex-wrap gap-3">
+              <Link to="/plan" className="btn-primary">
+                Open Plan
+              </Link>
+              <Link to="/deal-analyzer" className="btn-ghost">
+                Open Deal Analyzer
+              </Link>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  if (!scenarios.length && apiMode == null) {
+    return <InlineAlert>API mode is still unverified, so sample insights are hidden.</InlineAlert>;
   }
 
   if (!displayData) {
@@ -144,7 +190,7 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
     <div className="space-y-6">
       <div className="space-y-2">
         <div className="eyebrow">Market &amp; Investment Insights</div>
-        <h1 className="font-display text-3xl text-ink">{scenarios.length ? "What do my saved scenarios say?" : "What do the starter scenarios say?"}</h1>
+        <h1 className="font-display text-3xl text-ink">{scenarios.length ? "What do my saved scenarios say?" : "What do the demo scenarios say?"}</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted">
           This page turns saved scenario outputs into a simple analyst view: value levels, price-per-square-foot patterns, risk notes,
           and top investment scenarios.
@@ -160,64 +206,76 @@ export function InsightsPage({ scenarios }: InsightsPageProps) {
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr),minmax(340px,1fr)]">
-        <SectionCard
-          title="Estimated value by property type"
-          eyebrow="Portfolio view"
-          description="A quick comparison of average sample value by property type."
-        >
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={typeRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="propertyType" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="estimatedValue" fill="#0d9488" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
+        {hasSmallSavedSample ? (
+          <SectionCard
+            title="Portfolio patterns need more scenarios"
+            eyebrow="Small sample"
+            description="KPIs and the table still reflect your saved run, but charts need more than one or two scenarios to be useful."
+          >
+            <div className="data-row text-sm text-muted">Save at least 3 scenarios before reading portfolio patterns.</div>
+          </SectionCard>
+        ) : (
+          <SectionCard
+            title="Estimated value by property type"
+            eyebrow="Portfolio view"
+            description="A quick comparison of average sample value by property type."
+          >
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={typeRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
+                  <XAxis dataKey="propertyType" tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                  <YAxis tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                  <Bar dataKey="estimatedValue" fill="#0d9488" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
+        )}
 
-        <ModelTrustSummary modeNote={displayData.note} />
+        <ModelTrustSummary modeNote={displayData.note} intervalMethod={intervalMethod} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <SectionCard
-          title="Living area vs estimated value"
-          eyebrow="Size signal"
-          description="The scatter view helps show how the sample values move with square footage."
-        >
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="livingAreaSqft" name="Sqft" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis dataKey="estimatedValue" name="Value" tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <Tooltip formatter={(value, name) => (name === "Value" ? formatCurrency(Number(value)) : Number(value).toLocaleString())} />
-                <Scatter data={displayData.rows} fill="#0d9488" />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
+      {hasSmallSavedSample ? null : (
+        <div className="grid gap-6 xl:grid-cols-2">
+          <SectionCard
+            title="Living area vs estimated value"
+            eyebrow="Size signal"
+            description="The scatter view helps show how the sample values move with square footage."
+          >
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
+                  <XAxis dataKey="livingAreaSqft" name="Sqft" tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                  <YAxis dataKey="estimatedValue" name="Value" tickFormatter={(value) => `$${Math.round(Number(value) / 1000)}k`} width={72} tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                  <Tooltip formatter={(value, name) => (name === "Value" ? formatCurrency(Number(value)) : Number(value).toLocaleString())} />
+                  <Scatter data={displayData.rows} fill="#0d9488" />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
 
-        <SectionCard
-          title="Price per square foot distribution"
-          eyebrow="Value density"
-          description="A simple sample-level view of estimated dollars per square foot."
-        >
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={pricePerSqftRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="propertyType" tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <YAxis tickFormatter={(value) => `$${Number(value)}`} width={72} tickLine={false} axisLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="pricePerSqft" fill="#0f766e" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
-      </div>
+          <SectionCard
+            title="Price per square foot distribution"
+            eyebrow="Value density"
+            description="A simple sample-level view of estimated dollars per square foot."
+          >
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={pricePerSqftRows} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} vertical={false} />
+                  <XAxis dataKey="propertyType" tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                  <YAxis tickFormatter={(value) => `$${Number(value)}`} width={72} tickLine={false} axisLine={false} tick={{ fill: chartTickFill, fontSize: 12 }} />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                  <Bar dataKey="pricePerSqft" fill="#0b6e6b" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
+        </div>
+      )}
 
       <SectionCard
         title={scenarios.length ? "Top Saved Investment Scenarios" : "Top Sample Investment Scenarios"}

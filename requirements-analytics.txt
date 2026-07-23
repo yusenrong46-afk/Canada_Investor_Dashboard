@@ -1,0 +1,4 @@
+-r requirements.txt
+dash==4.4.1
+plotly==6.9.0
+sentence-transformers==5.6.0

@@ -2,12 +2,32 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 MODEL_SERVICE_DIR = Path(__file__).resolve().parents[1] / "artifacts" / "model-service"
 sys.path.insert(0, str(MODEL_SERVICE_DIR))
 
-from service import _age_from_year_built, _market_freshness_payload, _normalize_postal_code, _normalize_property_type, _parse_numeric  # noqa: E402
+from service import _age_from_year_built, _driver_candidates, _market_freshness_payload, _normalize_postal_code, _normalize_property_type, _parse_numeric  # noqa: E402
 from uplift_service import _extract_flag_map, _normalize_address, _normalize_zip, calculate_uplift_percent, load_sales, require_real_csv, simulate_uplift  # noqa: E402
+
+
+class _StubClusterer:
+    def predict(self, coordinates):  # noqa: ANN001, ANN201 - mirrors KMeans
+        return [0] * len(coordinates)
+
+
+def _vancouver_normalization_bundle() -> SimpleNamespace:
+    return SimpleNamespace(
+        full_postal_centroids={"V6B1X9": (49.2827, -123.1207)},
+        fsa_centroids={"V6B": (49.2827, -123.1207)},
+        vancouver_centroid=(49.2827, -123.1207),
+        evaluation_summary={"perType": {"Condo": {"ageYearsMissingRate": 1.0}}},
+        age_medians={"Condo": 20.0},
+        numeric_medians={"ageYears": 20.0},
+        location_clusterer=_StubClusterer(),
+    )
 
 
 def test_normalize_postal_code_accepts_vancouver_format() -> None:
@@ -56,6 +76,124 @@ def test_market_index_adjustment_uses_real_rows(tmp_path: Path) -> None:
 
     assert result["status"] == "adjusted"
     assert result["multiplier"] == 1.1
+    assert result["dataSource"] == "market.csv"
+
+
+def test_vancouver_year_built_is_neutralized_when_training_age_is_unavailable() -> None:
+    from base_model import core
+
+    bundle = _vancouver_normalization_bundle()
+    old_home = core._normalize_request(
+        {"postalCode": "V6B 1X9", "propertyType": "Condo", "livingAreaSqft": 700, "bedrooms": 1, "bathrooms": 1, "yearBuilt": 1900},
+        bundle,
+    )
+    new_home = core._normalize_request(
+        {"postalCode": "V6B 1X9", "propertyType": "Condo", "livingAreaSqft": 700, "bedrooms": 1, "bathrooms": 1, "yearBuilt": 2024},
+        bundle,
+    )
+
+    assert bundle.evaluation_summary["perType"]["Condo"]["ageYearsMissingRate"] >= 0.95
+    assert old_home["ageYears"] == new_home["ageYears"] == bundle.age_medians["Condo"]
+
+
+def test_vancouver_unobserved_fsa_is_rejected_instead_of_using_market_centroid() -> None:
+    from base_model import core
+
+    bundle = _vancouver_normalization_bundle()
+    with pytest.raises(ValueError, match="outside the Vancouver model's observed training geography"):
+        core._normalize_request(
+            {"postalCode": "V5A 1A1", "propertyType": "Condo", "livingAreaSqft": 700, "bedrooms": 1, "bathrooms": 1},
+            bundle,
+        )
+
+
+def test_heuristic_drivers_are_tagged_with_source() -> None:
+    bundle = type(
+        "Bundle",
+        (),
+        {
+            "type_feature_medians": {"Condo": {"livingAreaSqft": 700.0, "bedrooms": 1.0, "bathrooms": 1.0, "ageYears": 20.0}},
+            "type_price_medians": {"Condo": 800_000.0},
+            "city_stats": {"medianPrice": 1_000_000.0, "medianPricePerSqft": 1_000.0},
+            "evaluation_summary": {"perType": {"Condo": {"ageYearsMissingRate": 1.0}}},
+        },
+    )()
+    local_stats = {"medianPrice": 1_200_000.0, "medianPricePerSqft": 1_100.0, "count": 30}
+    property_data = {"propertyType": "Condo", "livingAreaSqft": 900.0, "bedrooms": 2.0, "bathrooms": 2.0, "ageYears": None}
+
+    drivers = _driver_candidates(property_data, bundle, local_stats, market_multiplier=1.0)
+
+    assert drivers
+    assert all(driver["source"] == "heuristic" for driver in drivers)
+
+
+def test_load_bundle_rejects_artifact_without_conformal_calibrations(monkeypatch, tmp_path: Path) -> None:
+    import pickle
+
+    from base_model import core
+    from common.artifact_loader import ModelArtifactError
+
+    # Mimic unpickling a pre-v5 artifact: a real bundle instance without conformal_calibrations.
+    legacy_bundle = object.__new__(core.VancouverModelBundle)
+    legacy_bundle.__dict__.update({"data_path": "legacy.csv"})
+    artifact_path = tmp_path / "vancouver_base_price_bundle_v5.pkl"
+    with artifact_path.open("wb") as artifact_file:
+        pickle.dump(legacy_bundle, artifact_file)
+
+    from common.artifact_loader import build_manifest_entry, upsert_manifest_entry
+
+    upsert_manifest_entry(
+        artifact_path,
+        build_manifest_entry(
+            artifact_path,
+            model_version=core.MODEL_VERSION,
+            trained_at="2026-01-01T00:00:00Z",
+        ),
+    )
+
+    monkeypatch.setattr(core, "ARTIFACT_PATH", artifact_path)
+    monkeypatch.setattr(core, "_BUNDLE", None)
+    monkeypatch.setattr(
+        core,
+        "train_bundle",
+        lambda *args, **kwargs: pytest.fail("inference must not train a replacement artifact"),
+    )
+
+    with pytest.raises(ModelArtifactError, match="conformal calibrations are missing"):
+        core.load_bundle()
+
+
+def test_load_bundle_rejects_missing_artifact_without_training(monkeypatch, tmp_path: Path) -> None:
+    from base_model import core
+    from common.artifact_loader import ModelArtifactError
+
+    monkeypatch.setattr(core, "ARTIFACT_PATH", tmp_path / "missing.pkl")
+    monkeypatch.setattr(core, "_BUNDLE", None)
+    monkeypatch.setattr(
+        core,
+        "train_bundle",
+        lambda *args, **kwargs: pytest.fail("inference must not train a missing artifact"),
+    )
+
+    with pytest.raises(ModelArtifactError, match="Inference never trains models"):
+        core.load_bundle()
+
+
+def test_uplift_loader_reports_missing_artifact_without_training(monkeypatch, tmp_path: Path) -> None:
+    from uplift_model import core
+
+    monkeypatch.setattr(core, "UPLIFT_ARTIFACT_PATH", tmp_path / "missing.pkl")
+    monkeypatch.setattr(core, "_UPLIFT_BUNDLE", None)
+    monkeypatch.setattr(
+        core,
+        "_train_uplift_bundle",
+        lambda *args, **kwargs: pytest.fail("inference must not train a missing uplift artifact"),
+    )
+
+    bundle = core.load_uplift_bundle()
+
+    assert bundle.ready is False
+    assert "Inference never trains models" in bundle.message
 
 
 def test_uplift_math_uses_market_adjusted_percent() -> None:
