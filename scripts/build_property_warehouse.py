@@ -18,6 +18,14 @@ MART_SQL_DIR = WAREHOUSE_SQL_DIR / "marts"
 
 H3_RESOLUTION = 8
 
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 REQUIRED_VANCOUVER_COLUMNS = [
     "price",
     "logPrice",
@@ -314,7 +322,7 @@ def write_warehouse_report(summary: WarehouseBuildSummary) -> Path:
     lines = [
         "# Analytics Warehouse Report",
         "",
-        f"Warehouse: `{summary.warehouse_path}`",
+        f"Warehouse: `{_display_path(Path(summary.warehouse_path))}`",
         "",
         "## Build Summary",
         "",

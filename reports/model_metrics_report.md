@@ -10,29 +10,29 @@ Valuation basis: **listing price**.
 
 | Segment | Model | Temporal MAE | Temporal MAPE | Temporal R2 | N | Random MAE | Random MAPE |
 |---|---|---:|---:|---:|---:|---:|---:|
-| All supported property types | selected by property type | $331,348 | 12.64% | 0.821 | 706 | not available | not available |
-| Condo | xgboost | $154,848 | 10.83% | 0.869 | 399 | not available | not available |
-| Detached | xgboost | $760,003 | 17.73% | 0.742 | 200 | not available | not available |
-| Duplex | random-forest | $111,444 | 5.86% | 0.878 | 57 | not available | not available |
-| Townhouse | xgboost | $275,891 | 14.42% | 0.686 | 50 | not available | not available |
+| All supported property types | selected by property type | $323,126 | 12.97% | 0.822 | 704 | not available | not available |
+| Condo | xgboost | $147,214 | 11.61% | 0.866 | 397 | not available | not available |
+| Detached | xgboost | $745,072 | 17.38% | 0.756 | 200 | not available | not available |
+| Duplex | random-forest | $111,447 | 5.86% | 0.878 | 57 | not available | not available |
+| Townhouse | xgboost | $273,406 | 14.22% | 0.674 | 50 | not available | not available |
 
 ### Conformal coverage
 
 | Segment | Target | Empirical | Calibration N | Coverage N | Waiver |
 |---|---:|---:|---:|---:|---|
-| Condo | 80.00% | 83.92% | 200 | 199 | none |
-| Detached | 80.00% | 82.00% | 100 | 100 | none |
-| Duplex | 80.00% | 78.57% | 29 | 28 | none |
+| Condo | 80.00% | 79.80% | 199 | 198 | none |
+| Detached | 80.00% | 81.00% | 100 | 100 | none |
+| Duplex | 80.00% | 82.14% | 29 | 28 | none |
 | Townhouse | 80.00% | 92.00% | 25 | 25 | none |
 
 ### Spatial generalization
 
 | Segment | Random CV MAE | Spatial CV MAE | Gap |
 |---|---:|---:|---:|
-| Condo | $149,525 | $211,063 | 41.2% |
-| Detached | $840,331 | $982,157 | 16.9% |
-| Duplex | $146,401 | $197,087 | 34.6% |
-| Townhouse | $209,278 | $265,639 | 26.9% |
+| Condo | $148,255 | $213,016 | 43.7% |
+| Detached | $841,717 | $990,495 | 17.7% |
+| Duplex | $146,320 | $196,350 | 34.2% |
+| Townhouse | $212,904 | $273,782 | 28.6% |
 
 ## Halifax base-price model
 
@@ -44,8 +44,8 @@ Valuation basis: **time-adjusted sale price**.
 
 | Segment | Model | Temporal MAE | Temporal MAPE | Temporal R2 | N | Random MAE | Random MAPE |
 |---|---|---:|---:|---:|---:|---:|---:|
-| All supported property types | selected by property type | $80,701 | 14.24% | 0.824 | 1,343 | $70,827 | not available |
-| Detached | xgboost | $86,119 | 14.95% | 0.845 | 1,099 | $76,136 | 12.47% |
+| All supported property types | selected by property type | $80,788 | 14.23% | 0.822 | 1,343 | $71,291 | not available |
+| Detached | xgboost | $86,225 | 14.95% | 0.842 | 1,099 | $76,704 | 12.54% |
 | Duplex | random-forest | $57,024 | 12.17% | 0.695 | 177 | $47,311 | 10.86% |
 | Townhouse | random-forest | $54,388 | 7.92% | 0.825 | 67 | $46,610 | 7.64% |
 

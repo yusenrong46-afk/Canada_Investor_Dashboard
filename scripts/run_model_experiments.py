@@ -14,6 +14,14 @@ DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.
 DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "model_experiments.json"
 DEFAULT_REPORT_PATH = REPO_ROOT / "reports" / "model_experiments_report.md"
 
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 EXPERIMENTS = ("local", "pooled", "hybrid")
 TARGET_COLUMN = "log_target_value"
 NUMERIC_FEATURES = [
@@ -528,7 +536,7 @@ def _write_report(
         "",
         f"Generated: {payload['generatedAt']}",
         "",
-        f"Warehouse: `{warehouse_path}`",
+        f"Warehouse: `{_display_path(warehouse_path)}`",
         "",
         f"Model family: `{family}` (the same family is used by every experiment so the comparison is fair).",
         "",

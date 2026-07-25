@@ -41,8 +41,8 @@ jobs:
       - name: Type-check packages
         run: pnpm -r typecheck
 
-      - name: Run API tests
-        run: pnpm --filter @vvl/api-server test
+      - name: Run workspace tests
+        run: pnpm -r test
 
       - name: Audit production dependencies
         run: |
@@ -113,3 +113,44 @@ jobs:
         env:
           PYTHONPATH: artifacts/model-service
         run: python -c "import scripts.build_property_warehouse as w; print('warehouse module import ok', hasattr(w, 'enforce_quality_gates'))"
+
+      - name: Validate strict pipeline
+        env:
+          PYTHONPATH: artifacts/model-service
+        run: python scripts/build_all.py --strict
+
+      - name: Load approved model artifacts when present
+        env:
+          PYTHONPATH: artifacts/model-service
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from base_model.core import load_bundle as load_vancouver_bundle
+          from halifax_model.core import load_bundle as load_halifax_bundle
+          from uplift_model.core import load_uplift_bundle
+
+          models_dir = Path("artifacts/model-service/models")
+          vancouver_path = models_dir / "vancouver_base_price_bundle_v5.pkl"
+          halifax_path = models_dir / "halifax_base_price_bundle_v1.pkl"
+          uplift_path = models_dir / "seattle_observed_uplift_bundle_v2.pkl"
+
+          if not any(path.is_file() for path in (vancouver_path, halifax_path, uplift_path)):
+              print("approved model artifacts not present in checkout; loader contract verified by pytest")
+              raise SystemExit(0)
+
+          if vancouver_path.is_file():
+              load_vancouver_bundle()
+              print("vancouver artifact loaded without training")
+          if halifax_path.is_file():
+              load_halifax_bundle()
+              print("halifax artifact loaded without training")
+          if uplift_path.is_file():
+              uplift_bundle = load_uplift_bundle()
+              if not uplift_bundle.ready:
+                  raise RuntimeError(f"Seattle uplift artifact unavailable or invalid: {uplift_bundle.message}")
+              print("uplift artifact loaded without training")
+          PY
+
+      - name: Verify generated outputs match committed artifacts
+        run: python scripts/verify_generated_outputs.py

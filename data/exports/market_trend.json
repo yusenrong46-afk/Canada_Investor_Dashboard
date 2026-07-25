@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-09T23:51:49+00:00",
+  "generatedAt": "2026-07-25T23:29:14+00:00",
   "source": "Statistics Canada table 18-10-0205-01 (New Housing Price Index)",
   "license": "Open Government Licence - Canada",
   "markets": {
@@ -892,42 +892,42 @@
           "indexValue": null,
           "forecastValue": 123.9278,
           "forecastLow": 120.8917,
-          "forecastHigh": 126.9638
+          "forecastHigh": 126.9639
         },
         {
           "period": "2026-11",
           "indexValue": null,
-          "forecastValue": 123.8747,
+          "forecastValue": 123.8748,
           "forecastLow": 120.3942,
-          "forecastHigh": 127.3552
+          "forecastHigh": 127.3553
         },
         {
           "period": "2026-12",
           "indexValue": null,
           "forecastValue": 123.8294,
           "forecastLow": 119.9139,
-          "forecastHigh": 127.7448
+          "forecastHigh": 127.7449
         },
         {
           "period": "2027-01",
           "indexValue": null,
           "forecastValue": 123.7906,
           "forecastLow": 119.4507,
-          "forecastHigh": 128.1305
+          "forecastHigh": 128.1306
         },
         {
           "period": "2027-02",
           "indexValue": null,
           "forecastValue": 123.7575,
           "forecastLow": 119.0041,
-          "forecastHigh": 128.5108
+          "forecastHigh": 128.5109
         },
         {
           "period": "2027-03",
           "indexValue": null,
           "forecastValue": 123.7291,
           "forecastLow": 118.5736,
-          "forecastHigh": 128.8846
+          "forecastHigh": 128.8847
         },
         {
           "period": "2027-04",
@@ -1833,7 +1833,7 @@
           "period": "2026-11",
           "indexValue": null,
           "forecastValue": 129.6842,
-          "forecastLow": 127.0772,
+          "forecastLow": 127.0773,
           "forecastHigh": 132.2911
         },
         {
@@ -1854,7 +1854,7 @@
           "period": "2027-02",
           "indexValue": null,
           "forecastValue": 130.0728,
-          "forecastLow": 126.6604,
+          "forecastLow": 126.6605,
           "forecastHigh": 133.4851
         },
         {

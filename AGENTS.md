@@ -1,0 +1,30 @@
+# AGENTS
+
+- Purpose: this repository is a full-stack Canadian real-estate decision-support dashboard with a React/TypeScript frontend, Express API, and Python Flask model service.
+- Architecture map:
+  - `artifacts/home-value-planner`: Vite + React UI and API client.
+  - `artifacts/api-server`: Node API, Zod request/response validation, and response contracts.
+  - `artifacts/model-service`: Python services for Vancouver, Halifax, and uplift models.
+  - `scripts/*`: data/build/report orchestration and export scripts.
+  - `analytics/warehouse`: DuckDB SQL definitions and marts.
+- Runtime modes:
+  - `DEMO_MODE=true`: fixed committed demo responses, no live model inference.
+  - `PUBLIC_MODE=true`: API uses transparent rules engine + committed exports.
+  - default/local (no mode flags): live model mode, loading approved trained artifacts.
+- Authoritative commands:
+  - Install: `python3 -m venv .venv`, `python -m pip install -r requirements.txt`, `corepack enable`, `pnpm install`.
+  - Validate: `pnpm check` (TypeScript checks, tests, builds), `python -m pytest -q`.
+  - Local orchestration: `python scripts/build_all.py`, strict mode: `python scripts/build_all.py --strict`.
+  - Generated-output drift: `python scripts/verify_generated_outputs.py`.
+- Generated files (regenerated, not hand-edited):
+  - `data/exports/*.json`
+  - `reports/*.md`
+  - `data/warehouse/property_analytics.duckdb`
+- Prohibited behavior:
+  - do not weaken tests or validation gates;
+  - do not retrain on model-service startup or API request path;
+  - do not claim fitted-model behavior in public/demo responses.
+- Validation and integrity rules:
+  - keep contracts in `artifacts/shared` and validated in both API + scripts;
+  - preserve provenance fields, evidence level, and contract version;
+  - prefer reproducible command-driven outputs and avoid local user-paths in generated artifacts.

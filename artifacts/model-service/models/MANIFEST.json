@@ -3,24 +3,35 @@
   "artifacts": [
     {
       "filename": "vancouver_base_price_bundle_v5.pkl",
-      "sha256": "9ff82234d969995a10e2c5175105754213d45358ed136a7d4e55b887a54c9876",
-      "sizeBytes": 10203908,
+      "sha256": "9703cdf076e989dedaca2bb53ce6329d9059099b1e07bb08e697f74925a26881",
+      "sizeBytes": 10207601,
       "modelVersion": "vancouver-base-price-v5",
-      "trainedAt": "2026-07-18T20:02:06Z",
-      "pythonVersion": "3.11",
+      "trainedAt": "2026-07-24T04:12:01Z",
+      "pythonVersion": "3.11.15",
       "sklearnVersion": "1.6.1",
-      "xgboostVersion": "3.3.0",
+      "xgboostVersion": "3.2.0",
+      "status": "approved"
+    },
+    {
+      "filename": "seattle_observed_uplift_bundle_v2.pkl",
+      "sha256": "0348e166f1bc5a23ed90ef256ec2585c2547ff032d5413166a450f31049f3c51",
+      "sizeBytes": 5262941,
+      "modelVersion": "seattle-observed-percent-uplift-v2",
+      "trainedAt": "2026-07-25T22:57:44Z",
+      "pythonVersion": "3.11.15",
+      "sklearnVersion": "1.6.1",
+      "xgboostVersion": "3.2.0",
       "status": "approved"
     },
     {
       "filename": "halifax_base_price_bundle_v1.pkl",
-      "sha256": "8ae4d9dc1ad214b67c8efa703ce2ad2a5d55f1f6472fe4f1d6c31f1cbda877c9",
-      "sizeBytes": 67296427,
+      "sha256": "c8576003701d3d5281afd36d159417521be28597b5125e980f924aa1b7230e7f",
+      "sizeBytes": 67272776,
       "modelVersion": "halifax-base-price-v1",
-      "trainedAt": "2026-07-22T23:23:34Z",
-      "pythonVersion": "3.12.13",
+      "trainedAt": "2026-07-25T23:12:31Z",
+      "pythonVersion": "3.11.15",
       "sklearnVersion": "1.6.1",
-      "xgboostVersion": "3.3.0",
+      "xgboostVersion": "3.2.0",
       "status": "approved"
     }
   ]

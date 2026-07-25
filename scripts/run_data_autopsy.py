@@ -19,8 +19,15 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = REPO_ROOT / "reports" / "data-autopsy"
-DEFAULT_HAL_RAW = Path("/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax")
-DEFAULT_YVR_RAW = Path.home() / "Downloads" / "data_bc.csv"
+DEFAULT_HAL_RAW = REPO_ROOT / "data" / "raw" / "halifax"
+DEFAULT_YVR_RAW = REPO_ROOT / "data" / "raw" / "vancouver" / "data_bc.csv"
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
 
 
 def _col_profile(series: pd.Series, name: str) -> dict:
@@ -59,7 +66,7 @@ def _col_profile(series: pd.Series, name: str) -> dict:
 def _profile_frame(df: pd.DataFrame, label: str, grain: str, path: Path, profiles: dict) -> None:
     profiles[label] = {
         "label": label,
-        "path": str(path),
+        "path": _display_path(path),
         "grain": grain,
         "rows": int(len(df)),
         "cols": int(df.shape[1]),
@@ -125,7 +132,7 @@ def main() -> int:
         notes.append(f"Halifax saleDate coverage {int(sd.notna().sum())}/{len(hal)} min={sd.min()} max={sd.max()}")
 
     yvr_raw = Path(args.vancouver_raw)
-    date_audit = {"found": yvr_raw.is_file(), "path": str(yvr_raw)}
+    date_audit = {"found": yvr_raw.is_file(), "path": _display_path(yvr_raw)}
     if yvr_raw.is_file():
         raw = pd.read_csv(yvr_raw, low_memory=False)
         _profile_frame(raw, "vancouver_raw_data_bc", "BC scrape listing row", yvr_raw, profiles)
@@ -187,7 +194,7 @@ def main() -> int:
         control.sample(min(10, len(control)), random_state=0).to_csv(out / "uplift_control_random10.csv", index=False)
         pd.DataFrame(extreme_rows).to_csv(out / "extreme_uplift_pairs.csv", index=False)
     else:
-        notes.append(f"Halifax raw dir missing or incomplete: {hal_raw}")
+        notes.append(f"Halifax raw dir missing or incomplete: {_display_path(hal_raw)}")
 
     pd.DataFrame(join_orphans).to_csv(out / "join_orphans.csv", index=False)
     (out / "column_profiles.json").write_text(json.dumps(profiles, indent=2, default=str))
