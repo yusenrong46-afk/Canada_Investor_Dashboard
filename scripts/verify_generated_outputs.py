@@ -11,6 +11,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PYTHON = sys.executable
+MODELS_DIR = REPO_ROOT / "artifacts" / "model-service" / "models"
+REQUIRED_METRICS_ARTIFACTS = (
+    MODELS_DIR / "vancouver_base_price_bundle_v5.pkl",
+    MODELS_DIR / "halifax_base_price_bundle_v1.pkl",
+)
 
 
 def _display_path(path: Path) -> str:
@@ -43,6 +48,9 @@ def _normalize_report_content(text: str, path: Path) -> str:
     lines = []
     for line in text.splitlines():
         if path.suffix == ".md" and line.startswith("Generated:"):
+            continue
+        # Optional private raw data; present locally, absent in public CI.
+        if path.name == "analytics_warehouse_report.md" and "staged HRM permit rows" in line:
             continue
         lines.append(line.rstrip())
     return "\n".join(lines).strip() + "\n"
@@ -94,16 +102,19 @@ def _git_diff(paths: list[Path]) -> None:
 
 
 def main() -> None:
-    # Drift-check only outputs that are stable across CI/local platforms.
-    # Model experiment metrics can shift slightly across BLAS/OS builds; the
-    # regenerate step below still proves those scripts run.
+    # Drift-check outputs rebuildable from committed public inputs.
+    # Skip bit-matching for platform-noisy or private-artifact-dependent files;
+    # regenerate steps below still prove those scripts run when inputs exist.
     generated_files = [
         REPO_ROOT / "reports" / "analytics_warehouse_report.md",
         REPO_ROOT / "reports" / "data_quality_report.md",
-        REPO_ROOT / "reports" / "model_metrics_report.md",
         REPO_ROOT / "data" / "exports" / "market_evidence.json",
         REPO_ROOT / "data" / "exports" / "market_map.json",
     ]
+    metrics_report = REPO_ROOT / "reports" / "model_metrics_report.md"
+    has_metrics_artifacts = _inputs_present(REQUIRED_METRICS_ARTIFACTS)
+    if has_metrics_artifacts:
+        generated_files.append(metrics_report)
 
     optional_generated_files = [
         REPO_ROOT / "data" / "exports" / "market_trend.json",
@@ -123,7 +134,7 @@ def main() -> None:
         ),
         (
             [PYTHON, "scripts/generate_model_report.py"],
-            (REPO_ROOT / "data" / "processed" / "vancouver_base_model_summary.json",),
+            REQUIRED_METRICS_ARTIFACTS,
             "model metrics report",
         ),
         (
