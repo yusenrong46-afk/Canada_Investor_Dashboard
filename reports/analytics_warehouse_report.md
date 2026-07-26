@@ -1,6 +1,6 @@
 # Analytics Warehouse Report
 
-Warehouse: `/Users/thomas/Documents/canadian-investor-dashboard-g1-release/data/warehouse/property_analytics.duckdb`
+Warehouse: `data/warehouse/property_analytics.duckdb`
 
 ## Build Summary
 

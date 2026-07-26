@@ -1,6 +1,6 @@
 # Data Quality Report
 
-Source inspected: `/Users/thomas/Documents/canadian-investor-dashboard/data/processed/vancouver_base_model_training.csv`
+Source inspected: `data/processed/vancouver_base_model_training.csv`
 
 ## Dataset Shape
 

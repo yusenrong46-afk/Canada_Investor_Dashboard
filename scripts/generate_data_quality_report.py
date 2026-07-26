@@ -11,6 +11,13 @@ DEFAULT_DATA_PATH = REPO_ROOT / "data" / "processed" / "vancouver_base_model_tra
 DEFAULT_OUTPUT_PATH = REPO_ROOT / "reports" / "data_quality_report.md"
 
 
+def _display_path(path: Path) -> str:
+  try:
+    return str(path.resolve().relative_to(REPO_ROOT))
+  except ValueError:
+    return str(path)
+
+
 KEY_COLUMNS = ["price", "propertyType", "postalCode", "livingAreaSqft", "bedrooms", "bathrooms"]
 
 OUTLIER_RULES = {
@@ -66,7 +73,7 @@ def build_data_quality_report(data_path: Path = DEFAULT_DATA_PATH) -> str:
   lines = [
     "# Data Quality Report",
     "",
-    f"Source inspected: `{data_path}`",
+    f"Source inspected: `{_display_path(data_path)}`",
     "",
   ]
 
@@ -79,7 +86,7 @@ def build_data_quality_report(data_path: Path = DEFAULT_DATA_PATH) -> str:
         "",
         "Needed file:",
         "",
-        f"- `{data_path}`",
+        f"- `{_display_path(data_path)}`",
         "",
       ]
     )

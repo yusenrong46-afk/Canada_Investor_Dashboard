@@ -16,12 +16,12 @@ This autopsy is the gate before cleaning, feature engineering, retraining, uplif
 | Vancouver processed summary | `data/processed/vancouver_base_model_summary.json` | — | — | Export metadata / EDA | sourcePath points at a `data_bc.csv` |
 | Halifax processed training | `data/processed/halifax_base_model_training.csv` | 17,998 | 23 | One HRM ground-oriented sale (2022+) time-adjusted | `saleDate` + dwelling traits + postal + assessedValue |
 | Halifax processed summary | `data/processed/halifax_base_model_summary.json` | — | — | Build rates / sources | sources under main-repo `data/raw/halifax/` |
-| Vancouver raw listings | `/Users/thomas/Downloads/data_bc.csv` (alt twin under `CanadaHousingData/`) | 24,382 | 396 | One BC scrape listing row | locality / postal / price / beds / baths / sqft |
-| Halifax dwellings (raw) | `…/canadian-investor-dashboard/data/raw/halifax/pvsc_dwelling_characteristics_hrm.csv` | 136,422 | 21 | One PVSC dwelling account (`aan`) | `aan`, lat/lon, style, area, beds/baths, year_built |
-| Halifax sales (raw) | `…/pvsc_parcel_sales_hrm.csv` | 80,320 | 14 | One parcel sale | `aan`, `sale_date`, `sale_price` |
-| Halifax assessments (raw) | `…/pvsc_assessed_values_hrm.csv` | 344,444 | 14 | One account × tax year | `aan`, `tax_year`, assessed value |
-| Halifax civic addresses (raw) | `…/hrm_civic_addresses.csv` | 158,354 | 8 | One civic point | PID, postal, lat/lon |
-| Halifax permits (raw) | `…/hrm_building_permits_geolocated.csv` | 15,739 | 32 | One geolocated permit | lat/lon, work scope, issued date, project value |
+| Vancouver raw listings | `data/raw/vancouver/data_bc.csv` (alt twin under `~/Downloads/CanadaHousingData/`) | 24,382 | 396 | One BC scrape listing row | locality / postal / price / beds / baths / sqft |
+| Halifax dwellings (raw) | `data/raw/halifax/pvsc_dwelling_characteristics_hrm.csv` | 136,422 | 21 | One PVSC dwelling account (`aan`) | `aan`, lat/lon, style, area, beds/baths, year_built |
+| Halifax sales (raw) | `data/raw/halifax/pvsc_parcel_sales_hrm.csv` | 80,320 | 14 | One parcel sale | `aan`, `sale_date`, `sale_price` |
+| Halifax assessments (raw) | `data/raw/halifax/pvsc_assessed_values_hrm.csv` | 344,444 | 14 | One account × tax year | `aan`, `tax_year`, assessed value |
+| Halifax civic addresses (raw) | `data/raw/halifax/hrm_civic_addresses.csv` | 158,354 | 8 | One civic point | PID, postal, lat/lon |
+| Halifax permits (raw) | `data/raw/halifax/hrm_building_permits_geolocated.csv` | 15,739 | 32 | One geolocated permit | lat/lon, work scope, issued date, project value |
 | Halifax uplift export | `data/exports/halifax_uplift.json` | aggregate | — | Category-level medians only (no pair rows shipped) | Renovation / Addition |
 | Model bundles + MANIFEST | `artifacts/model-service/models/` | 2 approved pickles | — | Shipped live artifacts | Vancouver v5 (2026-07-18), Halifax v1 (2026-07-22) |
 
@@ -89,7 +89,7 @@ A treated unit is a **repeat-sale pair** (same `aan`, ≥180 days apart) with a 
 
 ### Raw Vancouver date audit (blocker proof)
 
-Both `/Users/thomas/Downloads/data_bc.csv` and `/Users/thomas/Downloads/CanadaHousingData/data_bc.csv` (24,382 rows each):
+Both `data/raw/vancouver/data_bc.csv` and `~/Downloads/CanadaHousingData/data_bc.csv` (24,382 rows each):
 
 | Column | Non-null count |
 |---|---:|
@@ -255,13 +255,11 @@ Static scan notes live under `column_profiles.json` → `leakage_static_scan`.
 ## 12. Appendix — commands used
 
 ```bash
-cd /Users/thomas/Documents/canadian-investor-dashboard-g1-release
-.venv/bin/python  # forensic profiling + pair rebuild (session scripts)
-# Raw Halifax read from sibling checkout:
-# /Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/
-# Raw Vancouver:
-# /Users/thomas/Downloads/data_bc.csv
-# /Users/thomas/Downloads/CanadaHousingData/data_bc.csv
+cd canadian-investor-dashboard
+.venv/bin/python scripts/run_data_autopsy.py
+# Raw Halifax: data/raw/halifax/
+# Raw Vancouver: data/raw/vancouver/data_bc.csv
+# Alt Vancouver twin: ~/Downloads/CanadaHousingData/data_bc.csv
 ```
 
 Re-run helper (committed): `scripts/run_data_autopsy.py`.

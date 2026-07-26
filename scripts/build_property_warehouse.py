@@ -18,6 +18,14 @@ MART_SQL_DIR = WAREHOUSE_SQL_DIR / "marts"
 
 H3_RESOLUTION = 8
 
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
 REQUIRED_VANCOUVER_COLUMNS = [
     "price",
     "logPrice",
@@ -269,10 +277,11 @@ def build_property_warehouse(
             connection.execute("CREATE OR REPLACE TABLE stg_halifax_permits AS SELECT * FROM halifax_permits_source")
             halifax_permit_rows = len(permits_frame)
         else:
-            message = f"HRM permits file not found at {halifax_permits_path}; skipping permit staging."
-            print(f"WARNING: {message}")
-            if strict:
-                raise RuntimeError(message)
+            # Permits live under gitignored data/raw; public/CI checkouts skip staging.
+            print(
+                f"WARNING: HRM permits file not found at {_display_path(halifax_permits_path)}; "
+                "skipping permit staging."
+            )
 
         connection.execute(_read_sql(MART_SQL_DIR / "fact_market_feature_summary.sql"))
 
@@ -314,7 +323,7 @@ def write_warehouse_report(summary: WarehouseBuildSummary) -> Path:
     lines = [
         "# Analytics Warehouse Report",
         "",
-        f"Warehouse: `{summary.warehouse_path}`",
+        f"Warehouse: `{_display_path(Path(summary.warehouse_path))}`",
         "",
         "## Build Summary",
         "",
