@@ -9,6 +9,12 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODEL_SERVICE_DIR = REPO_ROOT / "artifacts" / "model-service"
+MODELS_DIR = MODEL_SERVICE_DIR / "models"
+REQUIRED_LIVE_ARTIFACTS = (
+    MODELS_DIR / "vancouver_base_price_bundle_v5.pkl",
+    MODELS_DIR / "halifax_base_price_bundle_v1.pkl",
+)
+HAS_REQUIRED_LIVE_ARTIFACTS = all(path.is_file() for path in REQUIRED_LIVE_ARTIFACTS)
 sys.path.insert(0, str(MODEL_SERVICE_DIR))
 
 
@@ -19,6 +25,10 @@ def flask_client():
     return create_app().test_client()
 
 
+@pytest.mark.skipif(
+    not HAS_REQUIRED_LIVE_ARTIFACTS,
+    reason="Approved Vancouver/Halifax .pkl artifacts are not present in this checkout",
+)
 def test_health_returns_200_when_required_markets_load(flask_client) -> None:
     response = flask_client.get("/health")
     assert response.status_code == 200
@@ -93,6 +103,10 @@ def test_input_upper_bounds_return_400(flask_client) -> None:
     assert response.get_json()["error"]["code"] == "VALIDATION"
 
 
+@pytest.mark.skipif(
+    not HAS_REQUIRED_LIVE_ARTIFACTS,
+    reason="Approved Vancouver/Halifax .pkl artifacts are not present in this checkout",
+)
 def test_metrics_exposes_full_evaluation_payload(flask_client) -> None:
     response = flask_client.get("/metrics")
     assert response.status_code == 200
