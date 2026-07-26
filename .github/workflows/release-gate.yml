@@ -116,7 +116,11 @@ jobs:
 
       - name: Validate strict pipeline
         env:
+          PYTHONHASHSEED: "0"
           PYTHONPATH: artifacts/model-service
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
         run: python scripts/build_all.py --strict
 
       - name: Load approved model artifacts when present
@@ -153,4 +157,10 @@ jobs:
           PY
 
       - name: Verify generated outputs match committed artifacts
+        env:
+          PYTHONHASHSEED: "0"
+          PYTHONPATH: artifacts/model-service
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
         run: python scripts/verify_generated_outputs.py
