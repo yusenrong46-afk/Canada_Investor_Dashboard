@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 0 data autopsy runner — regenerates reports/data-autopsy artifacts.
-
-Does not invent data. Reads processed extracts in-repo and optional raw paths
-from sibling checkout / Downloads. See reports/data-autopsy/00-complete-understanding.md.
-"""
+"""Regenerate data-autopsy CSV/JSON under reports/data-autopsy/."""
 
 from __future__ import annotations
 
@@ -27,7 +23,11 @@ def _display_path(path: Path) -> str:
     try:
         return str(path.resolve().relative_to(REPO_ROOT))
     except ValueError:
-        return str(path)
+        resolved = path.resolve()
+        try:
+            return "~/" + str(resolved.relative_to(Path.home()))
+        except ValueError:
+            return resolved.name
 
 
 def _col_profile(series: pd.Series, name: str) -> dict:
@@ -76,7 +76,7 @@ def _profile_frame(df: pd.DataFrame, label: str, grain: str, path: Path, profile
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Phase 0 data autopsy dumps.")
+    parser = argparse.ArgumentParser(description="Regenerate data-autopsy report files.")
     parser.add_argument("--halifax-raw", default=str(DEFAULT_HAL_RAW))
     parser.add_argument("--vancouver-raw", default=str(DEFAULT_YVR_RAW))
     parser.add_argument("--out", default=str(OUT_DIR))

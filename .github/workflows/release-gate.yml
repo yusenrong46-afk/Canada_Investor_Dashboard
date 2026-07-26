@@ -136,7 +136,7 @@ jobs:
           uplift_path = models_dir / "seattle_observed_uplift_bundle_v2.pkl"
 
           if not any(path.is_file() for path in (vancouver_path, halifax_path, uplift_path)):
-              print("approved model artifacts not present in checkout; loader contract verified by pytest")
+              print("no .pkl artifacts in checkout; loader covered by pytest")
               raise SystemExit(0)
 
           if vancouver_path.is_file():

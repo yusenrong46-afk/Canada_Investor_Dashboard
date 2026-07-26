@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-25T23:29:15.775468+00:00",
+  "generatedAt": "2026-07-26T01:04:40.716506+00:00",
   "provenance": {
     "warehousePath": "data/warehouse/property_analytics.duckdb",
     "builtFrom": "fact_market_feature_summary (DuckDB analytics warehouse)",

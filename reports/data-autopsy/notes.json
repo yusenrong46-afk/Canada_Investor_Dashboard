@@ -1,17 +1,8 @@
 [
-  "Vancouver processed exact-key duplicate rate on ['postalCode', 'livingAreaSqft', 'bedrooms', 'bathrooms', 'price', 'propertyType', 'latitude', 'longitude']: 0.5117% (18 rows in dup groups)",
-  "Vancouver FSAs with <20 rows: 2 / 31",
-  "Halifax processed exact-key duplicate rate on ['postalCode', 'livingAreaSqft', 'bedrooms', 'bathrooms', 'saleDate', 'salePrice', 'propertyType', 'latitude', 'longitude']: 0.0000% (0 rows in dup groups)",
-  "Halifax saleDate non-null: 17998/17998; min=2022-01-04 00:00:00; max=2026-05-28 00:00:00",
-  "Halifax temporal last-6-month holdout size if split on max saleDate: 1356 rows (cutoff 2025-11-28)",
-  "Halifax null/missing FSA rows: 75; FSAs <20 rows: 1",
-  "Halifax bedroomsImputed rate: 11.7291%",
-  "Halifax price/assessed median=1.077 p05=0.788 p95=1.321",
-  "Halifax rows with price/assessed outside [0.3,3]: 182",
-  "Raw BC rows with locality containing 'vancouver' via addressLocality: 5083 / 24382",
-  "Sales(2022+,>=100k)->dwellings join rate: 93.2738% (24240/25988)",
-  "Joined sales with 2026 assessment: 100.0000% (24240/24240)",
-  "Permits raw profiled; uplift pair reconstruction deferred to dedicated builder stats in export",
-  "Uplift categories: ['Renovation', 'Addition']",
-  "build_halifax_uplift callables: ['Any', 'CONTROL_MEDIAN_TOLERANCE', 'DEFAULT_DWELLINGS_PATH', 'DEFAULT_EXPORT_PATH', 'DEFAULT_PERMITS_PATH', 'DEFAULT_SALES_PATH', 'EARTH_RADIUS_METERS', 'EXCLUDED_SCOPE', 'FLAG_CATEGORY_MAP', 'INDEX_MIN_MARKET_PRICE', 'MIN_PAIR_GAP_DAYS', 'MIN_PAIR_SALE_PRICE', 'MIN_TREATED_PAIRS', 'PERMIT_MATCH_MAX_METERS', 'Path', 'RATIO_HIGH', 'RATIO_LOW', 'REPO_ROOT', 'SOURCE', 'UPLIFT_CATEGORIES', 'annotations', 'argparse', 'build_halifax_uplift_export', 'build_repeat_sale_pairs', 'classify_pairs', 'datetime', 'json', 'load_dwelling_points', 'load_hrm_permits', 'main', 'match_permits_to_dwellings', 'np', 'pd', 'sys', 'timezone']"
+  "soft sanity flags: 98 ([('zero_beds', 69), ('tax_eq_1_suspicious', 15), ('zero_beds|zero_baths', 9), ('zero_baths', 5)])",
+  "Halifax saleDate coverage 17702/17702 min=2022-01-04 00:00:00 max=2026-05-28 00:00:00",
+  "sales->dwellings join 93.2738% (24240/25988)",
+  "uplift baseline=2026-05 pairs=16738 control=16445 permitMatch=7543/13705",
+  "treated Renovation: 131",
+  "treated Addition: 37"
 ]

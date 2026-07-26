@@ -1,6 +1,6 @@
 # Model Experiment Lab Report
 
-Generated: 2026-07-25T23:30:17.200327+00:00
+Generated: 2026-07-26T01:04:51.012198+00:00
 
 Warehouse: `data/warehouse/property_analytics.duckdb`
 

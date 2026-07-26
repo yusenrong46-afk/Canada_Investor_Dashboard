@@ -40,7 +40,7 @@ class BuildStep:
     output_validators: tuple[Callable[[Path], str], ...] = ()
 
 
-RELEASE_CRITICAL_STEPS: frozenset[str] = frozenset(
+STRICT_REQUIRED_STEPS: frozenset[str] = frozenset(
     {
         "analytics warehouse",
         "market evidence export",
@@ -58,7 +58,7 @@ BUILD_STEPS = [
         script=SCRIPTS_DIR / "build_property_warehouse.py",
         inputs=(PROCESSED_DIR / "vancouver_base_model_training.csv",),
         outputs=(WAREHOUSE_PATH, WAREHOUSE_REPORT_PATH),
-        required="analytics warehouse" in RELEASE_CRITICAL_STEPS,
+        required="analytics warehouse" in STRICT_REQUIRED_STEPS,
     ),
     BuildStep(
         name="market trend (NHPI)",
@@ -72,14 +72,14 @@ BUILD_STEPS = [
         script=SCRIPTS_DIR / "export_market_evidence.py",
         inputs=(WAREHOUSE_PATH,),
         outputs=(MARKET_EVIDENCE_EXPORT_PATH,),
-        required="market evidence export" in RELEASE_CRITICAL_STEPS,
+        required="market evidence export" in STRICT_REQUIRED_STEPS,
     ),
     BuildStep(
         name="market map export",
         script=SCRIPTS_DIR / "export_market_map.py",
         inputs=(WAREHOUSE_PATH,),
         outputs=(MARKET_MAP_EXPORT_PATH,),
-        required="market map export" in RELEASE_CRITICAL_STEPS,
+        required="market map export" in STRICT_REQUIRED_STEPS,
     ),
     BuildStep(
         name="halifax renovation uplift",
@@ -96,21 +96,21 @@ BUILD_STEPS = [
         script=SCRIPTS_DIR / "run_model_experiments.py",
         inputs=(WAREHOUSE_PATH,),
         outputs=(MODELS_EXPORT_PATH, EVIDENCE_REPORT_PATH),
-        required="model experiment lab" in RELEASE_CRITICAL_STEPS,
+        required="model experiment lab" in STRICT_REQUIRED_STEPS,
     ),
     BuildStep(
         name="model metrics report",
         script=SCRIPTS_DIR / "generate_model_report.py",
         inputs=(PROCESSED_DIR / "vancouver_base_model_summary.json",),
         outputs=(MODEL_METRICS_REPORT_PATH,),
-        required="model metrics report" in RELEASE_CRITICAL_STEPS,
+        required="model metrics report" in STRICT_REQUIRED_STEPS,
     ),
     BuildStep(
         name="data quality report",
         script=SCRIPTS_DIR / "generate_data_quality_report.py",
         inputs=(PROCESSED_DIR / "vancouver_base_model_training.csv",),
         outputs=(DATA_QUALITY_REPORT_PATH,),
-        required="data quality report" in RELEASE_CRITICAL_STEPS,
+        required="data quality report" in STRICT_REQUIRED_STEPS,
     ),
 ]
 
@@ -136,12 +136,7 @@ def _validate_output(output: Path) -> str:
 
 
 def run_build(steps: list[BuildStep] = BUILD_STEPS, *, strict: bool = False) -> int:
-    """Run build steps in order and validate required outputs and artifacts.
-
-    In non-strict mode optional outputs can be skipped when inputs are absent.
-    In strict mode, all steps marked as release-critical must complete with valid
-    outputs.
-    """
+    """Run pipeline steps in order. With --strict, required steps must finish with valid outputs."""
     results: list[tuple[str, str, str]] = []
     for step in steps:
         if not step.script.exists():
@@ -227,10 +222,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--strict",
         action="store_true",
-        help=(
-            "Fail in strict CI mode when release-critical steps are skipped "
-            "(missing script/input) or fail to produce valid outputs."
-        ),
+        help="Exit 1 if a required step is skipped or produces bad/missing outputs.",
     )
     cli_args = parser.parse_args()
     sys.exit(run_build(strict=cli_args.strict))

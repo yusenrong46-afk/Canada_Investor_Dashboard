@@ -1,30 +1,47 @@
-# AGENTS
+# Contributor notes
 
-- Purpose: this repository is a full-stack Canadian real-estate decision-support dashboard with a React/TypeScript frontend, Express API, and Python Flask model service.
-- Architecture map:
-  - `artifacts/home-value-planner`: Vite + React UI and API client.
-  - `artifacts/api-server`: Node API, Zod request/response validation, and response contracts.
-  - `artifacts/model-service`: Python services for Vancouver, Halifax, and uplift models.
-  - `scripts/*`: data/build/report orchestration and export scripts.
-  - `analytics/warehouse`: DuckDB SQL definitions and marts.
-- Runtime modes:
-  - `DEMO_MODE=true`: fixed committed demo responses, no live model inference.
-  - `PUBLIC_MODE=true`: API uses transparent rules engine + committed exports.
-  - default/local (no mode flags): live model mode, loading approved trained artifacts.
-- Authoritative commands:
-  - Install: `python3 -m venv .venv`, `python -m pip install -r requirements.txt`, `corepack enable`, `pnpm install`.
-  - Validate: `pnpm check` (TypeScript checks, tests, builds), `python -m pytest -q`.
-  - Local orchestration: `python scripts/build_all.py`, strict mode: `python scripts/build_all.py --strict`.
-  - Generated-output drift: `python scripts/verify_generated_outputs.py`.
-- Generated files (regenerated, not hand-edited):
-  - `data/exports/*.json`
-  - `reports/*.md`
-  - `data/warehouse/property_analytics.duckdb`
-- Prohibited behavior:
-  - do not weaken tests or validation gates;
-  - do not retrain on model-service startup or API request path;
-  - do not claim fitted-model behavior in public/demo responses.
-- Validation and integrity rules:
-  - keep contracts in `artifacts/shared` and validated in both API + scripts;
-  - preserve provenance fields, evidence level, and contract version;
-  - prefer reproducible command-driven outputs and avoid local user-paths in generated artifacts.
+Full-stack Canadian real-estate dashboard: React/Vite UI, Express API, Python Flask model service.
+
+| Path | Role |
+|---|---|
+| `artifacts/home-value-planner` | Frontend + API client |
+| `artifacts/api-server` | Express API, Zod contracts |
+| `artifacts/model-service` | Vancouver, Halifax, uplift models |
+| `scripts/` | Build, export, report scripts |
+| `analytics/warehouse` | DuckDB SQL + marts |
+
+**Runtime modes**
+
+- `DEMO_MODE=true` — fixed demo JSON, no inference
+- `PUBLIC_MODE=true` — rules engine + committed exports (Vercel default)
+- neither flag — live mode, loads approved `.pkl` artifacts
+
+**Setup**
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+corepack enable && pnpm install
+```
+
+**Checks**
+
+```bash
+pnpm check
+python -m pytest -q
+python scripts/build_all.py --strict
+python scripts/verify_generated_outputs.py
+```
+
+**Generated artifacts** — regenerate, don't edit by hand:
+
+- `data/exports/*.json`
+- `reports/*.md`
+- `data/warehouse/property_analytics.duckdb`
+
+**Don't**
+
+- weaken tests or CI gates
+- train models on API startup or per request
+- present public/demo responses as fitted ML
+
+Keep shared contracts in `artifacts/shared`, preserve provenance/evidence fields, and avoid `/Users/...` paths in committed outputs.

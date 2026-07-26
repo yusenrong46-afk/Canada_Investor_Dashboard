@@ -55,12 +55,12 @@ def test_build_all_strict_fails_missing_script(tmp_path: Path) -> None:
     assert run_build([step], strict=True) == 1
 
 
-def test_build_all_strict_fails_subprocess_error(tmp_path: Path) -> None:
+def test_build_all_strict_fails_on_script_exit(tmp_path: Path) -> None:
     failing_script = tmp_path / "fail.py"
     _write_python_script(failing_script, "import sys\nsys.exit(3)")
 
     step = BuildStep(
-        name="exploding-step",
+        name="failing-step",
         script=failing_script,
         required=True,
     )

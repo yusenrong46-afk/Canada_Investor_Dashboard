@@ -1,3 +1,5 @@
+"""Regenerate exports/reports and fail if they drift from what's committed."""
+
 from __future__ import annotations
 
 import json
@@ -88,7 +90,7 @@ def _git_diff(paths: list[Path]) -> None:
             changed.append(str(path))
 
     if changed:
-        raise RuntimeError(f"generated output drift detected for: {', '.join(str(path) for path in paths)}")
+        raise RuntimeError(f"generated output drift detected for: {', '.join(changed)}")
 
 
 def main() -> None:
