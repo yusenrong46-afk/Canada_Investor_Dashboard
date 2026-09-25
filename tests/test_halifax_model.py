@@ -67,12 +67,12 @@ def test_unknown_property_type_names_supported_types() -> None:
 
 
 def test_vancouver_postal_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Halifax / Maritimes postal code"):
+    with pytest.raises(ValueError, match=r"Halifax \(HRM\) postal code"):
         halifax_core._normalize_request(_payload(postalCode="V6B 1X9"), _tiny_bundle())
 
 
 def test_non_postal_text_is_rejected() -> None:
-    with pytest.raises(ValueError, match="Halifax / Maritimes postal code"):
+    with pytest.raises(ValueError, match=r"Halifax \(HRM\) postal code"):
         halifax_core._normalize_request(_payload(postalCode="not a postal code"), _tiny_bundle())
 
 
@@ -121,7 +121,7 @@ def test_estimate_property_returns_conformal_halifax_estimate(tmp_path: Path, mo
     result = halifax_core.estimate_property(_payload())
 
     assert result["market"] == "halifax_maritimes"
-    assert result["marketLabel"] == "Halifax / Maritimes"
+    assert result["marketLabel"] == "Halifax (HRM)"
     assert result["modelVersion"] == "halifax-base-price-v1"
     assert result["trainingMode"] == "halifax-real-sales"
     assert result["confidenceLow"] < result["baseValue"] < result["confidenceHigh"]

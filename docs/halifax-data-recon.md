@@ -1,4 +1,4 @@
-# Halifax / Maritimes Data Recon
+# Halifax (HRM) Data Recon
 
 Date: 2026-06-09. This document records what open data actually exists for the Halifax expansion, what was downloaded, join quality, and the modelling decisions that follow from it.
 
@@ -14,12 +14,27 @@ Date: 2026-06-09. This document records what open data actually exists for the H
 
 Download tooling: `scripts/setup_halifax_data.py --download-pvsc --download-hrm` (paged Socrata/ArcGIS fetch, files land in `data/raw/halifax/`, gitignored).
 
-## Join quality (measured)
+## Join quality
 
-- Sales → dwelling characteristics on `aan`: **93.2%** join rate.
-- Joined rows with a 2026 assessed value: **100%**.
+These figures were **not recomputed** for this milestone. The raw PVSC and HRM snapshots are not in the repository, so none of the percentages below is a new measurement.
+
+The committed processed summary (`data/processed/halifax_base_model_summary.json`) stores:
+
+| Field | Stored value | What it is |
+|---|---:|---|
+| `rows.windowSales` | 25,160 | Name in the summary. Current code writes this as the count of latest-sale-per-`aan` rows on or after the training window. |
+| `rows.joinedToDwellings` | 18,268 | Name in the summary. Current code writes this **after** dropping joined rows that lack coordinates or a time-adjustment factor. |
+| `rates.saleToDwellingJoin` | 0.7715 | Stored rate. |
+| 18268 / 25160 | 0.726073 | Quotient of the two stored counts, about 72.61%. It is not 0.7715. |
+
+Current code computes the rate on the inner join **before** the coordinate filter and can therefore disagree with `joinedToDwellings` if that later filter removes rows. Without the raw snapshot, this milestone does not decide which historical stage produced 0.7715 or the older 93.2% note. The acceptance threshold stays **0.90**. The legacy release is retained and is not a validated release.
+
+Earlier notes that were also not recomputed:
+
+- Joined rows with a 2026 assessed value: **100%** (summary `assessedValuePresent` is 1.0 on the cleaned extract).
 - Field completeness on joined sale rows: living area 88.4%, bedrooms 88.6%, bathrooms 100%, year_built 96.1%, coordinates 86.1%.
 - Civic addresses: postal code present **95.3%** (100% valid `B#A#A#` format among present), coordinates 100%, **37 distinct FSAs** in HRM.
+- An older recon line said the sale-to-dwelling join was **93.2%**. That number is not the stored 0.7715 rate and was not remeasured.
 
 ## Decisions
 

@@ -103,3 +103,26 @@ def test_build_all_strict_succeeds_when_required_outputs_are_valid(tmp_path: Pat
 
     assert run_build([step], strict=True) == 0
     assert output.exists()
+
+
+def test_failed_upstream_blocks_dependent_export(tmp_path: Path) -> None:
+    downstream_output = tmp_path / "dependent.json"
+    failing_script = tmp_path / "fail.py"
+    _write_python_script(failing_script, "import sys\nsys.exit(2)")
+    writer = tmp_path / "write.py"
+    output_script = _output_path_script(downstream_output)
+    _write_python_script(
+        writer,
+        f"from pathlib import Path\nPath(r'{output_script}').write_text('{{\"status\":\"should-not-run\"}}')",
+    )
+    upstream = BuildStep(name="upstream", script=failing_script, required=True)
+    downstream = BuildStep(
+        name="downstream",
+        script=writer,
+        outputs=(downstream_output,),
+        required=True,
+        depends_on=("upstream",),
+    )
+
+    assert run_build([upstream, downstream], strict=True) == 1
+    assert not downstream_output.exists()

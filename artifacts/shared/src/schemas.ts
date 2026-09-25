@@ -10,7 +10,7 @@ export const propertyInputSchema = z.object({
   postalCode: z
     .string()
     .trim()
-    .regex(postalCodePattern, "Use a Vancouver postal code like V6B 1X9 or a Halifax / Maritimes postal code like B3H 1A1"),
+    .regex(postalCodePattern, "Use a Vancouver postal code like V6B 1X9 or a Halifax (HRM) postal code like B3H 1A1"),
   propertyType: z.enum(propertyTypeValues),
   livingAreaSqft: z.number().min(250).max(10_000),
   bedrooms: z.number().min(0).max(10),

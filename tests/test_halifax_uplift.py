@@ -145,7 +145,7 @@ def test_no_ready_category_raises_with_measured_counts(tmp_path, monkeypatch, fa
 def test_vancouver_postal_is_rejected(tmp_path, monkeypatch, fake_base_estimate) -> None:
     _write_export(tmp_path, monkeypatch)
 
-    with pytest.raises(ValueError, match="Halifax / Maritimes postal code"):
+    with pytest.raises(ValueError, match=r"Halifax \(HRM\) postal code"):
         uplift_core.simulate_uplift(_payload(postalCode="V6B 1X9"))
 
 

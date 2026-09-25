@@ -33,5 +33,8 @@ CREATE OR REPLACE TABLE fact_property_training_mart (
   time_adjustment_factor DOUBLE,
   is_model_ready BOOLEAN,
   source_table VARCHAR,
-  data_quality_tier VARCHAR
+  data_quality_tier VARCHAR,
+  account_id VARCHAR,
+  source_observation_id VARCHAR,
+  identity_kind VARCHAR
 );

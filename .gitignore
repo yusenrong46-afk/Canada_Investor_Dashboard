@@ -15,6 +15,11 @@ __pycache__
 data/raw
 data/warehouse/*.duckdb
 data/warehouse/*.wal
+data/releases/candidates/
+data/releases/.publish.lock
+data/releases/**/*.duckdb
+data/releases/**/*.wal
+data/releases/**/*.partial
 artifacts/home-value-planner/node_modules
 artifacts/home-value-planner/dist
 artifacts/api-server/node_modules

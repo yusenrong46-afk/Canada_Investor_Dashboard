@@ -37,7 +37,7 @@ export const marketCatalog: Record<MarketId, MarketDefinition> = {
   },
   halifax_maritimes: {
     id: "halifax_maritimes",
-    label: "Halifax / Maritimes",
+    label: "Halifax (HRM)",
     region: "NS",
     postalPrefixPattern: /^B\d/i,
     postalPlaceholder: "B3H 1A1",

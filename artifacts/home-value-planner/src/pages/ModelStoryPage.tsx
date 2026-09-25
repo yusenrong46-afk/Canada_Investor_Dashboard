@@ -108,13 +108,13 @@ export function ModelStoryPage() {
       </SectionCard>
 
       <SectionCard
-        title="Halifax / Maritimes expansion"
+        title="Halifax (HRM) expansion"
         eyebrow="Second market"
         description="The same workflow now runs on a second market, trained on real sale prices instead of listings."
       >
         <div className="space-y-3 text-sm leading-6 text-body">
           <p>
-            The Halifax / Maritimes model trains on real PVSC parcel sale prices, time-adjusted to a common reference period so older
+            The Halifax (HRM) model trains on real PVSC parcel sale prices, time-adjusted to a common reference period so older
             sales do not drag the estimate down. A civic-address bridge attaches postal codes to each parcel, which gives Halifax FSA
             and train-fold-only submarket-cluster location features (extract CSVs do not bake full-data clusters).
           </p>

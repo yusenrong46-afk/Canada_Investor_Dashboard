@@ -4,7 +4,7 @@
 
 | Field | Meaning | Notes |
 |---|---|---|
-| `postalCode` | Canadian postal code | V5/V6 routes to the Vancouver model, B-prefix to Halifax/Maritimes. |
+| `postalCode` | Canadian postal code | V5/V6 routes to the Vancouver model, B-prefix to Halifax (HRM). |
 | `propertyType` | Supported home type | Vancouver: `Condo`, `Detached`, `Townhouse`, `Duplex`. Halifax: no `Condo` (PVSC open data covers ground-oriented dwellings only). |
 | `livingAreaSqft` | Interior living area | Main size feature. |
 | `bedrooms` | Bedroom count | Numeric. Missing Halifax bedrooms are left null in the extract so the trainer’s train-fold imputer owns the fill (`bedroomsImputed` flags upstream gaps). Zero-bedroom rows are dropped. |
@@ -76,7 +76,7 @@
 
 | Table | Purpose |
 |---|---|
-| `dim_market` | Market metadata for Vancouver, Seattle, and Halifax/Maritimes. |
+| `dim_market` | Market metadata for Vancouver, Seattle, and Halifax (HRM). |
 | `dim_source_dataset` | Source lineage, grain, role, and availability for each dataset (PVSC, HRM, Seattle, processed extracts). |
 | `stg_vancouver_listings` | Staging table from the processed Vancouver training CSV. |
 | `stg_halifax_properties` | Staging table from the processed Halifax training CSV. |

@@ -41,7 +41,7 @@ describe("Halifax public estimate traceability", () => {
 
     expect(Math.abs(response.baseValue - expectedBase)).toBeLessThanOrEqual(1_000);
     expect(response.market).toBe("halifax_maritimes");
-    expect(response.marketLabel).toBe("Halifax / Maritimes");
+    expect(response.marketLabel).toBe("Halifax (HRM)");
     expect(response.marketContext.localAreaScope).toBe("fsa");
     expect(response.marketContext.localAreaLabel).toContain("B3H");
     expect(response.marketContext.localMedianValue).toBe(roundMoney(b3hDetached?.medianValue ?? 0));
@@ -98,7 +98,7 @@ describe("Halifax public estimate traceability", () => {
     // PVSC open data has no condo unit characteristics; blending non-condo medians would be an invented number.
     expect(() =>
       buildPublicEstimate({ postalCode: "B3H 1A1", propertyType: "Condo", livingAreaSqft: 800, bedrooms: 2, bathrooms: 1 }),
-    ).toThrowError(/Condo estimates are not available for Halifax \/ Maritimes/);
+    ).toThrowError(/Condo estimates are not available for Halifax \(HRM\)/);
   });
 
   it("rejects an FSA with no committed evidence instead of using a market-wide fallback", () => {
@@ -195,7 +195,7 @@ describe("Vancouver public estimate regression", () => {
   it("rejects postal codes outside both markets", () => {
     expect(() =>
       buildPublicEstimate({ postalCode: "K1A 0A1", propertyType: "Detached", livingAreaSqft: 1_800, bedrooms: 3, bathrooms: 2 }),
-    ).toThrowError(/Vancouver postal code.*Halifax \/ Maritimes/);
+    ).toThrowError(/Vancouver postal code.*Halifax \(HRM\)/);
   });
 
   it("rejects V6A at the shared schema boundary (no public FSA profile)", () => {

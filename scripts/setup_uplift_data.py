@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import sys
-import urllib.request
 import zipfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.http_fetch import fetch_bytes, write_bytes_atomically  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,14 +41,12 @@ def _path(value: str) -> Path:
 
 
 def _download_file(url: str, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading {url}")
     print(f"Saving to {destination}")
-    urllib.request.urlretrieve(url, destination)
+    write_bytes_atomically(destination, fetch_bytes(url, attempts=3, timeout=300))
 
 
 def _extract_csv(zip_path: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path) as archive:
         csv_names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
         if not csv_names:
@@ -53,8 +54,8 @@ def _extract_csv(zip_path: Path, destination: Path) -> None:
 
         csv_name = csv_names[0]
         print(f"Extracting {csv_name} to {destination}")
-        with archive.open(csv_name) as source, destination.open("wb") as target:
-            target.write(source.read())
+        with archive.open(csv_name) as source:
+            write_bytes_atomically(destination, source.read())
 
 
 def download_king_county() -> None:

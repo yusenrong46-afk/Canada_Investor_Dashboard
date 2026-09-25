@@ -4,7 +4,7 @@
 
 INSERT INTO fact_property_training_mart
 SELECT
-  'halifax_maritimes:' || CAST(row_number() OVER () AS VARCHAR) AS property_observation_id,
+  CAST(propertyObservationId AS VARCHAR) AS property_observation_id,
   'halifax_maritimes' AS market_id,
   'Halifax' AS city_name,
   'NS' AS province_state,
@@ -43,5 +43,8 @@ SELECT
     ELSE FALSE
   END AS is_model_ready,
   'processed_halifax_training' AS source_table,
-  'dataset-backed' AS data_quality_tier
+  'dataset-backed' AS data_quality_tier,
+  CAST(accountId AS VARCHAR) AS account_id,
+  CAST(sourceObservationId AS VARCHAR) AS source_observation_id,
+  CAST(identityKind AS VARCHAR) AS identity_kind
 FROM stg_halifax_properties;

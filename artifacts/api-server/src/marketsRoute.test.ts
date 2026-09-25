@@ -32,7 +32,7 @@ describe("/api/markets payload by mode", () => {
       },
       {
         id: "halifax_maritimes",
-        label: "Halifax / Maritimes",
+        label: "Halifax (HRM)",
         region: "NS",
         status: "available",
         postalPlaceholder: "B3H 1A1",
@@ -50,7 +50,7 @@ describe("/api/markets payload by mode", () => {
     ]);
   });
 
-  it("marks Halifax / Maritimes live-only in demo mode with the explanatory note", async () => {
+  it("marks Halifax (HRM) live-only in demo mode with the explanatory note", async () => {
     const response = await marketsWithEnv({ DEMO_MODE: "true", PUBLIC_MODE: "" });
     const halifax = response.markets.find((market) => market.id === "halifax_maritimes");
     const vancouver = response.markets.find((market) => market.id === "vancouver");

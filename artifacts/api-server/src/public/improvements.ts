@@ -11,7 +11,7 @@ export function buildPublicEstimate(property: PropertyInput) {
     return buildHalifaxPublicEstimate(property);
   }
   if (market !== "vancouver") {
-    throw publicInputError("Use a Vancouver postal code in the V5 or V6 area, or a Halifax / Maritimes postal code in the B area.", property.postalCode);
+    throw publicInputError("Use a Vancouver postal code in the V5 or V6 area, or a Halifax (HRM) postal code in the B area.", property.postalCode);
   }
 
   return buildVancouverPublicEstimate(property);

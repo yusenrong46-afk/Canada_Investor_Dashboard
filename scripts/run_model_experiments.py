@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
 import pandas as pd
 
+from scripts.output_guard import atomic_write_text, env_path, export_file, refuse_legacy_write, report_file
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
-DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "model_experiments.json"
-DEFAULT_REPORT_PATH = REPO_ROOT / "reports" / "model_experiments_report.md"
+DEFAULT_WAREHOUSE_PATH = env_path(
+    "CVH_WAREHOUSE_PATH", REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
+)
+DEFAULT_EXPORT_PATH = export_file(
+    "model_experiments.json", REPO_ROOT / "data" / "exports" / "model_experiments.json"
+)
+DEFAULT_REPORT_PATH = report_file(
+    "model_experiments_report.md", REPO_ROOT / "reports" / "model_experiments_report.md"
+)
 
 
 def _display_path(path: Path) -> str:
@@ -49,7 +61,7 @@ MAX_SPATIAL_FOLDS = 5
 
 TARGET_SEMANTICS_CAVEAT = (
     "Caveat: the two markets have different target semantics (Vancouver models listing price; "
-    "Halifax/Maritimes models time-adjusted sale price). Pooling tests whether cross-market "
+    "Halifax (HRM) models time-adjusted sale price). Pooling tests whether cross-market "
     "structure transfers despite that difference, not that the targets are interchangeable."
 )
 
@@ -607,7 +619,7 @@ def _write_report(
     lines.append("")
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text("\n".join(lines))
+    atomic_write_text(report_path, "\n".join(lines))
 
 
 def run_model_experiments(
@@ -646,8 +658,7 @@ def run_model_experiments(
     }
 
     _write_warehouse_table(warehouse_path, rows, run_at)
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_path.write_text(json.dumps(payload) + "\n")
+    atomic_write_text(export_path, json.dumps(payload) + "\n")
     _write_report(report_path, payload, target_names, family, skipped, warehouse_path)
 
     print(f"Wrote {len(rows)} experiment rows to fact_model_experiments in {warehouse_path}")
@@ -657,6 +668,8 @@ def run_model_experiments(
 
 
 if __name__ == "__main__":
+    refuse_legacy_write(DEFAULT_EXPORT_PATH)
+    refuse_legacy_write(DEFAULT_REPORT_PATH)
     experiment_payload = run_model_experiments()
     for experiment_row in experiment_payload["rows"]:
         if experiment_row["propertyType"] != "All":

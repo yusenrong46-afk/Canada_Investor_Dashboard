@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,7 +23,9 @@ from scripts.setup_halifax_data import (  # noqa: E402
     _monthly_sale_price_index,
 )
 
-DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "halifax_uplift.json"
+from scripts.output_guard import atomic_write_text, export_file, refuse_legacy_write  # noqa: E402
+
+DEFAULT_EXPORT_PATH = export_file("halifax_uplift.json", REPO_ROOT / "data" / "exports" / "halifax_uplift.json")
 
 MIN_PAIR_GAP_DAYS = 180
 MIN_PAIR_SALE_PRICE = INDEX_MIN_MARKET_PRICE
@@ -277,8 +280,7 @@ def build_halifax_uplift_export(
     }
 
     export_path = Path(export_path)
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_path.write_text(json.dumps(export, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(export_path, json.dumps(export, indent=2) + "\n")
 
     print(f"Repeat-sale pairs: {len(pairs):,} (>= ${MIN_PAIR_SALE_PRICE:,}, ratio in [{RATIO_LOW}, {RATIO_HIGH}])")
     print(f"Permits matched within {PERMIT_MATCH_MAX_METERS:.0f} m: {len(matched_permits):,} of {len(permits):,}")
@@ -309,6 +311,7 @@ def main() -> int:
     parser.add_argument("--dwellings", default=str(DEFAULT_DWELLINGS_PATH), help="PVSC dwelling characteristics CSV path")
     parser.add_argument("--out", default=str(DEFAULT_EXPORT_PATH), help="Export JSON path")
     args = parser.parse_args()
+    refuse_legacy_write(Path(args.out))
 
     build_halifax_uplift_export(
         sales_path=args.sales,

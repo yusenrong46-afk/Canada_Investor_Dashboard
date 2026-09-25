@@ -890,12 +890,35 @@ def _train_property_type_model(
     return selected_pipeline, selected_family, candidate_metrics, calibration, evaluation
 
 
+def assert_holdout_policy(strategy: str) -> str:
+    """Refuse an unlabeled random split.
+
+    ``ALLOW_RANDOM_HOLDOUT=1`` permits a research run. The returned strategy
+    still starts with ``random`` and must not be reported as temporal.
+    """
+    text = strategy.strip()
+    if text.lower().startswith("temporal holdout"):
+        return text
+    allowed = os.environ.get("ALLOW_RANDOM_HOLDOUT") in {"1", "true", "TRUE"}
+    if not allowed:
+        raise RuntimeError(
+            "Vancouver training refused a random split because listing dates are missing or the "
+            "temporal holdout is too small. Set ALLOW_RANDOM_HOLDOUT=1 for an explicitly labeled "
+            "random-split research build. Dates are not invented, and this override does not "
+            "produce temporal metrics."
+        )
+    if not text.lower().startswith("random"):
+        text = f"random 80/20 research override: {text}"
+    return text
+
+
 def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
     usable, row_counts, eda_summary = _load_training_frame(data_path)
     if usable.empty:
         raise ValueError("No Vancouver training rows were found after cleaning the CSV")
 
     temporal_train_index, temporal_test_index, temporal_split_strategy = _temporal_holdout_indices(usable, "listingDate")
+    temporal_split_strategy = assert_holdout_policy(temporal_split_strategy)
     train_stats_frame = usable.loc[temporal_train_index].copy()
     clusterer = KMeans(n_clusters=CLUSTER_COUNT, random_state=42, n_init=20)
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):

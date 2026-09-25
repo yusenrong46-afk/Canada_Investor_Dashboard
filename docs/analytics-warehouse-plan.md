@@ -30,7 +30,7 @@ The first warehouse build creates these tables:
 
 | Table | Purpose |
 |---|---|
-| `dim_market` | Market metadata for Vancouver, Seattle, and Halifax/Maritimes. |
+| `dim_market` | Market metadata for Vancouver, Seattle, and Halifax (HRM). |
 | `dim_source_dataset` | Source lineage and onboarding status. |
 | `stg_vancouver_listings` | Staging table from `data/processed/vancouver_base_model_training.csv`. |
 | `stg_halifax_properties` | Staging table from `data/processed/halifax_base_model_training.csv`. |
@@ -46,7 +46,7 @@ The warehouse lets us compare models fairly because each candidate reads the sam
 
 1. Local baseline
    - Train Vancouver only.
-   - Later train Halifax/Maritimes only once source data is ready.
+   - Later train Halifax (HRM) only once source data is ready.
    - Use this as the simplest explainable baseline.
 
 2. Pooled multi-market model
@@ -71,7 +71,7 @@ The warehouse lets us compare models fairly because each candidate reads the sam
 | Structural | living area, beds, baths, age, property type | Core valuation drivers. |
 | Location | postal FSA, lat/lon, H3 cell, submarket cluster | Makes cross-city geography comparable. |
 | Permit activity | permit count, project value, status, permit type, completion lag | Helps estimate renovation and redevelopment signals. |
-| Assessment context | assessed value, assessment history, land size, dwelling characteristics | Useful for Halifax/Maritimes expansion and tax-risk analytics. |
+| Assessment context | assessed value, assessment history, land size, dwelling characteristics | Useful for Halifax (HRM) expansion and tax-risk analytics. |
 | Market summary | local median, price per sqft, comparable count | Supports dashboard explanations and guardrails. |
 | Text embeddings | permit/listing descriptions | Later-stage improvement for condition, renovation, and neighbourhood signals. |
 
@@ -83,7 +83,7 @@ Strong version:
 
 More technical version:
 
-> Designed a database-backed multi-market property modelling pipeline using DuckDB, SQL feature marts, model-readiness checks, and experiment-ready training tables; prepared the system to compare local, pooled, and hybrid valuation models across Vancouver, Seattle, and Halifax/Maritimes data.
+> Designed a database-backed multi-market property modelling pipeline using DuckDB, SQL feature marts, model-readiness checks, and experiment-ready training tables; prepared the system to compare local, pooled, and hybrid valuation models across Vancouver, Seattle, and Halifax (HRM) data.
 
 ## Next Build Slice
 
@@ -97,7 +97,7 @@ Completed in the intelligence-lab milestone:
 
 4. ~~Experiment table for local/pooled/hybrid comparisons.~~ Done — `scripts/run_model_experiments.py` → `fact_model_experiments` + `data/exports/model_experiments.json` + Model-page leaderboard. Measured: local wins Vancouver, Halifax is a tie, pooling wins spatial extrapolation on both markets.
 5. ~~Join HRM permits to PVSC sales for a local Halifax uplift signal.~~ Done — `scripts/build_halifax_uplift.py`: Renovation +12.1% median excess (131 treated pairs, ready); Addition insufficient at 37 pairs.
-6. ~~Map the warehouse.~~ Done — `scripts/export_market_map.py` → 802 H3 cells → `/api/map` → the Market map page.
+6. ~~Map the warehouse.~~ Done — `scripts/export_market_map.py` → 717 H3 cells (553 Halifax (HRM) + 164 Vancouver) → `/api/map` → the Market map page.
 
 Still ahead:
 

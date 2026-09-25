@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.output_guard import atomic_write_text, env_path, refuse_legacy_write
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
-DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "market_evidence.json"
+DEFAULT_WAREHOUSE_PATH = env_path(
+    "CVH_WAREHOUSE_PATH", REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
+)
+DEFAULT_EXPORT_PATH = (
+    Path(os.environ["CVH_EXPORT_DIR"]) / "market_evidence.json"
+    if os.environ.get("CVH_EXPORT_DIR")
+    else REPO_ROOT / "data" / "exports" / "market_evidence.json"
+)
 
 # Keep the export honest: only segments with enough observations to summarize.
 MIN_SEGMENT_ROWS = 5
@@ -132,7 +144,7 @@ def export_market_evidence(
     payload = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "provenance": {
-            "warehousePath": str(warehouse_path.relative_to(REPO_ROOT) if warehouse_path.is_relative_to(REPO_ROOT) else warehouse_path),
+            "warehousePath": "warehouse/property_analytics.duckdb",
             "builtFrom": "fact_market_feature_summary (DuckDB analytics warehouse)",
             "sourceDatasets": source_datasets,
         },
@@ -140,11 +152,11 @@ def export_market_evidence(
         "rows": rows,
     }
 
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_path.write_text(json.dumps(payload, indent=2) + "\n")
+    atomic_write_text(export_path, json.dumps(payload, indent=2) + "\n")
     print(f"Wrote {len(rows):,} evidence rows for {len(markets)} markets to {export_path}")
     return payload
 
 
 if __name__ == "__main__":
+    refuse_legacy_write(DEFAULT_EXPORT_PATH)
     export_market_evidence()

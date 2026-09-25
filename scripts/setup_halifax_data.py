@@ -5,12 +5,20 @@ import io
 import json
 import math
 import os
+import sys
 import urllib.parse
-import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import pandas as pd
+
+from scripts.http_fetch import fetch_bytes, write_bytes_atomically
+from scripts.identities import assign_sale_identity
+from scripts.output_guard import public_storage_ref, strict_from_env
+from scripts.release_store import content_sha256
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -66,9 +74,39 @@ def _path(value: str) -> Path:
 
 
 def _fetch(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": "canadian-investor-dashboard/halifax-setup"})
-    with urllib.request.urlopen(request, timeout=300) as response:
-        return response.read()
+    return fetch_bytes(url, attempts=3, timeout=300)
+
+
+def _write_frame_atomically(frame: pd.DataFrame, destination: Path) -> None:
+    """A partial CSV must not replace a completed snapshot."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_name(destination.name + ".partial")
+    try:
+        frame.to_csv(partial, index=False)
+        payload = partial.read_bytes()
+        partial.unlink(missing_ok=True)
+        write_bytes_atomically(destination, payload)
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
+
+
+def _resolve_reference_date(explicit: str | None, strict: bool) -> str:
+    value = explicit or os.environ.get("CVH_REFERENCE_DATE")
+    if value:
+        datetime.fromisoformat(value)
+        return value
+    if strict:
+        raise RuntimeError(
+            "Strict Halifax extract building requires --reference-date or CVH_REFERENCE_DATE. "
+            "ageYears must not silently follow the wall clock."
+        )
+    today = datetime.now(timezone.utc).date().isoformat()
+    print(
+        f"WARNING: ageYears uses wall-clock date {today}. "
+        "Pass --reference-date for a reproducible extract."
+    )
+    return today
 
 
 def _download_datazone_csv(dataset_id: str, label: str, destination: Path, where: str) -> None:
@@ -99,7 +137,7 @@ def _download_datazone_csv(dataset_id: str, label: str, destination: Path, where
         raise RuntimeError(f"No rows returned for {label}; check the datazONE filters.")
 
     combined = pd.concat(pages, ignore_index=True)
-    combined.to_csv(destination, index=False)
+    _write_frame_atomically(combined, destination)
     print(f"Saved {len(combined):,} {label} rows to {destination}")
 
 
@@ -141,7 +179,7 @@ def _download_arcgis_csv(service_url: str, label: str, destination: Path, out_fi
         raise RuntimeError(f"No rows returned for {label}; check the ArcGIS service URL.")
 
     combined = pd.DataFrame(rows)
-    combined.to_csv(destination, index=False)
+    _write_frame_atomically(combined, destination)
     print(f"Saved {len(combined):,} {label} rows to {destination}")
 
 
@@ -280,6 +318,14 @@ def _assign_postal_codes(frame: pd.DataFrame, civic: pd.DataFrame) -> tuple[pd.S
     return matched, float((meters <= POSTAL_MATCH_MAX_METERS).mean())
 
 
+def _source_snapshot(path: Path) -> dict:
+    return {
+        "storageRef": public_storage_ref(path),
+        "contentSha256": content_sha256(path) if path.is_file() else None,
+        "bytes": path.stat().st_size if path.is_file() else None,
+    }
+
+
 def build_training_extract(
     *,
     dwellings_path: Path | None = None,
@@ -289,6 +335,7 @@ def build_training_extract(
     output_path: Path | None = None,
     summary_path: Path | None = None,
     strict: bool = False,
+    reference_date: str | None = None,
 ) -> dict:
     dwellings_path = dwellings_path or _path(DEFAULT_DWELLINGS_PATH)
     sales_path = sales_path or _path(DEFAULT_SALES_PATH)
@@ -315,13 +362,15 @@ def build_training_extract(
 
     sales["sale_date"] = pd.to_datetime(sales["sale_date"], errors="coerce")
     sales = sales.dropna(subset=["sale_date", "sale_price", "aan"])
-    sales["aan"] = sales["aan"].astype(str)
+    sales["aan"] = sales["aan"].map(lambda value: str(value).strip())
+    # Identify every sale before keeping the latest sale per account. aan is not unique.
+    sales = sales.join(assign_sale_identity(sales))
 
     factors, index_latest_month = _time_adjustment_factors(sales)
     sales["timeAdjustmentFactor"] = factors
 
     window_sales = sales[sales["sale_date"] >= TRAINING_WINDOW_START].copy()
-    window_sales = window_sales.sort_values("sale_date").drop_duplicates("aan", keep="last")
+    window_sales = window_sales.sort_values(["sale_date", "saleObservationId"]).drop_duplicates("aan", keep="last")
 
     dwellings["aan"] = dwellings["aan"].astype(str)
     eligible = dwellings[
@@ -344,7 +393,11 @@ def build_training_extract(
     )
 
     joined = window_sales.merge(dwelling_columns, on="aan", how="inner")
-    join_rate = len(joined) / len(window_sales) if len(window_sales) else 0.0
+    join_numerator = int(len(joined))
+    join_denominator = int(len(window_sales))
+    join_numerator_name = "window_sales_after_latest_per_aan_inner_joined_to_eligible_dwellings"
+    join_denominator_name = "latest_sale_per_aan_on_or_after_training_window_start"
+    join_rate = join_numerator / join_denominator if join_denominator else 0.0
     if join_rate < MIN_SALE_TO_DWELLING_JOIN_RATE:
         message = (
             f"Sale->dwelling join rate {join_rate:.1%} is below floor "
@@ -407,7 +460,8 @@ def build_training_extract(
         _h3_cell(latitude, longitude) for latitude, longitude in zip(clean["latitude"], clean["longitude"])
     ]
 
-    current_year = pd.Timestamp.now().year
+    resolved_reference_date = _resolve_reference_date(reference_date, strict)
+    current_year = datetime.fromisoformat(resolved_reference_date).year
     clean["ageYears"] = current_year - pd.to_numeric(clean["yearBuilt"], errors="coerce")
     # year_built corruption (e.g. age 466) → null; train-fold impute later
     clean.loc[clean["ageYears"].notna() & ((clean["ageYears"] < 0) | (clean["ageYears"] > MAX_AGE_YEARS)), "ageYears"] = np.nan
@@ -449,19 +503,23 @@ def build_training_extract(
         "saleDate",
         "timeAdjustmentFactor",
         "bedroomsImputed",
+        "accountId",
+        "saleObservationId",
+        "identityKind",
     ]
     extract = clean.rename(columns={"assessed_value": "assessedValue"})[export_columns].reset_index(drop=True)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    extract.to_csv(output_path, index=False)
+    _write_frame_atomically(extract, output_path)
 
     summary = {
         "market": "halifax_maritimes",
         "targetName": "sale_price_time_adjusted",
         "trainingWindowStart": TRAINING_WINDOW_START,
         "timeAdjustmentBaselineMonth": index_latest_month,
+        "referenceDate": resolved_reference_date,
         "rows": {
-            "windowSales": int(len(window_sales)),
+            "windowSales": join_denominator,
+            "joinedToDwellingsBeforeCoordinateFilter": join_numerator,
             "joinedToDwellings": int(len(joined)),
             "cleanTrainingRows": int(len(extract)),
             "styleExcluded": style_excluded,
@@ -476,6 +534,11 @@ def build_training_extract(
         },
         "rates": {
             "saleToDwellingJoin": round(join_rate, 4),
+            "saleToDwellingJoinNumerator": join_numerator,
+            "saleToDwellingJoinDenominator": join_denominator,
+            "saleToDwellingJoinNumeratorName": join_numerator_name,
+            "saleToDwellingJoinDenominatorName": join_denominator_name,
+            "saleToDwellingJoinAcceptanceThreshold": MIN_SALE_TO_DWELLING_JOIN_RATE,
             "postalMatchWithin150m": round(postal_match_rate, 4),
             "bedroomsMissing": round(float(extract["bedrooms"].isna().mean()), 4),
             "bedroomsImputed": 0.0,
@@ -491,13 +554,20 @@ def build_training_extract(
         },
         "propertyTypeCounts": extract["propertyType"].value_counts().to_dict(),
         "sources": {
-            "dwellings": str(dwellings_path),
-            "sales": str(sales_path),
-            "assessments": str(assessments_path),
-            "civicAddresses": str(civic_addresses_path),
+            "dwellings": _source_snapshot(dwellings_path),
+            "sales": _source_snapshot(sales_path),
+            "assessments": _source_snapshot(assessments_path),
+            "civicAddresses": _source_snapshot(civic_addresses_path),
+        },
+        "identity": {
+            "account": "aan",
+            "saleObservation": "upstream transaction id when present and unique, otherwise aan|sale_date|sale_price",
+            "aanIsUniqueInRawSales": False,
+            "trainingGrain": "latest sale per aan inside the training window",
         },
     }
-    summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    write_bytes_atomically(summary_path, (json.dumps(summary, indent=2) + "\n").encode("utf-8"))
 
     print(f"Wrote {len(extract):,} Halifax training rows to {output_path}")
     print(f"Wrote summary to {summary_path}")
@@ -524,8 +594,7 @@ def check_files() -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Download and validate the Halifax/Maritimes open datasets.")
-    default_strict = os.environ.get("CI", "").lower() in {"1", "true", "yes"}
+    parser = argparse.ArgumentParser(description="Download and validate the Halifax (HRM) open datasets.")
     parser.add_argument("--download-pvsc", action="store_true", help="Download the PVSC datazONE extracts for HRM.")
     parser.add_argument("--download-hrm", action="store_true", help="Download the HRM civic address and permit layers.")
     parser.add_argument("--build-training", action="store_true", help="Build the processed Halifax training extract.")
@@ -533,8 +602,13 @@ def main() -> int:
     parser.add_argument(
         "--strict",
         action=argparse.BooleanOptionalAction,
-        default=default_strict,
-        help="Fail on measured join/postal quality gates (default: on in CI).",
+        default=strict_from_env(False),
+        help="Fail on measured join/postal quality gates. CVH_STRICT=0 or 1 overrides the CI default.",
+    )
+    parser.add_argument(
+        "--reference-date",
+        default=os.environ.get("CVH_REFERENCE_DATE"),
+        help="ISO date used for ageYears. Required when --strict is set.",
     )
     args = parser.parse_args()
 
@@ -543,7 +617,7 @@ def main() -> int:
     if args.download_hrm:
         download_hrm()
     if args.build_training:
-        build_training_extract(strict=args.strict)
+        build_training_extract(strict=args.strict, reference_date=args.reference_date)
         return 0
 
     return 0 if check_files() else 1

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,8 @@ from halifax_model.core import HALIFAX_PREFIX_PATTERN, MARKET_LABEL, PROPERTY_TY
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "halifax_uplift.json"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 UPLIFT_MODEL_VERSION = "halifax-observed-permit-uplift-v1"
 UPLIFT_TRAINING_MODE = "halifax-repeat-sale-permit-medians"
@@ -32,7 +35,11 @@ _EXPORT_CACHE: dict[str, dict[str, Any]] = {}
 
 def _export_path() -> Path:
     override = os.environ.get("HALIFAX_UPLIFT_EXPORT_PATH")
-    return Path(override).expanduser() if override else DEFAULT_EXPORT_PATH
+    if override:
+        return Path(override).expanduser()
+    from scripts.release_store import resolve_published_export
+
+    return resolve_published_export(REPO_ROOT, "halifax_uplift.json")
 
 
 def load_uplift_export() -> dict[str, Any]:
@@ -56,15 +63,15 @@ def _validate_request(payload: dict[str, Any]) -> None:
     property_type = str(payload.get("propertyType") or "").strip()
     if property_type == "Condo":
         raise ValueError(
-            "Condo estimates are not available for Halifax / Maritimes: PVSC open data does not cover "
+            "Condo estimates are not available for Halifax (HRM): PVSC open data does not cover "
             "condo unit characteristics. Supported property types are Detached, Townhouse, and Duplex.",
         )
     if property_type not in PROPERTY_TYPES:
-        raise ValueError("propertyType must be one of Detached, Townhouse, or Duplex for Halifax / Maritimes")
+        raise ValueError("propertyType must be one of Detached, Townhouse, or Duplex for Halifax (HRM)")
 
     postal_code = _normalize_postal_code(payload.get("postalCode"))
     if postal_code is None or not HALIFAX_PREFIX_PATTERN.match(postal_code):
-        raise ValueError("postalCode must be a Halifax / Maritimes postal code starting with B plus a digit, like B3H 1A1")
+        raise ValueError("postalCode must be a Halifax (HRM) postal code starting with B plus a digit, like B3H 1A1")
 
 
 def _selected_categories(planned_flags: list[str], flag_category_map: dict[str, str]) -> list[str]:

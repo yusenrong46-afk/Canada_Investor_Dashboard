@@ -1,19 +1,31 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.output_guard import atomic_write_text, env_path, refuse_legacy_write
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
-DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "market_map.json"
+DEFAULT_WAREHOUSE_PATH = env_path(
+    "CVH_WAREHOUSE_PATH", REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
+)
+DEFAULT_EXPORT_PATH = (
+    Path(os.environ["CVH_EXPORT_DIR"]) / "market_map.json"
+    if os.environ.get("CVH_EXPORT_DIR")
+    else REPO_ROOT / "data" / "exports" / "market_map.json"
+)
 
 # Only cells with enough observations to summarize honestly appear on the map.
 MIN_CELL_ROWS = 5
 
-MARKET_LABELS = {"vancouver": "Vancouver", "halifax_maritimes": "Halifax / Maritimes"}
+MARKET_LABELS = {"vancouver": "Vancouver", "halifax_maritimes": "Halifax (HRM)"}
 MARKET_ZOOM = {"vancouver": 12, "halifax_maritimes": 10}
 
 
@@ -114,12 +126,12 @@ def export_market_map(
         "markets": markets,
     }
 
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_path.write_text(json.dumps(payload) + "\n")
+    atomic_write_text(export_path, json.dumps(payload) + "\n")
     total_cells = sum(len(market["cells"]) for market in markets.values())
     print(f"Wrote {total_cells:,} map cells for {len(markets)} markets to {export_path}")
     return payload
 
 
 if __name__ == "__main__":
+    refuse_legacy_write(DEFAULT_EXPORT_PATH)
     export_market_map()

@@ -2,7 +2,7 @@
 
 ## 30-Second Explanation
 
-Canada Value Lab is a multi-market investor screening dashboard for Vancouver and Halifax/Maritimes. You estimate current value, test renovation upside, build a plan, and screen a deal — with explicit provenance so reviewers know whether a number came from public rules, observed evidence, or a fitted local model.
+Canada Value Lab is a multi-market investor screening dashboard for Vancouver and Halifax (HRM). You estimate current value, test renovation upside, build a plan, and screen a deal — with explicit provenance so reviewers know whether a number came from public rules, observed evidence, or a fitted local model.
 
 **Live demo:** https://canadian-investor-dashboard.vercel.app  
 (GitHub: https://github.com/yusenrong46-afk/Canada_Investor_Dashboard)
@@ -28,7 +28,7 @@ Canada Value Lab is a multi-market investor screening dashboard for Vancouver an
 ## Market truth
 
 - **Vancouver:** listing-price screening (V5/V6 FSAs with committed public profiles).
-- **Halifax / Maritimes:** time-adjusted sale-price screening from PVSC evidence (B-prefix FSAs with committed evidence rows; no condo coverage).
+- **Halifax (HRM):** time-adjusted sale-price screening from PVSC evidence (B-prefix FSAs with committed evidence rows; no condo coverage).
 - Renovation uplift is **gross** sale-price impact, not net return after costs.
 - Deal stress-test shares are assumption diagnostics, **not** calibrated probabilities.
 

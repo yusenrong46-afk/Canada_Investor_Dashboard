@@ -1,0 +1,9 @@
+{
+  "releaseId": "legacy-processed-20260726",
+  "relativePath": "published/legacy-processed-20260726",
+  "validated": false,
+  "role": "retained_legacy",
+  "lineageClass": "legacy_processed_snapshot",
+  "rawLineageRecovered": false,
+  "selectedAt": "2026-09-25T01:08:02+00:00"
+}

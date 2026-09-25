@@ -72,12 +72,13 @@ Deal verdicts carry a seeded triangular stress test (5,000 draws) over the state
 
 - `scripts/generate_data_quality_report.py` — listing-data checks.
 - `scripts/build_property_warehouse.py` — per-market warehouse quality gates (source rows, model-ready rows, FSA completeness ≥95%, Halifax time-adjustment guardrail, tracked-only completeness for property tax / assessed value).
-- Halifax joins are measured, not assumed: see `docs/halifax-data-recon.md` (93% sale→dwelling join, 99.6% postal bridge match ≤150 m, ~11.6% bedrooms missing — left null in the extract and imputed on the train fold only).
+- Halifax joins are not remeasured in this checkout: the raw PVSC files are absent. The committed summary stores `saleToDwellingJoin` 0.7715 beside `joinedToDwellings` 18,268 and `windowSales` 25,160. 18268/25160 = 0.726073 (about 72.61%), so those stored fields do not describe one quotient. The publication threshold remains 0.90 and was not lowered. Postal match in that same summary is 0.9962. See `docs/halifax-data-recon.md`.
 
 ## Known Limitations
 
-- Vancouver predicts listing price, not final sale price.
-- Halifax sale prices include unobserved condition/renovation effects at sale time; the time adjustment is HRM-wide.
+- Vancouver predicts listing price, not final sale price. The shipped Vancouver bundle is a historical random 80/20 split. Default training now refuses a random split unless `ALLOW_RANDOM_HOLDOUT=1`, and that override is labeled random, not temporal. This milestone did not retrain the bundle.
+- Halifax sale prices include unobserved condition/renovation effects at sale time. The time-adjustment index is HRM-wide and is fit on sales that include the holdout window; that evaluation risk is unresolved. Assessed value can be later than the sale, is used in training when present, and is nulled at inference. Those risks were documented, not fixed.
+- Vancouver listing rows have no source property id. A hash of listing fields is a row fingerprint, not a durable property identifier, so a correction to price or coordinates will not match the previous row.
 - Halifax postal codes come from the nearest civic-address point (≤150 m guard); boundary misassignment is possible.
 - Location features use centroids, not parcel geometry (except Halifax training coordinates, which are parcel-level).
 - No condo coverage in Halifax (open-data gap, stated explicitly).
@@ -89,7 +90,7 @@ Deal verdicts carry a seeded triangular stress test (5,000 draws) over the state
 | Artifact | Protocol | Status |
 |---|---|---|
 | Halifax `halifax_base_price_bundle_v1.pkl` | Temporal 6-month holdout, train-only ship, Phase-1 cleaned extract | Loads via MANIFEST; temporal MAE ~$80.7k / MAPE ~14.2%; Duplex conformal ~69.3% (thin-segment waiver) |
-| Vancouver `vancouver_base_price_bundle_v5.pkl` | Still pre–Phase E random 80/20 | **Blocked:** available raw listings (`data_bc.csv`) have empty `Date Listed` / `Last Updated` columns. Training now fails closed unless `ALLOW_RANDOM_HOLDOUT=1`. |
+| Vancouver `vancouver_base_price_bundle_v5.pkl` | Historical random 80/20 on listing price. Not a temporal evaluation. | Default `train_bundle` now fails unless `ALLOW_RANDOM_HOLDOUT=1`. The shipped pickle was not retrained in this milestone. |
 | Seattle uplift | Train-only shipped model | Retrain needs local Seattle raw files |
 | Halifax uplift export | Observational repeat-sale × permit medians | `permitMatchRate` + co-occurrence/selection-bias notes; Addition still insufficient-data |
 

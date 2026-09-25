@@ -1,0 +1,147 @@
+{
+  "releaseId": "legacy-processed-20260726",
+  "buildId": "retained-legacy-processed-20260726",
+  "lineageClass": "legacy_processed_snapshot",
+  "rawLineageRecovered": false,
+  "validated": false,
+  "status": "retained_legacy",
+  "referenceDate": "2026-07-26",
+  "notes": "Retained so the product can keep reading one coherent set of files. A candidate built from these processed extracts was rejected for publication: vancouver.observation_id_unique failed with 9 duplicate listing-row fingerprints, and vancouver.raw_lineage plus halifax_maritimes.sale_to_dwelling_join are not_applicable because the raw snapshots are not in this checkout. The 0.90 join threshold was not lowered. market_trend.json and model_experiments.json were not rebuilt; only display labels were corrected. model_metrics_report.md was not recomputed; the Vancouver heading was relabeled random-split.",
+  "artifacts": {
+    "exports/market_evidence.json": {
+      "sha256": "9e35e8a76e1a7380029bdd8aa91ac00f68dab8d641f3fec6d0f9efbec4d2b81c",
+      "bytes": 65288,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "exports/market_map.json": {
+      "sha256": "46983e2666f094ce30beed0393e5c2266a8001246e39e8796fe030095fcfce68",
+      "bytes": 184952,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "reports/analytics_warehouse_report.md": {
+      "sha256": "4f96bb5ac60ed9d43eee6b3d5e137b6934a1a6c6583aec951678bb6685f19d64",
+      "bytes": 1757,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "reports/data_quality_report.md": {
+      "sha256": "f4fe3ce601f9734a26945b3a578f300c75f1729052b2391c67d666e970b075ac",
+      "bytes": 914,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "exports/market_trend.json": {
+      "sha256": "18e7e6b94db08deadf306618abbd2bccd249b120a44beb76eb7f0d5da4330592",
+      "bytes": 48371,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "exports/halifax_uplift.json": {
+      "sha256": "09371fed4a94c1df2fd556e08238f406fcbc7a5480c71325012837025bf4d39c",
+      "bytes": 3278,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "exports/model_experiments.json": {
+      "sha256": "9437e5425cdb4dc04d90a7e9bddf8b1a51cf93dad621ab4cbb284b50ce478f20",
+      "bytes": 9464,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "reports/model_metrics_report.md": {
+      "sha256": "d6d40a44c0523ca5ee4fef9c41c20f7d54c8f7241780583f495bb9d1c292e321",
+      "bytes": 3501,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    },
+    "reports/model_experiments_report.md": {
+      "sha256": "6e4d7040a05baed15c6ed7d4e7a01d41f82ee163101fe0a364630b7273e72566",
+      "bytes": 4441,
+      "producedByStep": "retained-legacy-pin",
+      "buildId": "retained-legacy-processed-20260726"
+    }
+  },
+  "snapshots": [
+    {
+      "name": "vancouver_processed_training_csv",
+      "lineageClass": "legacy_processed_snapshot",
+      "contentSha256": "22f11604ab3c184b6db33cd0774b7284e9a070b6d40cf27623a322156be1588c",
+      "storageRef": "data/processed/vancouver_base_model_training.csv",
+      "rowCount": 3518,
+      "schema": [
+        "price",
+        "logPrice",
+        "pricePerSqft",
+        "propertyType",
+        "postalCode",
+        "postalFsa",
+        "submarketCluster",
+        "livingAreaSqft",
+        "bedrooms",
+        "bathrooms",
+        "latitude",
+        "longitude",
+        "lat_x_lon",
+        "lat_sq",
+        "lon_sq",
+        "propertyTax"
+      ],
+      "sourceIdentity": "committed processed extract",
+      "retrievalFilters": null,
+      "sourceObservationPeriod": null,
+      "ingestion": {
+        "fetchedAt": null,
+        "sourceUpdatedAt": null
+      },
+      "notes": "Legacy processed Vancouver listing extract. No raw listing snapshot is in this checkout."
+    },
+    {
+      "name": "halifax_processed_training_csv",
+      "lineageClass": "legacy_processed_snapshot",
+      "contentSha256": "53a90fee50a61e4d7f5297fb036c644cc5219870b6f041958c90d22962851a56",
+      "storageRef": "data/processed/halifax_base_model_training.csv",
+      "rowCount": 17702,
+      "schema": [
+        "price",
+        "logPrice",
+        "pricePerSqft",
+        "propertyType",
+        "postalCode",
+        "postalFsa",
+        "submarketCluster",
+        "livingAreaSqft",
+        "bedrooms",
+        "bathrooms",
+        "latitude",
+        "longitude",
+        "lat_x_lon",
+        "lat_sq",
+        "lon_sq",
+        "propertyTax",
+        "ageYears",
+        "h3Cell",
+        "assessedValue",
+        "salePrice",
+        "saleDate",
+        "timeAdjustmentFactor",
+        "bedroomsImputed"
+      ],
+      "sourceIdentity": "committed processed extract",
+      "retrievalFilters": null,
+      "sourceObservationPeriod": null,
+      "ingestion": {
+        "fetchedAt": null,
+        "sourceUpdatedAt": null
+      },
+      "notes": "Legacy processed Halifax extract. aan was not retained in this CSV. Raw PVSC bytes are not in this checkout."
+    }
+  ],
+  "requiredArtifacts": [
+    "exports/market_evidence.json",
+    "exports/market_map.json",
+    "reports/analytics_warehouse_report.md",
+    "reports/data_quality_report.md"
+  ]
+}

@@ -47,7 +47,7 @@ ARTIFACT_PATH = Path(
 MODEL_VERSION = "halifax-base-price-v1"
 TRAINING_MODE = "halifax-real-sales"
 MARKET_ID = "halifax_maritimes"
-MARKET_LABEL = "Halifax / Maritimes"
+MARKET_LABEL = "Halifax (HRM)"
 LOCATION_FEATURE_VERSION = "latlon-polynomial-cluster-v1"
 CLUSTER_COUNT = 12
 TEMPORAL_HOLDOUT_MONTHS = 6
@@ -1164,15 +1164,15 @@ def _normalize_request(payload: dict[str, Any], bundle: HalifaxModelBundle) -> d
     property_type = str(payload.get("propertyType") or "").strip()
     if property_type == "Condo":
         raise ValueError(
-            "Condo estimates are not available for Halifax / Maritimes: PVSC open data does not cover "
+            "Condo estimates are not available for Halifax (HRM): PVSC open data does not cover "
             "condo unit characteristics. Supported property types are Detached, Townhouse, and Duplex.",
         )
     if property_type not in PROPERTY_TYPES:
-        raise ValueError("propertyType must be one of Detached, Townhouse, or Duplex for Halifax / Maritimes")
+        raise ValueError("propertyType must be one of Detached, Townhouse, or Duplex for Halifax (HRM)")
 
     postal_code = _normalize_postal_code(payload.get("postalCode"))
     if postal_code is None or not HALIFAX_PREFIX_PATTERN.match(postal_code):
-        raise ValueError("postalCode must be a Halifax / Maritimes postal code starting with B plus a digit, like B3H 1A1")
+        raise ValueError("postalCode must be a Halifax (HRM) postal code starting with B plus a digit, like B3H 1A1")
     if postal_code[:3] not in bundle.fsa_centroids:
         raise ValueError(
             f"postal FSA {postal_code[:3]} is outside the Halifax model's observed training geography; "

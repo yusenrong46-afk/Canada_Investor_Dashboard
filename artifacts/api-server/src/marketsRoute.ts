@@ -22,7 +22,7 @@ export function buildMarketsResponse(mode: ApiMode = resolveApiMode()): MarketsR
         note = "Demo mode has precomputed Vancouver samples only.";
       } else if (id === "halifax_maritimes" && mode === "public" && !hasEvidenceRows("halifax_maritimes")) {
         status = "live-only";
-        note = "The Halifax / Maritimes evidence export has no rows, so public mode falls back to live mode for this market.";
+        note = "The Halifax (HRM) evidence export has no rows, so public mode falls back to live mode for this market.";
       }
 
       return {

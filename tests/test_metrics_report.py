@@ -62,7 +62,7 @@ def test_metrics_report_writes_markdown(tmp_path: Path, monkeypatch):
     report = build_model_report()
 
     assert report.startswith("# Model Metrics Report")
-    assert "| Segment | Model | Temporal MAE | Temporal MAPE | Temporal R2 | N | Random MAE | Random MAPE |" in report
+    assert "| Segment | Model | Holdout MAE | Holdout MAPE | Holdout R2 | N | Random MAE | Random MAPE |" in report
 
 
 def test_metrics_report_marks_conformal_and_spatial_unavailable_without_v5_bundle(tmp_path: Path, monkeypatch):
@@ -168,3 +168,34 @@ def test_metrics_report_says_coverage_not_measured_when_holdout_too_small(tmp_pa
 
     assert "| Duplex | 80.00% | not available | 20 | 0 | none |" in report
     assert "| Duplex | $200,000 | not run | not available |" in report
+
+
+def test_metrics_report_reads_nested_spatial_metrics_and_labels_random_splits(tmp_path: Path, monkeypatch):
+    bundle = _v5_bundle(
+        evaluation_summary={
+            "perType": {
+                "Condo": {
+                    "selectedModel": "xgboost",
+                    "holdout": {"mae": 100_000.0, "rmse": 150_000.0, "mape": 0.12, "r2": 0.8, "rows": 200},
+                    "spatialCv": {
+                        "randomCvMae": 90_000.0,
+                        "spatialCvMae": 110_000.0,
+                        "spatialGeneralizationGapPct": 22.2,
+                    },
+                },
+            },
+            "overallWeightedMetrics": {"holdoutMae": 100_000.0, "holdoutMape": 0.12, "holdoutR2": 0.8},
+            "selectedModels": {"Condo": "xgboost"},
+            "validationStrategy": {"trainHoldoutSplit": "80/20 stratified by price band within each property type"},
+        },
+    )
+    artifact = _write_report_fixture(tmp_path, "nested_spatial.pkl", bundle)
+    missing = tmp_path / "missing_halifax.pkl"
+    monkeypatch.setattr(report_module, "VANCOUVER_ARTIFACT", artifact)
+    monkeypatch.setattr(report_module, "HALIFAX_ARTIFACT", missing)
+
+    report = build_model_report()
+
+    assert "Random-split MAE" in report
+    assert "Temporal MAE" not in report
+    assert "| Condo | $90,000 | $110,000 | 22.2% |" in report
