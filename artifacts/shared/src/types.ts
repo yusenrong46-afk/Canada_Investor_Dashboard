@@ -331,12 +331,26 @@ export interface DemoMetricsResponse {
 
 export type ApiRuntimeMode = "live-model" | "public-interactive" | "demo-samples";
 
+export interface ApiHealthRelease {
+  releaseId: string | null;
+  role: string;
+  validated: boolean;
+  productDataValidated: boolean;
+  validationScope: string | null;
+  lineageClass: string | null;
+  dataChecksPassed: boolean;
+  rawLineageRecovered: boolean;
+  markets: Record<string, string>;
+  summary: string;
+}
+
 export interface ApiHealthResponse {
   ok: true;
   service: "api-server";
   mode: ApiRuntimeMode;
   contractVersion: string;
   modelServiceReady?: boolean;
+  release: ApiHealthRelease;
 }
 
 export type MarketEvidenceRow = z.infer<typeof marketEvidenceRowSchema>;

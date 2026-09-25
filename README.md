@@ -222,7 +222,9 @@ Model training is offline-only. To rebuild approved Vancouver, Halifax, and Seat
 
 The inference service only loads the resulting versioned artifacts; it never trains or silently repairs a model during a request or service startup.
 
-Readers follow `data/releases/current.json` and load every `data/exports/<file>` from that one release directory. If the pointer is missing, they use `data/exports/` directly. The static Vercel bundle includes `data/releases/` with the committed pointer; a local pointer change does not update a deployment that was already built.
+Readers pin `data/releases/current.json` once per process and load every export from that release. A pointer change is picked up by a restarted process. A missing file in the pinned release is an error; readers do not borrow it from another release or from `data/exports/`. If no pointer exists at startup, they use `data/exports/` directly. The static Vercel bundle includes `data/releases/` with the committed pointer; a local pointer change does not update a deployment that was already built.
+
+Publication uses an explicit profile (required artifacts, required checks, and the build step that owns each artifact). An empty checks list or a missing warehouse/evidence export cannot be published. `validated` and `productDataValidated` stay false: a fixture can pass its own checks without claiming production data, and a scoped HRM data candidate would not claim that Vancouver or the fitted models are validated. `/health` reports the pinned release role and that summary.
 
 The selected release `legacy-processed-20260726` is a retained legacy processed snapshot. `validated` is false. Raw PVSC and Vancouver listing bytes are not in this checkout, so it does not claim recovered raw lineage. A candidate of the same processed files fails the hard contracts (duplicate Vancouver listing-row fingerprints, and join/raw-lineage checks that are `not_applicable` without the raw snapshots). The 0.90 sale-to-dwelling threshold was not lowered to make it pass.
 

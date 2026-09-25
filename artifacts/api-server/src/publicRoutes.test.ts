@@ -156,5 +156,8 @@ describe("public mode health", () => {
 
     expect(response.status).toBe(200);
     expect(body.mode).toBe("public-interactive");
+    expect(body.release.role).toBe("retained_legacy");
+    expect(body.release.productDataValidated).toBe(false);
+    expect(body.release.summary).toContain("retained legacy");
   });
 });

@@ -38,7 +38,12 @@ def _load_export(path: Path) -> Any:
 
 
 def market_trend_payload(market_id: str) -> dict:
-    path = _export_path()
+    from scripts.release_store import ReleaseError
+
+    try:
+        path = _export_path()
+    except ReleaseError as error:
+        return {"status": "unavailable", "message": str(error)}
     export = _load_export(path)
     if export is None:
         return {

@@ -323,12 +323,26 @@ export const insightsResponseSchema = z.object({
   dataQualityNotes: z.array(z.string()),
 });
 
+export const apiHealthReleaseSchema = z.object({
+  releaseId: z.string().nullable(),
+  role: z.string(),
+  validated: z.boolean(),
+  productDataValidated: z.boolean(),
+  validationScope: z.string().nullable(),
+  lineageClass: z.string().nullable(),
+  dataChecksPassed: z.boolean(),
+  rawLineageRecovered: z.boolean(),
+  markets: z.record(z.string(), z.string()),
+  summary: z.string(),
+});
+
 export const apiHealthResponseSchema = z.object({
   ok: z.literal(true),
   service: z.literal("api-server"),
   mode: z.enum(["live-model", "public-interactive", "demo-samples"]),
   contractVersion: z.literal(API_CONTRACT_VERSION),
   modelServiceReady: z.boolean().optional(),
+  release: apiHealthReleaseSchema,
 });
 
 const marketMapCellSchema = z.object({

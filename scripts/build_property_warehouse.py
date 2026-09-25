@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -277,16 +276,27 @@ def _identity_contracts(frame: pd.DataFrame, market_id: str) -> list[dict[str, A
     ]
 
 
-def _record_processed_snapshots(entries: list[tuple[str, Path, pd.DataFrame, str]]) -> None:
-    """Attach input fingerprints to the open candidate. Content hash excludes fetch time."""
+def _candidate_relative(path: Path) -> str | None:
     root = os.environ.get("CVH_CANDIDATE_ROOT")
     if not root:
+        return None
+    try:
+        return path.resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _record_processed_snapshots(
+    entries: list[tuple[str, Path, pd.DataFrame, str]],
+    checks: list[dict[str, Any]] | None = None,
+    outputs: list[Path] | None = None,
+) -> None:
+    """Write a receipt for the parent build. This process does not edit manifest.json."""
+    if not os.environ.get("CVH_RECEIPT_PATH"):
         return
-    manifest_path = Path(root) / "manifest.json"
-    if not manifest_path.is_file():
-        return
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    snapshots = manifest.setdefault("snapshots", [])
+    from scripts.release_store import write_step_receipt
+
+    snapshots = []
     for name, path, frame, notes in entries:
         if not path.is_file():
             continue
@@ -302,7 +312,8 @@ def _record_processed_snapshots(entries: list[tuple[str, Path, pd.DataFrame, str
                 notes=notes,
             )
         )
-    atomic_write_text(manifest_path, json.dumps(manifest, indent=2) + "\n")
+    relative_outputs = [relative for path in outputs or [] if (relative := _candidate_relative(path))]
+    write_step_receipt(snapshots=snapshots, checks=checks or [], outputs=relative_outputs)
 
 
 def _scalar(connection: Any, sql: str) -> int:
@@ -389,8 +400,6 @@ def build_property_warehouse(
                 "Legacy processed Halifax extract. Account number aan was not retained in this CSV, so sale identity is a processed-row fingerprint. Raw PVSC bytes are not in this checkout.",
             )
         )
-    _record_processed_snapshots(snapshot_entries)
-
     warehouse_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     partial_warehouse = warehouse_path.with_name(warehouse_path.name + ".partial")
@@ -462,10 +471,12 @@ def build_property_warehouse(
 
     os.replace(partial_warehouse, warehouse_path)
     Path(str(partial_warehouse) + ".wal").unlink(missing_ok=True)
-    contracts_path = os.environ.get("CVH_CONTRACTS_PATH")
-    if contracts_path:
-        atomic_write_text(Path(contracts_path), json.dumps({"checks": contract_checks}, indent=2) + "\n")
     write_warehouse_report(summary)
+    _record_processed_snapshots(
+        snapshot_entries,
+        contract_checks,
+        outputs=[warehouse_path, report_path],
+    )
     return summary
 
 

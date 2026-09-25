@@ -29,6 +29,12 @@ class BuildStep:
     required: bool = False
     depends_on: tuple[str, ...] = ()
     output_validators: tuple[Callable[[Path], str], ...] = ()
+    mutates: tuple[str, ...] = ()
+
+
+def _step_slug(name: str) -> str:
+    slug = "".join(character if character.isalnum() else "-" for character in name.lower())
+    return "-".join(part for part in slug.split("-") if part)
 
 
 def _display_path(path: Path) -> str:
@@ -70,6 +76,7 @@ def production_steps(candidate_root: Path) -> list[BuildStep]:
             inputs=(REPO_ROOT / "data" / "raw" / "market" / "18100205.csv",),
             outputs=(exports / "market_trend.json",),
             required=False,
+            mutates=("warehouse/property_analytics.duckdb",),
         ),
         BuildStep(
             name="market evidence export",
@@ -104,6 +111,7 @@ def production_steps(candidate_root: Path) -> list[BuildStep]:
             outputs=(exports / "model_experiments.json", reports / "model_experiments_report.md"),
             required=True,
             depends_on=("analytics warehouse",),
+            mutates=("warehouse/property_analytics.duckdb",),
         ),
         BuildStep(
             name="model metrics report",
@@ -141,6 +149,7 @@ def run_build(
     child_env["CVH_STRICT"] = "1" if strict else "0"
     if candidate is not None:
         child_env["CVH_CANDIDATE_ROOT"] = str(candidate.root)
+        child_env["CVH_BUILD_ID"] = candidate.build_id
         child_env["CVH_WAREHOUSE_PATH"] = str(candidate.root / "warehouse" / "property_analytics.duckdb")
         child_env["CVH_EXPORT_DIR"] = str(candidate.root / "exports")
         child_env["CVH_REPORT_DIR"] = str(candidate.root / "reports")
@@ -175,7 +184,10 @@ def run_build(
             results.append((step.name, status, reason))
             continue
 
+        receipt_path = None
         if candidate is not None:
+            receipt_path = candidate.root / "receipts" / f"{_step_slug(step.name)}.json"
+            child_env["CVH_RECEIPT_PATH"] = str(receipt_path)
             candidate.begin_step(step.name, list(step.outputs))
 
         command = [sys.executable, str(step.script), *step.args]
@@ -232,8 +244,17 @@ def run_build(
             results.append((step.name, "FAILED", "; ".join(validator_errors)))
             continue
 
+        if candidate is not None and receipt_path is not None and receipt_path.is_file():
+            merge_error = candidate.merge_receipt(receipt_path)
+            if merge_error:
+                failed_steps.add(step.name)
+                results.append((step.name, "FAILED", merge_error))
+                continue
+
         if candidate is not None and output_paths:
-            stale = candidate.complete_step(step.name, output_paths)
+            recorded = candidate.manifest.get("artifacts", {})
+            mutates = tuple(relative for relative in step.mutates if relative in recorded)
+            stale = candidate.complete_step(step.name, output_paths, mutates=mutates)
             if stale:
                 failed_steps.add(step.name)
                 results.append((step.name, "FAILED", stale))
@@ -243,6 +264,9 @@ def run_build(
 
     if candidate is not None and not failed_steps:
         try:
+            checks = candidate.collected_checks()
+            if checks:
+                candidate.write_contracts(checks)
             candidate.reseal()
         except Exception as error:
             results.append(("reseal", "FAILED", str(error)))
@@ -283,6 +307,7 @@ if __name__ == "__main__":
     cli_args = parser.parse_args()
     candidate = open_candidate(
         lineage_class=LINEAGE_LEGACY,
+        profile_id="retained_legacy",
         reference_date=cli_args.reference_date,
         raw_lineage_recovered=False,
         notes=(

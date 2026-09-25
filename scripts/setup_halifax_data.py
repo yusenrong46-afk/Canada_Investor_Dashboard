@@ -506,6 +506,7 @@ def build_training_extract(
         "accountId",
         "saleObservationId",
         "identityKind",
+        "crossSnapshotMatch",
     ]
     extract = clean.rename(columns={"assessed_value": "assessedValue"})[export_columns].reset_index(drop=True)
 

@@ -43,7 +43,12 @@ def _export_path() -> Path:
 
 
 def load_uplift_export() -> dict[str, Any]:
-    path = _export_path().resolve()
+    from scripts.release_store import ReleaseError
+
+    try:
+        path = _export_path().resolve()
+    except ReleaseError as error:
+        raise ValueError(str(error)) from error
     cache_key = str(path)
     if cache_key in _EXPORT_CACHE:
         return _EXPORT_CACHE[cache_key]

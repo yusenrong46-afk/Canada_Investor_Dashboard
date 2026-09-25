@@ -2,9 +2,20 @@
 
 Halifax account identity is the PVSC assessment account number (`aan`).
 That value is not unique in raw sales: one account can sell more than once.
-A sale observation id is a real upstream transaction id when one is present
-and unique. Otherwise it is `aan|sale_date|sale_price`, and that composite
-is rejected when it is not unique.
+`aan` plus sale date is also not assumed to be unique.
+
+`sale_transaction_id` is the only column treated as a verified stable
+transaction id. A price correction keeps that id, and cross-snapshot matching
+is marked supported.
+
+Socrata `:id` and `sale_id` are snapshot row identifiers. They can label one
+extract, but they are not verified to survive a dataset replacement, so
+cross-snapshot matching stays unsupported.
+
+Without one of those columns the observation id is
+`aan|sale_date|sale_price`. That key changes when the price is corrected and
+does not support cross-snapshot matching. A collision is rejected instead of
+being merged by guesswork.
 
 Vancouver listing rows in the processed extract have no source property id.
 The listing-row fingerprint is a hash of mutable listing fields. It is not a
@@ -42,7 +53,15 @@ HALIFAX_PROCESSED_FINGERPRINT_COLUMNS = (
     "propertyType",
 )
 
-SOURCE_SALE_ID_COLUMNS = (":id", "sale_id", "transaction_id", "sale_transaction_id")
+# Durable transaction key. Only columns whose semantics have been verified
+# belong here. Socrata `:id` does not: a dataset replacement can reassign it.
+VERIFIED_STABLE_SALE_ID_COLUMNS = ("sale_transaction_id",)
+
+# Row ids that are unique inside one snapshot and are not a cross-snapshot key.
+SNAPSHOT_ROW_ID_COLUMNS = (":id", "sale_id")
+
+CROSS_SNAPSHOT_SUPPORTED = "supported"
+CROSS_SNAPSHOT_UNSUPPORTED = "unsupported"
 
 
 def _is_missing(value: object) -> bool:
@@ -96,29 +115,29 @@ def assign_sale_identity(frame: pd.DataFrame) -> pd.DataFrame:
     if (account == "").any():
         raise ValueError("Halifax sale identity requires aan on every sale row")
 
-    source_column = next(
-        (
-            column
-            for column in SOURCE_SALE_ID_COLUMNS
-            if column in frame.columns and frame[column].map(_is_missing).sum() == 0
-        ),
-        None,
-    )
-    if source_column is not None:
-        sale_id = frame[source_column].map(canonical_token)
-        kind = f"source:{source_column}"
+    verified_column = _populated_column(frame, VERIFIED_STABLE_SALE_ID_COLUMNS)
+    snapshot_column = _populated_column(frame, SNAPSHOT_ROW_ID_COLUMNS)
+    if verified_column is not None:
+        sale_id = frame[verified_column].map(canonical_token)
+        kind = f"source:{verified_column}"
+        cross_snapshot = CROSS_SNAPSHOT_SUPPORTED
+    elif snapshot_column is not None:
+        sale_id = frame[snapshot_column].map(canonical_token)
+        kind = f"snapshot_observation:{snapshot_column}"
+        cross_snapshot = CROSS_SNAPSHOT_UNSUPPORTED
     else:
         price_column = "sale_price" if "sale_price" in frame.columns else "salePrice" if "salePrice" in frame.columns else None
         if "sale_date" not in frame.columns or price_column is None:
-            raise ValueError("Fallback Halifax sale key needs sale_date and sale_price")
+            raise ValueError("Snapshot Halifax sale key needs sale_date and sale_price")
         dates = pd.to_datetime(frame["sale_date"], errors="coerce")
         if dates.isna().any():
-            raise ValueError("Fallback Halifax sale key needs a parseable sale_date on every row")
+            raise ValueError("Snapshot Halifax sale key needs a parseable sale_date on every row")
         prices = pd.to_numeric(frame[price_column], errors="coerce")
         if prices.isna().any():
-            raise ValueError("Fallback Halifax sale key needs sale_price on every row")
+            raise ValueError("Snapshot Halifax sale key needs sale_price on every row")
         sale_id = account + "|" + dates.dt.strftime("%Y-%m-%d") + "|" + prices.map(canonical_token)
-        kind = "fallback:aan|sale_date|sale_price"
+        kind = "snapshot_observation:aan|sale_date|sale_price"
+        cross_snapshot = CROSS_SNAPSHOT_UNSUPPORTED
 
     if sale_id.duplicated().any():
         raise ValueError(
@@ -131,9 +150,17 @@ def assign_sale_identity(frame: pd.DataFrame) -> pd.DataFrame:
             "accountId": account,
             "saleObservationId": sale_id,
             "identityKind": kind,
+            "crossSnapshotMatch": cross_snapshot,
         },
         index=frame.index,
     )
+
+
+def _populated_column(frame: pd.DataFrame, columns: tuple[str, ...]) -> str | None:
+    for column in columns:
+        if column in frame.columns and frame[column].map(_is_missing).sum() == 0:
+            return column
+    return None
 
 
 def attach_identity(frame: pd.DataFrame, market: str) -> pd.DataFrame:
@@ -152,7 +179,16 @@ def attach_identity(frame: pd.DataFrame, market: str) -> pd.DataFrame:
         enriched["sourceObservationId"] = enriched["saleObservationId"].map(canonical_token)
         enriched["accountId"] = enriched["accountId"].map(canonical_token)
         if "identityKind" not in enriched.columns:
-            enriched["identityKind"] = "source_sale_observation"
+            enriched["identityKind"] = "unverified_sale_observation"
+        kind = enriched["identityKind"].map(canonical_token)
+        if "crossSnapshotMatch" not in enriched.columns:
+            enriched["crossSnapshotMatch"] = kind.map(
+                lambda value: CROSS_SNAPSHOT_SUPPORTED
+                if value == "source:sale_transaction_id"
+                else CROSS_SNAPSHOT_UNSUPPORTED
+            )
+        else:
+            enriched.loc[kind != "source:sale_transaction_id", "crossSnapshotMatch"] = CROSS_SNAPSHOT_UNSUPPORTED
         enriched["propertyObservationId"] = "halifax:sale:" + enriched["sourceObservationId"]
         return enriched
 
@@ -162,6 +198,7 @@ def attach_identity(frame: pd.DataFrame, market: str) -> pd.DataFrame:
         enriched["accountId"] = empty
         enriched["sourceObservationId"] = empty
         enriched["identityKind"] = "processed_row_fingerprint"
+        enriched["crossSnapshotMatch"] = CROSS_SNAPSHOT_UNSUPPORTED
         return enriched
 
     if market == "vancouver":
@@ -170,6 +207,7 @@ def attach_identity(frame: pd.DataFrame, market: str) -> pd.DataFrame:
         enriched["accountId"] = empty
         enriched["sourceObservationId"] = empty
         enriched["identityKind"] = "listing_row_fingerprint"
+        enriched["crossSnapshotMatch"] = CROSS_SNAPSHOT_UNSUPPORTED
         return enriched
 
     raise ValueError(f"Unsupported market for identity assignment: {market}")

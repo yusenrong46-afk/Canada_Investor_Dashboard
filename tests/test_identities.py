@@ -30,7 +30,8 @@ def test_fallback_sale_key_allows_repeat_accounts_and_rejects_collisions() -> No
     identity = assign_sale_identity(sales)
     assert list(identity["accountId"]) == ["100", "100"]
     assert identity["saleObservationId"].is_unique
-    assert identity["identityKind"].iloc[0] == "fallback:aan|sale_date|sale_price"
+    assert identity["identityKind"].iloc[0] == "snapshot_observation:aan|sale_date|sale_price"
+    assert identity["crossSnapshotMatch"].iloc[0] == "unsupported"
 
     collided = pd.DataFrame(
         [
@@ -55,18 +56,21 @@ def test_replay_and_shuffle_keep_source_sale_ids() -> None:
     shuffled = assign_sale_identity(sales.sample(frac=1, random_state=3))
     assert first["saleObservationId"].tolist() == second["saleObservationId"].tolist()
     assert sorted(first["saleObservationId"]) == sorted(shuffled["saleObservationId"])
-    assert first["identityKind"].iloc[0] == "source::id"
+    assert first["identityKind"].iloc[0] == "snapshot_observation::id"
+    assert first["crossSnapshotMatch"].iloc[0] == "unsupported"
 
 
-def test_source_correction_updates_one_observation_without_a_duplicate() -> None:
-    original = pd.DataFrame([_sale(aan="55", **{":id": "tx-55"}, sale_price=100000, postal="B3H")])
+def test_verified_transaction_id_survives_a_price_correction() -> None:
+    original = pd.DataFrame([_sale(aan="55", sale_transaction_id="txn-55", sale_price=100000, postal="B3H")])
     corrected = original.copy()
     corrected.loc[0, "sale_price"] = 125000
     corrected.loc[0, "postal"] = "B3J"
 
     before = assign_sale_identity(original)
     after = assign_sale_identity(corrected)
-    assert before["saleObservationId"].iloc[0] == after["saleObservationId"].iloc[0] == "tx-55"
+    assert before["saleObservationId"].iloc[0] == after["saleObservationId"].iloc[0] == "txn-55"
+    assert before["crossSnapshotMatch"].iloc[0] == "supported"
+    assert after["identityKind"].iloc[0] == "source:sale_transaction_id"
     assert before["accountId"].iloc[0] == after["accountId"].iloc[0] == "55"
 
     combined = pd.concat([original.assign(snapshot="v1"), corrected.assign(snapshot="v2")], ignore_index=True)
@@ -91,11 +95,31 @@ def test_source_correction_updates_one_observation_without_a_duplicate() -> None
     assert first_snapshot["ingestion"]["fetchedAt"] != second_snapshot["ingestion"]["fetchedAt"]
 
 
+def test_snapshot_row_id_and_price_fallback_do_not_claim_stable_matching() -> None:
+    original_row = _sale(aan="55", sale_price=100000, **{":id": "row-55"})
+    corrected_row = dict(original_row)
+    corrected_row["sale_price"] = 125000
+    before = assign_sale_identity(pd.DataFrame([original_row]))
+    after = assign_sale_identity(pd.DataFrame([corrected_row]))
+    assert before["saleObservationId"].iloc[0] == after["saleObservationId"].iloc[0] == "row-55"
+    assert before["identityKind"].iloc[0] == "snapshot_observation::id"
+    assert before["crossSnapshotMatch"].iloc[0] == "unsupported"
+    assert after["crossSnapshotMatch"].iloc[0] == "unsupported"
+
+    fallback_before = assign_sale_identity(pd.DataFrame([_sale(aan="55", sale_price=100000)]))
+    fallback_after = assign_sale_identity(pd.DataFrame([_sale(aan="55", sale_price=125000)]))
+    assert fallback_before["crossSnapshotMatch"].iloc[0] == "unsupported"
+    assert fallback_before["identityKind"].iloc[0] == "snapshot_observation:aan|sale_date|sale_price"
+    assert fallback_before["saleObservationId"].iloc[0] != fallback_after["saleObservationId"].iloc[0]
+    assert fallback_before["accountId"].iloc[0] == fallback_after["accountId"].iloc[0] == "55"
+
+
 def test_non_key_correction_keeps_the_attached_sale_id() -> None:
     row = {
         "accountId": "55",
         "saleObservationId": "tx-55",
-        "identityKind": "source::id",
+        "identityKind": "source:sale_transaction_id",
+        "crossSnapshotMatch": "supported",
         "saleDate": "2024-05-01",
         "postalCode": "B3H1A1",
         "salePrice": 100000,
@@ -111,6 +135,8 @@ def test_non_key_correction_keeps_the_attached_sale_id() -> None:
     updated = attach_identity(pd.DataFrame([corrected]), "halifax_maritimes")
     assert original["propertyObservationId"].iloc[0] == updated["propertyObservationId"].iloc[0]
     assert original["propertyObservationId"].iloc[0] == "halifax:sale:tx-55"
+    assert original["crossSnapshotMatch"].iloc[0] == "supported"
+    assert updated["crossSnapshotMatch"].iloc[0] == "supported"
 
 
 def test_vancouver_fingerprint_is_not_stable_when_listing_fields_change() -> None:
