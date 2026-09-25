@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -12,12 +13,14 @@ import pandas as pd
 
 from scripts.identities import attach_identity, duplicate_id_count
 from scripts.output_guard import atomic_write_text, env_path, public_storage_ref, refuse_legacy_write, strict_from_env
-from scripts.release_store import LINEAGE_LEGACY, content_sha256, snapshot_record
+from scripts.release_store import LINEAGE_LEGACY, LINEAGE_RAW, content_sha256, snapshot_record
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VANCOUVER_TRAINING_PATH = REPO_ROOT / "data" / "processed" / "vancouver_base_model_training.csv"
-DEFAULT_HALIFAX_TRAINING_PATH = REPO_ROOT / "data" / "processed" / "halifax_base_model_training.csv"
+DEFAULT_HALIFAX_TRAINING_PATH = env_path(
+    "CVH_HALIFAX_TRAINING_PATH", REPO_ROOT / "data" / "processed" / "halifax_base_model_training.csv"
+)
 DEFAULT_HALIFAX_PERMITS_PATH = REPO_ROOT / "data" / "raw" / "halifax" / "hrm_building_permits_geolocated.csv"
 DEFAULT_WAREHOUSE_PATH = env_path(
     "CVH_WAREHOUSE_PATH", REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
@@ -300,10 +303,11 @@ def _record_processed_snapshots(
     for name, path, frame, notes in entries:
         if not path.is_file():
             continue
+        lineage = LINEAGE_RAW if name == "halifax_training_extract" and os.environ.get("CVH_JOIN_AUDIT_PATH") else LINEAGE_LEGACY
         snapshots.append(
             snapshot_record(
                 name=name,
-                lineage_class=LINEAGE_LEGACY,
+                lineage_class=lineage,
                 content_sha256=content_sha256(path),
                 storage_ref=public_storage_ref(path),
                 row_count=int(len(frame)),
@@ -321,6 +325,105 @@ def _scalar(connection: Any, sql: str) -> int:
     return int(value or 0)
 
 
+def _selected_markets() -> tuple[str, ...]:
+    raw = os.environ.get("CVH_WAREHOUSE_MARKETS", "vancouver,halifax_maritimes")
+    markets = tuple(part.strip() for part in raw.split(",") if part.strip())
+    unknown = [market for market in markets if market not in {"vancouver", "halifax_maritimes"}]
+    if unknown:
+        raise RuntimeError(f"Unsupported warehouse markets: {', '.join(unknown)}")
+    if not markets:
+        raise RuntimeError("CVH_WAREHOUSE_MARKETS did not name a market")
+    return markets
+
+
+def _join_contract() -> dict[str, Any]:
+    """Use a join audit computed from this build's raw inputs. Do not reuse a stored rate."""
+    threshold = 0.90
+    base = {
+        "name": "halifax_maritimes.sale_to_dwelling_join",
+        "severity": "hard",
+        "threshold": threshold,
+    }
+    audit_path = os.environ.get("CVH_JOIN_AUDIT_PATH")
+    if not audit_path or not Path(audit_path).is_file():
+        return {
+            **base,
+            "status": "not_applicable",
+            "observed": None,
+            "detail": (
+                "This input did not include a join audit computed from raw sales and dwelling rows. "
+                "The sale-to-dwelling rate was not measured. The 0.90 threshold still blocks an HRM data-check claim."
+            ),
+        }
+    audit = json.loads(Path(audit_path).read_text(encoding="utf-8"))
+    if audit.get("inputCapability") != "raw_sales_and_dwellings" or audit.get("remeasured") is not True:
+        return {
+            **base,
+            "status": "not_applicable",
+            "observed": audit.get("measuredRate"),
+            "detail": "The join audit is not a remeasurement of the raw sales and dwelling snapshot.",
+        }
+    rate = float(audit["measuredRate"])
+    return {
+        **base,
+        "status": "pass" if rate >= threshold else "fail",
+        "observed": rate,
+        "numerator": audit.get("numerator"),
+        "numeratorName": audit.get("numeratorName"),
+        "denominator": audit.get("denominator"),
+        "denominatorName": audit.get("denominatorName"),
+        "unmatchedAccounts": audit.get("unmatchedAccounts"),
+        "eligibleSourcePopulation": audit.get("eligibleSourcePopulation"),
+        "exclusions": audit.get("exclusions"),
+        "fanOut": audit.get("fanOut"),
+        "detail": (
+            f"Measured {rate:.6f} using {audit.get('numeratorName')} / {audit.get('denominatorName')}. "
+            "The 0.90 threshold was not changed and the denominator was not redefined."
+        ),
+    }
+
+
+def _sale_identity_contract(frame: pd.DataFrame) -> dict[str, Any]:
+    name = "halifax_maritimes.sale_identity"
+    if "identityKind" not in frame.columns or "crossSnapshotMatch" not in frame.columns or frame.empty:
+        return {
+            "name": name,
+            "severity": "hard",
+            "status": "fail",
+            "observed": None,
+            "detail": "Halifax rows have no labelled sale identity.",
+        }
+    blank = frame["identityKind"].map(lambda value: value is None or str(value).strip() == "")
+    kinds = sorted({str(value) for value in frame["identityKind"].dropna().unique()})
+    matches = sorted({str(value) for value in frame["crossSnapshotMatch"].dropna().unique()})
+    overclaim = "supported" in matches and kinds != ["source:sale_transaction_id"]
+    if bool(blank.any()) or not matches or overclaim:
+        return {
+            "name": name,
+            "severity": "hard",
+            "status": "fail",
+            "observed": ",".join(matches),
+            "identityKind": ",".join(kinds),
+            "detail": "Sale identity was missing or claimed cross-snapshot support without sale_transaction_id.",
+        }
+    supported = matches == ["supported"]
+    return {
+        "name": name,
+        "severity": "hard",
+        "status": "pass",
+        "observed": matches[0] if len(matches) == 1 else ",".join(matches),
+        "identityKind": kinds[0] if len(kinds) == 1 else ",".join(kinds),
+        "detail": (
+            "aan stays the account id. crossSnapshotMatch is supported because sale_transaction_id is present."
+            if supported
+            else (
+                "aan stays the account id. The published PVSC sales schema has no sale_transaction_id, "
+                "so this snapshot uses a labelled observation id and cross-snapshot matching is unsupported."
+            )
+        ),
+    }
+
+
 def build_property_warehouse(
     *,
     vancouver_training_path: Path = DEFAULT_VANCOUVER_TRAINING_PATH,
@@ -331,73 +434,74 @@ def build_property_warehouse(
     strict: bool = False,
 ) -> WarehouseBuildSummary:
     duckdb = _import_duckdb()
+    selected = _selected_markets()
+    vancouver_frame: pd.DataFrame | None = None
+    quality_rows: list[dict[str, Any]] = []
+    contract_checks: list[dict[str, Any]] = []
 
-    vancouver_frame = attach_identity(
-        _ensure_h3_column(_read_training_data(vancouver_training_path, REQUIRED_VANCOUVER_COLUMNS, "Vancouver")),
-        "vancouver",
-    )
-    quality_rows = _quality_rows(vancouver_frame, "vancouver")
-    contract_checks = _identity_contracts(vancouver_frame, "vancouver")
-    contract_checks.append(
-        {
-            "name": "vancouver.raw_lineage",
-            "severity": "hard",
-            "status": "not_applicable",
-            "observed": None,
-            "detail": (
-                "The processed Vancouver extract has no source listing id and no listing date. "
-                "A validated raw-backed release is blocked until those snapshots exist. "
-                "The listing-row fingerprint is not a durable property id."
-            ),
-        }
-    )
+    if "vancouver" in selected:
+        vancouver_frame = attach_identity(
+            _ensure_h3_column(_read_training_data(vancouver_training_path, REQUIRED_VANCOUVER_COLUMNS, "Vancouver")),
+            "vancouver",
+        )
+        quality_rows.extend(_quality_rows(vancouver_frame, "vancouver"))
+        contract_checks.extend(_identity_contracts(vancouver_frame, "vancouver"))
+        contract_checks.append(
+            {
+                "name": "vancouver.raw_lineage",
+                "severity": "hard",
+                "status": "not_applicable",
+                "observed": None,
+                "detail": (
+                    "The processed Vancouver extract has no source listing id and no listing date. "
+                    "It stays outside a raw-backed HRM release. "
+                    "The listing-row fingerprint is not a durable property id."
+                ),
+            }
+        )
 
     halifax_frame: pd.DataFrame | None = None
-    if halifax_training_path.exists():
+    if "halifax_maritimes" in selected and halifax_training_path.exists():
         halifax_frame = attach_identity(
             _read_training_data(halifax_training_path, REQUIRED_HALIFAX_COLUMNS, "Halifax"),
             "halifax_maritimes",
         )
         quality_rows.extend(_quality_rows(halifax_frame, "halifax_maritimes"))
         contract_checks.extend(_identity_contracts(halifax_frame, "halifax_maritimes"))
-        contract_checks.append(
-            {
-                "name": "halifax_maritimes.sale_to_dwelling_join",
-                "severity": "hard",
-                "status": "not_applicable",
-                "observed": None,
-                "numeratorName": "window_sales_after_latest_per_aan_inner_joined_to_dwellings",
-                "denominatorName": "latest_sale_per_aan_in_training_window",
-                "threshold": 0.90,
-                "detail": (
-                    "Raw PVSC snapshots are not in this checkout, so the join was not remeasured. "
-                    "The committed summary stores saleToDwellingJoin=0.7715 beside joinedToDwellings=18268 "
-                    "and windowSales=25160; 18268/25160 = 0.726073 (about 72.61%), so that rate field is internally "
-                    "inconsistent. The 0.90 publication threshold was not lowered."
-                ),
-            }
-        )
-    else:
-        message = f"Halifax training extract not found at {halifax_training_path}; building Vancouver-only warehouse."
+        contract_checks.append(_join_contract())
+        contract_checks.append(_sale_identity_contract(halifax_frame))
+    elif "halifax_maritimes" in selected:
+        message = f"Halifax training extract not found at {halifax_training_path}."
         print(f"WARNING: {message}")
         if strict:
             raise RuntimeError(message)
+    elif not halifax_training_path.exists() and "vancouver" in selected:
+        message = f"Halifax training extract not found at {halifax_training_path}; building Vancouver-only warehouse."
+        print(f"WARNING: {message}")
 
-    snapshot_entries = [
-        (
-            "vancouver_processed_training_csv",
-            vancouver_training_path,
-            vancouver_frame,
-            "Legacy processed Vancouver listing extract. No source listing id or listing date is in this file. The listing-row fingerprint is not a durable property id, and raw lineage is not recovered.",
-        )
-    ]
-    if halifax_frame is not None:
+    snapshot_entries: list[tuple[str, Path, pd.DataFrame, str]] = []
+    if vancouver_frame is not None:
         snapshot_entries.append(
             (
-                "halifax_processed_training_csv",
+                "vancouver_processed_training_csv",
+                vancouver_training_path,
+                vancouver_frame,
+                "Legacy processed Vancouver listing extract. No source listing id or listing date is in this file. The listing-row fingerprint is not a durable property id, and raw lineage is not recovered.",
+            )
+        )
+    if halifax_frame is not None:
+        raw_backed = os.environ.get("CVH_JOIN_AUDIT_PATH")
+        snapshot_entries.append(
+            (
+                "halifax_training_extract",
                 halifax_training_path,
                 halifax_frame,
-                "Legacy processed Halifax extract. Account number aan was not retained in this CSV, so sale identity is a processed-row fingerprint. Raw PVSC bytes are not in this checkout.",
+                (
+                    "Halifax extract built from the raw PVSC/HRM snapshot named by the join audit. "
+                    "Sale identity is whatever assign_sale_identity labelled; aan is the account."
+                    if raw_backed
+                    else "Legacy processed Halifax extract. Raw PVSC bytes are not an input to this warehouse build."
+                ),
             )
         )
     warehouse_path.parent.mkdir(parents=True, exist_ok=True)
@@ -410,11 +514,11 @@ def build_property_warehouse(
     try:
         connection.execute(_read_sql(WAREHOUSE_SQL_DIR / "schema.sql"))
 
-        connection.register("vancouver_training_source", vancouver_frame)
-        connection.execute("CREATE OR REPLACE TABLE stg_vancouver_listings AS SELECT * FROM vancouver_training_source")
-
         connection.execute(_read_sql(MART_SQL_DIR / "fact_property_training_mart.sql"))
-        connection.execute(_read_sql(MART_SQL_DIR / "fact_property_training_mart_insert_vancouver.sql"))
+        if vancouver_frame is not None:
+            connection.register("vancouver_training_source", vancouver_frame)
+            connection.execute("CREATE OR REPLACE TABLE stg_vancouver_listings AS SELECT * FROM vancouver_training_source")
+            connection.execute(_read_sql(MART_SQL_DIR / "fact_property_training_mart_insert_vancouver.sql"))
 
         if halifax_frame is not None:
             connection.register("halifax_training_source", halifax_frame)
@@ -452,7 +556,8 @@ def build_property_warehouse(
         summary = WarehouseBuildSummary(
             warehouse_path=warehouse_path,
             report_path=report_path,
-            source_rows=len(vancouver_frame) + (len(halifax_frame) if halifax_frame is not None else 0),
+            source_rows=(len(vancouver_frame) if vancouver_frame is not None else 0)
+            + (len(halifax_frame) if halifax_frame is not None else 0),
             training_mart_rows=_scalar(connection, "SELECT COUNT(*) FROM fact_property_training_mart"),
             model_ready_rows=_scalar(connection, "SELECT COUNT(*) FROM fact_property_training_mart WHERE is_model_ready"),
             market_summary_rows=_scalar(connection, "SELECT COUNT(*) FROM fact_market_feature_summary"),

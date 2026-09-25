@@ -27,7 +27,9 @@ The committed processed summary (`data/processed/halifax_base_model_summary.json
 | `rates.saleToDwellingJoin` | 0.7715 | Stored rate. |
 | 18268 / 25160 | 0.726073 | Quotient of the two stored counts, about 72.61%. It is not 0.7715. |
 
-Current code computes the rate on the inner join **before** the coordinate filter and can therefore disagree with `joinedToDwellings` if that later filter removes rows. Without the raw snapshot, this milestone does not decide which historical stage produced 0.7715 or the older 93.2% note. The acceptance threshold stays **0.90**. The legacy release is retained and is not a validated release.
+Current code computes the rate on the inner join **before** the coordinate filter and can therefore disagree with `joinedToDwellings` if that later filter removes rows. The stored July summary was not recomputed from raw bytes, because those bytes were not in the repository. The acceptance threshold stays **0.90**. The legacy release is retained and is not a validated release.
+
+A new open-data snapshot was acquired on 2026-09-25 (not a recovery of the July extract). On that snapshot the same denominator — latest sale per `aan` on or after 2022-01-01 — had 26,698 accounts, of which 20,565 matched an eligible dwelling. The measured rate is 0.770282. It is below 0.90, so no HRM data candidate was published. Joined rows per account max was 1. Sale identity is `aan|sale_date|sale_price` because the published sales schema has no `sale_transaction_id`; cross-snapshot matching is unsupported.
 
 Earlier notes that were also not recomputed:
 

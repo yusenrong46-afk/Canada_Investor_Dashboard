@@ -106,7 +106,7 @@ HRM_RAW_EVIDENCE = ReleaseProfile(
         "halifax_maritimes.observation_id_present",
         "halifax_maritimes.observation_id_unique",
         "halifax_maritimes.sale_to_dwelling_join",
-        "halifax_maritimes.raw_sale_identity",
+        "halifax_maritimes.sale_identity",
     ),
     model_limitations=(
         "HRM data checks do not resolve Halifax model leakage or the training/serving feature mismatch. "

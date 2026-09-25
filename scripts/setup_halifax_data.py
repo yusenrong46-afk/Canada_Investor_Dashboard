@@ -360,25 +360,44 @@ def build_training_extract(
     assessments = pd.read_csv(assessments_path, low_memory=False)
     civic = pd.read_csv(civic_addresses_path, low_memory=False)
 
+    sales_source_rows = int(len(sales))
     sales["sale_date"] = pd.to_datetime(sales["sale_date"], errors="coerce")
-    sales = sales.dropna(subset=["sale_date", "sale_price", "aan"])
+    missing_sale_key = sales["sale_date"].isna() | sales["sale_price"].isna() | sales["aan"].isna()
+    excluded_missing_sale_key = int(missing_sale_key.sum())
+    sales = sales.loc[~missing_sale_key].copy()
+    if sales.empty:
+        raise RuntimeError(
+            "Halifax sales snapshot has no rows with aan, sale_date, and sale_price. "
+            "The raw file was not modified."
+        )
     sales["aan"] = sales["aan"].map(lambda value: str(value).strip())
     # Identify every sale before keeping the latest sale per account. aan is not unique.
     sales = sales.join(assign_sale_identity(sales))
+    identity_kind = str(sales["identityKind"].iloc[0]) if len(sales) else "none"
+    cross_snapshot = str(sales["crossSnapshotMatch"].iloc[0]) if len(sales) else "unsupported"
 
     factors, index_latest_month = _time_adjustment_factors(sales)
     sales["timeAdjustmentFactor"] = factors
 
+    before_window = int(len(sales))
     window_sales = sales[sales["sale_date"] >= TRAINING_WINDOW_START].copy()
+    excluded_before_window = before_window - int(len(window_sales))
+    sales_aan_max = int(window_sales.groupby("aan").size().max()) if len(window_sales) else 0
+    excluded_older_sales = int(window_sales["aan"].duplicated().sum())
     window_sales = window_sales.sort_values(["sale_date", "saleObservationId"]).drop_duplicates("aan", keep="last")
 
     dwellings["aan"] = dwellings["aan"].astype(str)
+    dwelling_source_rows = int(len(dwellings))
+    construction_excluded = int((dwellings["under_construction"] != "N").sum())
+    units_excluded = int((~dwellings["living_units"].between(1, 4)).sum())
     eligible = dwellings[
         (dwellings["under_construction"] == "N") & dwellings["living_units"].between(1, 4)
     ].copy()
     eligible["propertyType"] = eligible["style"].map(_map_style_to_property_type)
     style_excluded = int(eligible["propertyType"].isna().sum())
     eligible = eligible.dropna(subset=["propertyType"])
+    dwelling_aan_max = int(eligible.groupby("aan").size().max()) if len(eligible) else 0
+    excluded_extra_dwelling_rows = int(eligible["aan"].duplicated().sum())
     eligible = eligible.drop_duplicates("aan", keep="first")
 
     dwelling_columns = eligible[
@@ -397,14 +416,56 @@ def build_training_extract(
     join_denominator = int(len(window_sales))
     join_numerator_name = "window_sales_after_latest_per_aan_inner_joined_to_eligible_dwellings"
     join_denominator_name = "latest_sale_per_aan_on_or_after_training_window_start"
+    matched_accounts = int(joined["aan"].nunique())
+    unmatched_accounts = join_denominator - matched_accounts
+    joined_per_account_max = int(joined.groupby("aan").size().max()) if len(joined) else 0
     join_rate = join_numerator / join_denominator if join_denominator else 0.0
+    join_audit = {
+        "inputCapability": "raw_sales_and_dwellings",
+        "remeasured": True,
+        "eligibleSourcePopulation": {
+            "name": "downloaded_hrm_sales_with_aan_sale_date_and_sale_price",
+            "count": int(len(sales)),
+        },
+        "denominatorName": join_denominator_name,
+        "denominator": join_denominator,
+        "numeratorName": join_numerator_name,
+        "numerator": join_numerator,
+        "matchedAccounts": matched_accounts,
+        "unmatchedAccounts": unmatched_accounts,
+        "measuredRate": join_rate,
+        "threshold": MIN_SALE_TO_DWELLING_JOIN_RATE,
+        "exclusionCountsOverlap": True,
+        "exclusions": {
+            "salesMissingAanDateOrPrice": excluded_missing_sale_key,
+            "salesBeforeTrainingWindow": excluded_before_window,
+            "olderSalesCollapsedToLatestPerAan": excluded_older_sales,
+            "dwellingsNotUnderConstructionN": construction_excluded,
+            "dwellingsLivingUnitsOutside1To4": units_excluded,
+            "dwellingsStyleUnmapped": style_excluded,
+            "extraDwellingRowsCollapsedPerAan": excluded_extra_dwelling_rows,
+        },
+        "fanOut": {
+            "windowSalesRowsPerAanBeforeLatest": sales_aan_max,
+            "eligibleDwellingRowsPerAanBeforeDedupe": dwelling_aan_max,
+            "joinedRowsPerAanMax": joined_per_account_max,
+        },
+        "sourceRows": {
+            "sales": sales_source_rows,
+            "dwellings": dwelling_source_rows,
+        },
+        "identityKind": identity_kind,
+        "crossSnapshotMatch": cross_snapshot,
+    }
     if join_rate < MIN_SALE_TO_DWELLING_JOIN_RATE:
         message = (
             f"Sale->dwelling join rate {join_rate:.1%} is below floor "
             f"{MIN_SALE_TO_DWELLING_JOIN_RATE:.0%}"
         )
+        failed_audit = summary_path.with_name("join_audit.json")
+        write_bytes_atomically(failed_audit, (json.dumps(join_audit, indent=2) + "\n").encode("utf-8"))
         if strict:
-            raise RuntimeError(message)
+            raise RuntimeError(f"{message}. Measured audit kept at {failed_audit}")
         print(f"WARNING: {message}")
 
     assessments["aan"] = assessments["aan"].astype(str)
@@ -562,10 +623,13 @@ def build_training_extract(
         },
         "identity": {
             "account": "aan",
-            "saleObservation": "upstream transaction id when present and unique, otherwise aan|sale_date|sale_price",
+            "saleObservation": identity_kind,
+            "crossSnapshotMatch": cross_snapshot,
             "aanIsUniqueInRawSales": False,
             "trainingGrain": "latest sale per aan inside the training window",
+            "stableTransactionIdInSourceSchema": identity_kind == "source:sale_transaction_id",
         },
+        "joinAudit": join_audit,
     }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     write_bytes_atomically(summary_path, (json.dumps(summary, indent=2) + "\n").encode("utf-8"))
