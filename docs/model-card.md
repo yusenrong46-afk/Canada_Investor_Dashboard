@@ -72,12 +72,13 @@ Deal verdicts carry a seeded triangular stress test (5,000 draws) over the state
 
 - `scripts/generate_data_quality_report.py` — listing-data checks.
 - `scripts/build_property_warehouse.py` — per-market warehouse quality gates (source rows, model-ready rows, FSA completeness ≥95%, Halifax time-adjustment guardrail, tracked-only completeness for property tax / assessed value).
-- Halifax joins are measured, not assumed: see `docs/halifax-data-recon.md` (93% sale→dwelling join, 99.6% postal bridge match ≤150 m, ~11.6% bedrooms missing — left null in the extract and imputed on the train fold only).
+- The committed Halifax summary stores `saleToDwellingJoin` 0.7715 beside `joinedToDwellings` 18,268 and `windowSales` 25,160. 18268/25160 = 0.726073 (about 72.61%), so those stored fields do not describe one quotient. The 2026-09-25 raw snapshot was measured separately at 0.770282 (20,565 / 26,698) and stays below the 0.90 publication threshold. See `docs/halifax-data-recon.md`.
 
 ## Known Limitations
 
-- Vancouver predicts listing price, not final sale price.
-- Halifax sale prices include unobserved condition/renovation effects at sale time; the time adjustment is HRM-wide.
+- Vancouver predicts listing price, not final sale price. The shipped Vancouver bundle is a historical random 80/20 split. Default training now refuses a random split unless `ALLOW_RANDOM_HOLDOUT=1`, and that override is labeled random, not temporal. The shipped bundle was not retrained. The processed extract still has no `listingDate` column and no source listing id. Its duplicate count is unchanged: 7 exact extra copies, plus 2 further fingerprint groups that differ only in `propertyTax`.
+- Halifax sale prices include unobserved condition/renovation effects at sale time. A new training run rebuilds the target from sale price with an index fit only on sales before the holdout, holds out the last six calendar months as the test, uses the six months before that only to set the conformal ratio, and does not train on assessed value. Median and Ridge baselines are stored beside the selected model. The approved file `halifax_base_price_bundle_v1.pkl` is the earlier bundle: it still trained on assessed value, and an estimate from that file says so. `scripts/halifax_serving_evaluation.py` remains the standalone baseline measurement on the retained extract (test from 2025-12-01, 1,321 rows: median MAE $183,316 / MAPE 30.8%, Ridge MAE $101,464 / MAPE 17.0%, 76.7% test coverage).
+- Vancouver listing rows have no source property id. A hash of listing fields is a row fingerprint, not a durable property identifier, so a correction to price or coordinates will not match the previous row.
 - Halifax postal codes come from the nearest civic-address point (≤150 m guard); boundary misassignment is possible.
 - Location features use centroids, not parcel geometry (except Halifax training coordinates, which are parcel-level).
 - No condo coverage in Halifax (open-data gap, stated explicitly).
@@ -88,8 +89,8 @@ Deal verdicts carry a seeded triangular stress test (5,000 draws) over the state
 
 | Artifact | Protocol | Status |
 |---|---|---|
-| Halifax `halifax_base_price_bundle_v1.pkl` | Temporal 6-month holdout, train-only ship, Phase-1 cleaned extract | Loads via MANIFEST; temporal MAE ~$80.7k / MAPE ~14.2%; Duplex conformal ~69.3% (thin-segment waiver) |
-| Vancouver `vancouver_base_price_bundle_v5.pkl` | Still pre–Phase E random 80/20 | **Blocked:** available raw listings (`data_bc.csv`) have empty `Date Listed` / `Last Updated` columns. Training now fails closed unless `ALLOW_RANDOM_HOLDOUT=1`. |
+| Halifax `halifax_base_price_bundle_v1.pkl` | Temporal 6-month holdout, train-only ship, Phase-1 cleaned extract | Loads via MANIFEST; temporal MAE ~$80.7k / MAPE ~14.2%; Duplex conformal ~69.3% (thin-segment waiver). Unchanged by the 2026-09-26 serving-compatible baseline measurement. |
+| Vancouver `vancouver_base_price_bundle_v5.pkl` | Historical random 80/20 on listing price. Not a temporal evaluation. | Default `train_bundle` now fails unless `ALLOW_RANDOM_HOLDOUT=1`. The shipped pickle was not retrained in this milestone. |
 | Seattle uplift | Train-only shipped model | Retrain needs local Seattle raw files |
 | Halifax uplift export | Observational repeat-sale × permit medians | `permitMatchRate` + co-occurrence/selection-bias notes; Addition still insufficient-data |
 

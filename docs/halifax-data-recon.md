@@ -1,4 +1,4 @@
-# Halifax / Maritimes Data Recon
+# Halifax (HRM) Data Recon
 
 Date: 2026-06-09. This document records what open data actually exists for the Halifax expansion, what was downloaded, join quality, and the modelling decisions that follow from it.
 
@@ -14,12 +14,47 @@ Date: 2026-06-09. This document records what open data actually exists for the H
 
 Download tooling: `scripts/setup_halifax_data.py --download-pvsc --download-hrm` (paged Socrata/ArcGIS fetch, files land in `data/raw/halifax/`, gitignored).
 
-## Join quality (measured)
+## Join quality
 
-- Sales → dwelling characteristics on `aan`: **93.2%** join rate.
-- Joined rows with a 2026 assessed value: **100%**.
+These figures were **not recomputed** for this milestone. The raw PVSC and HRM snapshots are not in the repository, so none of the percentages below is a new measurement.
+
+The committed processed summary (`data/processed/halifax_base_model_summary.json`) stores:
+
+| Field | Stored value | What it is |
+|---|---:|---|
+| `rows.windowSales` | 25,160 | Name in the summary. Current code writes this as the count of latest-sale-per-`aan` rows on or after the training window. |
+| `rows.joinedToDwellings` | 18,268 | Name in the summary. Current code writes this **after** dropping joined rows that lack coordinates or a time-adjustment factor. |
+| `rates.saleToDwellingJoin` | 0.7715 | Stored rate. |
+| 18268 / 25160 | 0.726073 | Quotient of the two stored counts, about 72.61%. It is not 0.7715. |
+
+Current code computes the rate on the inner join **before** the coordinate filter and can therefore disagree with `joinedToDwellings` if that later filter removes rows. The stored July summary was not recomputed from raw bytes, because those bytes were not in the repository. The acceptance threshold stays **0.90**. The legacy release is retained and is not a validated release.
+
+A new open-data snapshot was acquired on 2026-09-25 (not a recovery of the July extract). On that snapshot the same denominator — latest sale per `aan` on or after 2022-01-01 — had 26,698 accounts, of which 20,565 matched an eligible dwelling. The measured rate is 0.770282. It is below 0.90, so no HRM data candidate was published. Joined rows per account max was 1. Sale identity is `aan|sale_date|sale_price` because the published sales schema has no `sale_transaction_id`; cross-snapshot matching is unsupported.
+
+The 6,133 unmatched denominator accounts are a partition, measured with `classify_unmatched_sale_accounts` on that snapshot:
+
+| Reason | Accounts |
+|---|---:|
+| No dwelling row for the account | 2,760 |
+| Dwelling passes construction and living-units filters; style is unmapped | 3,017 |
+| Every dwelling row is under construction | 268 |
+| Living units fall outside 1–4 | 88 |
+| Eligible dwelling row existed and still failed to join | 0 |
+
+Of the 3,017 style-unmapped accounts, 2,785 have a null style and 232 are `Manufactured Home`. Both account columns are integers, and zero-padding both sides to 8 digits changes the match count by 0, so this is not a leading-zero join bug. Accounts with no dwelling row are spread across 2022–2026 (491 of them are after the dwelling file's source update on 2026-01-12). Their median sale price is $175,000, against $551,000 for matched accounts.
+
+The highest rate available without inventing a dwelling row is (26,698 − 2,760) / 26,698 = 0.896622, still below 0.90. Eligibility rules and the denominator were left as they are. The acceptance threshold remains 0.90.
+
+On 2026-09-26 the Parcel Sales History view (`6a95-ppg4`) was read again. Its columns are still `municipal_unit`, `aan`, the address fields, `sale_price`, `sale_date`, `parcels_in_sale`, `y_coord`, `x_coord`, and `location`. There is still no `sale_transaction_id`. Socrata `:id` remains a snapshot row id and is not treated as a durable transaction id. On that sales file, `aan` plus the sale day is unique for all but 29 account-days (32 extra rows). Those unique rows now use `aan|sale_date`, so a price correction keeps the same observation id. The label is `price_correction`. The 29 shared account-days still include the price in the id. This is not a source-issued transaction id, and it does not claim that a replaced dataset will keep the same row.
+
+The same day, the ArcGIS FeatureServer layer documents supplied `editingInfo.dataLastEditDate` for the two layers whose source-update time had been unknown. Civic addresses: 2026-09-25T09:41:32.744Z. Geolocated permits: 2026-09-25T09:15:22.596Z. On both layers that instant equals `schemaLastEditDate`, so it is the layer document's edit time, not a per-row observation time. `scripts/setup_halifax_data.py --record-arcgis-source-updates` writes those values onto an existing acquisition manifest and leaves the field empty when the layer document has no `dataLastEditDate`.
+
+Earlier notes that were also not recomputed:
+
+- Joined rows with a 2026 assessed value: **100%** (summary `assessedValuePresent` is 1.0 on the cleaned extract).
 - Field completeness on joined sale rows: living area 88.4%, bedrooms 88.6%, bathrooms 100%, year_built 96.1%, coordinates 86.1%.
 - Civic addresses: postal code present **95.3%** (100% valid `B#A#A#` format among present), coordinates 100%, **37 distinct FSAs** in HRM.
+- An older recon line said the sale-to-dwelling join was **93.2%**. That number is not the stored 0.7715 rate and was not remeasured.
 
 ## Decisions
 

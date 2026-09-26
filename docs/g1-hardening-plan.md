@@ -5,7 +5,7 @@ Created: 2026-07-22 from a three-part audit (API server, frontend, Python/DS).
 
 ## Ground rules (read first, apply to every task)
 
-1. **Work in this worktree**: `/Users/thomas/Documents/canadian-investor-dashboard-g1-release`, branch `codex/resume-release-g1` (or a child branch `codex/g1-hardening`). NEVER edit `/Users/thomas/Documents/canadian-investor-dashboard` (the dirty main worktree).
+1. **Work in the release worktree** for branch `codex/resume-release-g1` (or a child branch `codex/g1-hardening`). Do not edit the dirty main worktree. Local machine paths were redacted.
 2. **Toolchain**: Node 24.14.1 + pnpm 9.15.2 via corepack (`corepack enable`). Python 3.11 with the repo venv for Python tests.
 3. **Verification loop after EVERY task** (do not batch tasks without running this):
    ```bash

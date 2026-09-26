@@ -68,7 +68,7 @@ function assertDemoMarketSupported(postalCode: string): void {
       {
         code: "custom",
         path: ["postalCode"],
-        message: "Demo mode has precomputed Vancouver samples only - use live or public mode for Halifax / Maritimes (B-prefix) postal codes.",
+        message: "Demo mode has precomputed Vancouver samples only - use live or public mode for Halifax (HRM) (B-prefix) postal codes.",
         input: postalCode,
       },
     ]);

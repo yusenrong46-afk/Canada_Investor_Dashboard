@@ -39,9 +39,33 @@
     "Townhouse": 845
   },
   "sources": {
-    "dwellings": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_dwelling_characteristics_hrm.csv",
-    "sales": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_parcel_sales_hrm.csv",
-    "assessments": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_assessed_values_hrm.csv",
-    "civicAddresses": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/hrm_civic_addresses.csv"
-  }
+    "dwellings": {
+      "storageRef": "local-file-not-in-repo",
+      "note": "Machine path redacted. Raw PVSC dwelling file is not in this checkout."
+    },
+    "sales": {
+      "storageRef": "local-file-not-in-repo",
+      "note": "Machine path redacted. Raw PVSC sales file is not in this checkout."
+    },
+    "assessments": {
+      "storageRef": "local-file-not-in-repo",
+      "note": "Machine path redacted. Raw PVSC assessment file is not in this checkout."
+    },
+    "civicAddresses": {
+      "storageRef": "local-file-not-in-repo",
+      "note": "Machine path redacted. Raw HRM civic-address file is not in this checkout."
+    }
+  },
+  "joinAudit": {
+    "storedRate": 0.7715,
+    "storedJoinedToDwellings": 18268,
+    "storedWindowSales": 25160,
+    "quotientOfStoredCounts": 0.726073131955485,
+    "storedRateMatchesQuotientOfStoredCounts": false,
+    "acceptanceThreshold": 0.9,
+    "remeasured": false,
+    "note": "18268/25160 = 0.726073, about 72.61%, not the stored 0.7715. Raw snapshots are absent, so this audit does not replace either number. The 0.90 threshold was not lowered."
+  },
+  "lineageClass": "legacy_processed_snapshot",
+  "rawLineageRecovered": false
 }

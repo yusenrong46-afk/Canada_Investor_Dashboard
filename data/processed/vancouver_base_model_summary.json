@@ -1,5 +1,5 @@
 {
-  "sourcePath": "/Users/thomas/Downloads/CanadaHousingData/data_bc.csv",
+  "sourcePath": "local-file-not-in-repo",
   "rowCounts": {
     "totalRows": 24382,
     "vancouverRows": 3949,
@@ -276,5 +276,8 @@
         }
       }
     }
-  }
+  },
+  "sourcePathNote": "Original machine path redacted. The raw listings file is not in this checkout. This summary is a legacy processed snapshot, not recovered raw lineage.",
+  "lineageClass": "legacy_processed_snapshot",
+  "rawLineageRecovered": false
 }

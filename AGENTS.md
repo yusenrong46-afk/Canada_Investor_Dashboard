@@ -37,6 +37,7 @@ python scripts/verify_generated_outputs.py
 - `data/exports/*.json`
 - `reports/*.md`
 - `data/warehouse/property_analytics.duckdb`
+- `data/releases/current.json` and `data/releases/published/` — one selected release; do not mix files from different builds
 
 **Don't**
 

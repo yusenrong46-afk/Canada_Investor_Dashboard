@@ -32,12 +32,12 @@ INSERT INTO dim_market VALUES
   ),
   (
     'halifax_maritimes',
-    'Halifax / Maritimes',
-    'NS/NB/PE',
+    'Halifax (HRM)',
+    'NS',
     'Canada',
     'expansion valuation market',
     'dataset-backed sale-price training',
-    'PVSC parcel sales joined to dwelling characteristics with HRM civic-address postal codes. Real sale-price target, time-adjusted to the latest observed month.'
+    'PVSC parcel sales for Halifax Regional Municipality only, joined to dwelling characteristics with HRM civic-address postal codes. Real sale-price target, time-adjusted to the latest observed month. This is not a Nova Scotia, New Brunswick, or Prince Edward Island model.'
   );
 
 CREATE OR REPLACE TABLE dim_source_dataset (
@@ -80,7 +80,7 @@ INSERT INTO dim_source_dataset VALUES
     'permit record',
     'renovation signal and expansion feature',
     'available locally',
-    'Downloaded from the HRM open data ArcGIS hub with PID, work scope, project value, dates, and coordinates. Staged for the future local uplift signal; not yet modelled.'
+    'Downloaded from the HRM open data ArcGIS hub with PID, work scope, project value, dates, and coordinates. Used by the HRM repeat-sale uplift export when the raw file is present.'
   ),
   (
     'pvsc_property_assessment',

@@ -5,6 +5,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.output_guard import atomic_write_text, refuse_legacy_write, report_file
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODEL_SERVICE_DIR = REPO_ROOT / "artifacts" / "model-service"
@@ -12,7 +16,9 @@ VANCOUVER_ARTIFACT = MODEL_SERVICE_DIR / "models" / "vancouver_base_price_bundle
 HALIFAX_ARTIFACT = MODEL_SERVICE_DIR / "models" / "halifax_base_price_bundle_v1.pkl"
 VANCOUVER_SUMMARY = REPO_ROOT / "data" / "processed" / "vancouver_base_model_summary.json"
 HALIFAX_SUMMARY = REPO_ROOT / "data" / "processed" / "halifax_base_model_summary.json"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "reports" / "model_metrics_report.md"
+DEFAULT_OUTPUT_PATH = report_file(
+    "model_metrics_report.md", REPO_ROOT / "reports" / "model_metrics_report.md"
+)
 
 
 def format_number(value: Any, digits: int = 2) -> str:
@@ -136,6 +142,15 @@ def conformal_rows(bundle: Any) -> list[dict[str, Any]] | None:
   return rows
 
 
+def _metric(details: dict[str, Any], flat_key: str) -> Any:
+  if flat_key in details:
+    return details.get(flat_key)
+  nested = details.get("spatialCv")
+  if isinstance(nested, dict):
+    return nested.get(flat_key)
+  return None
+
+
 def spatial_rows(bundle: Any) -> list[dict[str, Any]] | None:
   summary = getattr(bundle, "evaluation_summary", None)
   if not isinstance(summary, dict):
@@ -146,17 +161,30 @@ def spatial_rows(bundle: Any) -> list[dict[str, Any]] | None:
 
   rows = []
   for property_type, details in per_type.items():
-    if "spatialCvMae" not in details and "randomCvMae" not in details:
+    if not isinstance(details, dict):
+      continue
+    random_cv = _metric(details, "randomCvMae")
+    spatial_cv = _metric(details, "spatialCvMae")
+    if random_cv is None and spatial_cv is None:
       continue
     rows.append(
       {
         "segment": property_type,
-        "random_cv_mae": details.get("randomCvMae"),
-        "spatial_cv_mae": details.get("spatialCvMae"),
-        "gap_pct": details.get("spatialGeneralizationGapPct"),
+        "random_cv_mae": random_cv,
+        "spatial_cv_mae": spatial_cv,
+        "gap_pct": _metric(details, "spatialGeneralizationGapPct"),
       }
     )
   return rows or None
+
+
+def holdout_heading(strategy: str | None) -> str:
+  text = (strategy or "").strip().lower()
+  if text.startswith("temporal holdout"):
+    return "Temporal"
+  if text.startswith("random") or "80/20" in text:
+    return "Random-split"
+  return "Holdout"
 
 
 def append_market_section(lines: list[str], *, title: str, bundle: Any | None, error: str | None, valuation_basis: str) -> None:
@@ -171,9 +199,10 @@ def append_market_section(lines: list[str], *, title: str, bundle: Any | None, e
       lines.append(f"- Shipped model: `{strategy['shippedModel']}`")
     lines.append("")
 
+  heading = holdout_heading(str(strategy.get("trainHoldoutSplit") or ""))
   lines.extend(
     [
-      "| Segment | Model | Temporal MAE | Temporal MAPE | Temporal R2 | N | Random MAE | Random MAPE |",
+      f"| Segment | Model | {heading} MAE | {heading} MAPE | {heading} R2 | N | Random MAE | Random MAPE |",
       "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
   )
@@ -246,7 +275,7 @@ def build_model_report() -> str:
   lines = [
     "# Model Metrics Report",
     "",
-    "Generated from approved pickle artifacts. Temporal metrics are primary when the bundle was trained under Phase E.",
+    "Generated from approved pickle artifacts. Column names follow the split stored in each bundle. A random split is never labeled temporal.",
     "",
   ]
   append_market_section(
@@ -280,11 +309,11 @@ def build_model_report() -> str:
 
 
 def write_model_report(output_path: Path = DEFAULT_OUTPUT_PATH) -> Path:
-  output_path.parent.mkdir(parents=True, exist_ok=True)
-  output_path.write_text(build_model_report())
+  atomic_write_text(output_path, build_model_report())
   return output_path
 
 
 if __name__ == "__main__":
+  refuse_legacy_write(DEFAULT_OUTPUT_PATH)
   path = write_model_report()
   print(f"Wrote {path}")

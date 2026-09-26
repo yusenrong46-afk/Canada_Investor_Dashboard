@@ -12,9 +12,11 @@ MODEL_SERVICE_DIR = PROJECT_ROOT / "artifacts" / "model-service"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "processed"
 DEFAULT_RAW_PATH = Path.home() / "Downloads" / "data_bc.csv"
 
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(MODEL_SERVICE_DIR))
 
 from base_model.core import CATEGORICAL_FEATURES, NUMERIC_FEATURES, _load_training_frame  # noqa: E402
+from scripts.output_guard import public_storage_ref  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,7 +68,8 @@ def main() -> None:
     summary_path.write_text(
         json.dumps(
             {
-                "sourcePath": str(source_path),
+                "sourcePath": public_storage_ref(source_path),
+                "sourcePathNote": "Repo-relative when the file is inside the checkout; otherwise local-file-not-in-repo. Machine directories are not stored.",
                 "rowCounts": {
                     **row_counts,
                     "datedRows": dated_rows,

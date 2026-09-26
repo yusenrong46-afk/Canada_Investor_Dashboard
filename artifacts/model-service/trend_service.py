@@ -2,18 +2,25 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "market_trend.json"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 _EXPORT_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def _export_path() -> Path:
     override = os.environ.get("MARKET_TREND_EXPORT_PATH")
-    return Path(override) if override else DEFAULT_EXPORT_PATH
+    if override:
+        return Path(override)
+    from scripts.release_store import resolve_published_export
+
+    return resolve_published_export(REPO_ROOT, "market_trend.json")
 
 
 def _load_export(path: Path) -> Any:
@@ -31,7 +38,12 @@ def _load_export(path: Path) -> Any:
 
 
 def market_trend_payload(market_id: str) -> dict:
-    path = _export_path()
+    from scripts.release_store import ReleaseError
+
+    try:
+        path = _export_path()
+    except ReleaseError as error:
+        return {"status": "unavailable", "message": str(error)}
     export = _load_export(path)
     if export is None:
         return {

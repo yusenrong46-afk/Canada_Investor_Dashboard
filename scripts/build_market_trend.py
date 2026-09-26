@@ -2,22 +2,28 @@ from __future__ import annotations
 
 import argparse
 import json
-import urllib.request
+import sys
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 from statsmodels.tsa.exponential_smoothing.ets import ETSModel
+
+from scripts.output_guard import atomic_write_text, env_path, export_file, refuse_legacy_write
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RAW_DIR = REPO_ROOT / "data" / "raw" / "market"
 DEFAULT_CSV_PATH = DEFAULT_RAW_DIR / "18100205.csv"
-DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "market_trend.json"
-DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
+DEFAULT_EXPORT_PATH = export_file("market_trend.json", REPO_ROOT / "data" / "exports" / "market_trend.json")
+DEFAULT_WAREHOUSE_PATH = env_path(
+    "CVH_WAREHOUSE_PATH", REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
+)
 
 STATCAN_ZIP_URL = "https://www150.statcan.gc.ca/n1/tbl/csv/18100205-eng.zip"
 STATCAN_CSV_NAME = "18100205.csv"
@@ -36,7 +42,7 @@ PREDICTION_INTERVAL_ALPHA = 0.2
 
 MARKETS = [
     {"market_id": "vancouver", "label": "Vancouver", "geo": "Vancouver, British Columbia"},
-    {"market_id": "halifax_maritimes", "label": "Halifax / Maritimes", "geo": "Halifax, Nova Scotia"},
+    {"market_id": "halifax_maritimes", "label": "Halifax CMA", "geo": "Halifax, Nova Scotia"},
 ]
 
 DATA_SOURCE_NOTE = (
@@ -58,10 +64,14 @@ def download_statcan_table(raw_dir: Path = DEFAULT_RAW_DIR) -> Path:
     raw_dir.mkdir(parents=True, exist_ok=True)
     zip_path = raw_dir / "18100205-eng.zip"
     print(f"Downloading {STATCAN_ZIP_URL} ...")
-    urllib.request.urlretrieve(STATCAN_ZIP_URL, zip_path)
+    from scripts.http_fetch import fetch_bytes, write_bytes_atomically
+
+    write_bytes_atomically(zip_path, fetch_bytes(STATCAN_ZIP_URL, attempts=3, timeout=300))
     with zipfile.ZipFile(zip_path) as archive:
-        archive.extract(STATCAN_CSV_NAME, raw_dir)
-    return raw_dir / STATCAN_CSV_NAME
+        payload = archive.read(STATCAN_CSV_NAME)
+    destination = raw_dir / STATCAN_CSV_NAME
+    write_bytes_atomically(destination, payload)
+    return destination
 
 
 def _read_nhpi_csv(csv_path: Path) -> pd.DataFrame:
@@ -240,8 +250,7 @@ def build_market_trend(
         "markets": markets_payload,
     }
 
-    export_path.parent.mkdir(parents=True, exist_ok=True)
-    export_path.write_text(json.dumps(payload, indent=2) + "\n")
+    atomic_write_text(export_path, json.dumps(payload, indent=2) + "\n")
     warehouse_table_written = _write_warehouse_table(long_rows, warehouse_path)
 
     return MarketTrendBuildSummary(
@@ -268,6 +277,7 @@ def main() -> None:
 
     if args.download:
         download_statcan_table()
+    refuse_legacy_write(DEFAULT_EXPORT_PATH)
     print_build_summary(build_market_trend())
 
 

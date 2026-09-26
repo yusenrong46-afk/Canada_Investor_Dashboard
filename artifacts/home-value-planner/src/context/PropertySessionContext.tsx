@@ -82,6 +82,7 @@ export interface PropertySessionValue {
   markets: MarketsResponse["markets"] | null;
   apiMode: ApiRuntimeMode | null;
   modelServiceReady: boolean | null;
+  releaseSummary: string | null;
 }
 
 const PropertySessionContext = createContext<PropertySessionValue | null>(null);
@@ -106,6 +107,7 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
   const [markets, setMarkets] = useState<MarketsResponse["markets"] | null>(null);
   const [apiMode, setApiMode] = useState<ApiRuntimeMode | null>(null);
   const [modelServiceReady, setModelServiceReady] = useState<boolean | null>(null);
+  const [releaseSummary, setReleaseSummary] = useState<string | null>(null);
   const [propertyFormValidation, setPropertyFormValidation] = useState<PropertyFormValidation>(() => validatePropertyInput(defaultProperty));
 
   const property = useMemo(() => cleanProperty(savedProperty), [savedProperty]);
@@ -196,12 +198,14 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
         if (active) {
           setApiMode(response.mode);
           setModelServiceReady(response.modelServiceReady ?? null);
+          setReleaseSummary(response.release.summary);
         }
       })
       .catch(() => {
         if (active) {
           setApiMode(null);
           setModelServiceReady(null);
+          setReleaseSummary(null);
         }
       });
     return () => {
@@ -289,6 +293,7 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
       markets,
       apiMode,
       modelServiceReady,
+      releaseSummary,
     }),
     [
       property,
@@ -303,6 +308,7 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
       markets,
       apiMode,
       modelServiceReady,
+      releaseSummary,
     ],
   );
 

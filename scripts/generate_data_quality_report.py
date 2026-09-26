@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
+
+from scripts.output_guard import atomic_write_text, refuse_legacy_write, report_file
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_PATH = REPO_ROOT / "data" / "processed" / "vancouver_base_model_training.csv"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "reports" / "data_quality_report.md"
+DEFAULT_OUTPUT_PATH = report_file(
+    "data_quality_report.md", REPO_ROOT / "reports" / "data_quality_report.md"
+)
 
 
 def _display_path(path: Path) -> str:
@@ -141,11 +148,11 @@ def build_data_quality_report(data_path: Path = DEFAULT_DATA_PATH) -> str:
 
 
 def write_data_quality_report(output_path: Path = DEFAULT_OUTPUT_PATH, data_path: Path = DEFAULT_DATA_PATH) -> Path:
-  output_path.parent.mkdir(parents=True, exist_ok=True)
-  output_path.write_text(build_data_quality_report(data_path=data_path))
+  atomic_write_text(output_path, build_data_quality_report(data_path=data_path))
   return output_path
 
 
 if __name__ == "__main__":
+  refuse_legacy_write(DEFAULT_OUTPUT_PATH)
   path = write_data_quality_report()
   print(f"Wrote {path}")

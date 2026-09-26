@@ -1,18 +1,35 @@
 from __future__ import annotations
 
+import json
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
+
+from scripts.identities import attach_identity, duplicate_id_count
+from scripts.output_guard import atomic_write_text, env_path, public_storage_ref, refuse_legacy_write, strict_from_env
+from scripts.release_store import LINEAGE_LEGACY, LINEAGE_RAW, content_sha256, snapshot_record
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VANCOUVER_TRAINING_PATH = REPO_ROOT / "data" / "processed" / "vancouver_base_model_training.csv"
-DEFAULT_HALIFAX_TRAINING_PATH = REPO_ROOT / "data" / "processed" / "halifax_base_model_training.csv"
+DEFAULT_HALIFAX_TRAINING_PATH = env_path(
+    "CVH_HALIFAX_TRAINING_PATH", REPO_ROOT / "data" / "processed" / "halifax_base_model_training.csv"
+)
 DEFAULT_HALIFAX_PERMITS_PATH = REPO_ROOT / "data" / "raw" / "halifax" / "hrm_building_permits_geolocated.csv"
-DEFAULT_WAREHOUSE_PATH = REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
-DEFAULT_REPORT_PATH = REPO_ROOT / "reports" / "analytics_warehouse_report.md"
+DEFAULT_WAREHOUSE_PATH = env_path(
+    "CVH_WAREHOUSE_PATH", REPO_ROOT / "data" / "warehouse" / "property_analytics.duckdb"
+)
+DEFAULT_REPORT_PATH = (
+    Path(os.environ["CVH_REPORT_DIR"]) / "analytics_warehouse_report.md"
+    if os.environ.get("CVH_REPORT_DIR")
+    else REPO_ROOT / "reports" / "analytics_warehouse_report.md"
+)
 WAREHOUSE_SQL_DIR = REPO_ROOT / "analytics" / "warehouse"
 MART_SQL_DIR = WAREHOUSE_SQL_DIR / "marts"
 
@@ -216,12 +233,204 @@ def _quality_rows(frame: pd.DataFrame, market_id: str) -> list[dict[str, Any]]:
             }
         )
 
+        return checks
+
+    duplicate_rows = duplicate_id_count(frame["propertyObservationId"]) if "propertyObservationId" in frame.columns else 0
+    checks.append(
+        {
+            "check_name": "observation_id_unique",
+            "market_id": market_id,
+            "severity": "info",
+            "value_kind": "count",
+            "observed_value": float(duplicate_rows),
+            "threshold": "0 duplicate observation ids",
+            "status": "fail" if duplicate_rows else "pass",
+            "notes": (
+                "Duplicate ids are retained and block a validated release. "
+                "A listing-row or processed-row fingerprint is not a durable property id."
+            ),
+        }
+    )
     return checks
+
+
+def _identity_contracts(frame: pd.DataFrame, market_id: str) -> list[dict[str, Any]]:
+    missing = int(frame["propertyObservationId"].map(lambda value: value is None or str(value).strip() == "").sum())
+    duplicates = duplicate_id_count(frame["propertyObservationId"])
+    kind = str(frame["identityKind"].iloc[0]) if len(frame) else "none"
+    return [
+        {
+            "name": f"{market_id}.observation_id_present",
+            "severity": "hard",
+            "status": "fail" if missing else "pass",
+            "observed": missing,
+            "detail": "Every mart row needs an observation id.",
+        },
+        {
+            "name": f"{market_id}.observation_id_unique",
+            "severity": "hard",
+            "status": "fail" if duplicates else "pass",
+            "observed": duplicates,
+            "detail": (
+                f"identityKind={kind}. Duplicate fingerprints stay in the candidate and fail publication. "
+                "Vancouver hashes are listing-row fingerprints, not durable property ids."
+            ),
+        },
+    ]
+
+
+def _candidate_relative(path: Path) -> str | None:
+    root = os.environ.get("CVH_CANDIDATE_ROOT")
+    if not root:
+        return None
+    try:
+        return path.resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _record_processed_snapshots(
+    entries: list[tuple[str, Path, pd.DataFrame, str]],
+    checks: list[dict[str, Any]] | None = None,
+    outputs: list[Path] | None = None,
+) -> None:
+    """Write a receipt for the parent build. This process does not edit manifest.json."""
+    if not os.environ.get("CVH_RECEIPT_PATH"):
+        return
+    from scripts.release_store import write_step_receipt
+
+    snapshots = []
+    for name, path, frame, notes in entries:
+        if not path.is_file():
+            continue
+        lineage = LINEAGE_RAW if name == "halifax_training_extract" and os.environ.get("CVH_JOIN_AUDIT_PATH") else LINEAGE_LEGACY
+        snapshots.append(
+            snapshot_record(
+                name=name,
+                lineage_class=lineage,
+                content_sha256=content_sha256(path),
+                storage_ref=public_storage_ref(path),
+                row_count=int(len(frame)),
+                schema=[str(column) for column in pd.read_csv(path, nrows=0).columns],
+                source_identity="committed processed extract",
+                notes=notes,
+            )
+        )
+    relative_outputs = [relative for path in outputs or [] if (relative := _candidate_relative(path))]
+    write_step_receipt(snapshots=snapshots, checks=checks or [], outputs=relative_outputs)
 
 
 def _scalar(connection: Any, sql: str) -> int:
     value = connection.execute(sql).fetchone()[0]
     return int(value or 0)
+
+
+def _selected_markets() -> tuple[str, ...]:
+    raw = os.environ.get("CVH_WAREHOUSE_MARKETS", "vancouver,halifax_maritimes")
+    markets = tuple(part.strip() for part in raw.split(",") if part.strip())
+    unknown = [market for market in markets if market not in {"vancouver", "halifax_maritimes"}]
+    if unknown:
+        raise RuntimeError(f"Unsupported warehouse markets: {', '.join(unknown)}")
+    if not markets:
+        raise RuntimeError("CVH_WAREHOUSE_MARKETS did not name a market")
+    return markets
+
+
+def _join_contract() -> dict[str, Any]:
+    """Use a join audit computed from this build's raw inputs. Do not reuse a stored rate."""
+    threshold = 0.90
+    base = {
+        "name": "halifax_maritimes.sale_to_dwelling_join",
+        "severity": "hard",
+        "threshold": threshold,
+    }
+    audit_path = os.environ.get("CVH_JOIN_AUDIT_PATH")
+    if not audit_path or not Path(audit_path).is_file():
+        return {
+            **base,
+            "status": "not_applicable",
+            "observed": None,
+            "detail": (
+                "This input did not include a join audit computed from raw sales and dwelling rows. "
+                "The sale-to-dwelling rate was not measured. The 0.90 threshold still blocks an HRM data-check claim."
+            ),
+        }
+    audit = json.loads(Path(audit_path).read_text(encoding="utf-8"))
+    if audit.get("inputCapability") != "raw_sales_and_dwellings" or audit.get("remeasured") is not True:
+        return {
+            **base,
+            "status": "not_applicable",
+            "observed": audit.get("measuredRate"),
+            "detail": "The join audit is not a remeasurement of the raw sales and dwelling snapshot.",
+        }
+    rate = float(audit["measuredRate"])
+    return {
+        **base,
+        "status": "pass" if rate >= threshold else "fail",
+        "observed": rate,
+        "numerator": audit.get("numerator"),
+        "numeratorName": audit.get("numeratorName"),
+        "denominator": audit.get("denominator"),
+        "denominatorName": audit.get("denominatorName"),
+        "unmatchedAccounts": audit.get("unmatchedAccounts"),
+        "unmatchedAccountReasons": audit.get("unmatchedAccountReasons"),
+        "accountKey": audit.get("accountKey"),
+        "eligibleSourcePopulation": audit.get("eligibleSourcePopulation"),
+        "exclusions": audit.get("exclusions"),
+        "fanOut": audit.get("fanOut"),
+        "detail": (
+            f"Measured {rate:.6f} using {audit.get('numeratorName')} / {audit.get('denominatorName')}. "
+            "The 0.90 threshold was not changed and the denominator was not redefined."
+        ),
+    }
+
+
+def _sale_identity_contract(frame: pd.DataFrame) -> dict[str, Any]:
+    name = "halifax_maritimes.sale_identity"
+    if "identityKind" not in frame.columns or "crossSnapshotMatch" not in frame.columns or frame.empty:
+        return {
+            "name": name,
+            "severity": "hard",
+            "status": "fail",
+            "observed": None,
+            "detail": "Halifax rows have no labelled sale identity.",
+        }
+    blank = frame["identityKind"].map(lambda value: value is None or str(value).strip() == "")
+    kinds = sorted({str(value) for value in frame["identityKind"].dropna().unique()})
+    matches = sorted({str(value) for value in frame["crossSnapshotMatch"].dropna().unique()})
+    overclaim = "supported" in matches and kinds != ["source:sale_transaction_id"]
+    price_correction_without_date_key = "price_correction" in matches and "snapshot_observation:aan|sale_date" not in kinds
+    if bool(blank.any()) or not matches or overclaim or price_correction_without_date_key:
+        return {
+            "name": name,
+            "severity": "hard",
+            "status": "fail",
+            "observed": ",".join(matches),
+            "identityKind": ",".join(kinds),
+            "detail": "Sale identity was missing or claimed cross-snapshot support without sale_transaction_id.",
+        }
+    supported = matches == ["supported"]
+    price_correction = matches == ["price_correction"]
+    if supported:
+        detail = "aan stays the account id. crossSnapshotMatch is supported because sale_transaction_id is present."
+    elif price_correction:
+        detail = (
+            "aan stays the account id. The observation id is aan and sale date, so a price correction keeps the same id. "
+            "It is not a source transaction id."
+        )
+    else:
+        detail = (
+            "aan stays the account id. Rows with a unique aan and sale date keep that id when the price changes. "
+            "Rows that share an account and a day still include the price, and full cross-snapshot replacement matching is unsupported."
+        )
+    return {
+        "name": name,
+        "severity": "hard",
+        "status": "pass",
+        "observed": matches[0] if len(matches) == 1 else ",".join(matches),
+        "identityKind": kinds[0] if len(kinds) == 1 else ",".join(kinds),
+        "detail": detail,
+    }
 
 
 def build_property_warehouse(
@@ -234,34 +443,91 @@ def build_property_warehouse(
     strict: bool = False,
 ) -> WarehouseBuildSummary:
     duckdb = _import_duckdb()
+    selected = _selected_markets()
+    vancouver_frame: pd.DataFrame | None = None
+    quality_rows: list[dict[str, Any]] = []
+    contract_checks: list[dict[str, Any]] = []
 
-    vancouver_frame = _ensure_h3_column(
-        _read_training_data(vancouver_training_path, REQUIRED_VANCOUVER_COLUMNS, "Vancouver")
-    )
-    quality_rows = _quality_rows(vancouver_frame, "vancouver")
+    if "vancouver" in selected:
+        vancouver_frame = attach_identity(
+            _ensure_h3_column(_read_training_data(vancouver_training_path, REQUIRED_VANCOUVER_COLUMNS, "Vancouver")),
+            "vancouver",
+        )
+        quality_rows.extend(_quality_rows(vancouver_frame, "vancouver"))
+        contract_checks.extend(_identity_contracts(vancouver_frame, "vancouver"))
+        contract_checks.append(
+            {
+                "name": "vancouver.raw_lineage",
+                "severity": "hard",
+                "status": "not_applicable",
+                "observed": None,
+                "detail": (
+                    "The processed Vancouver extract has no source listing id and no listing date. "
+                    "It stays outside a raw-backed HRM release. "
+                    "The listing-row fingerprint is not a durable property id."
+                ),
+            }
+        )
 
     halifax_frame: pd.DataFrame | None = None
-    if halifax_training_path.exists():
-        halifax_frame = _read_training_data(halifax_training_path, REQUIRED_HALIFAX_COLUMNS, "Halifax")
+    if "halifax_maritimes" in selected and halifax_training_path.exists():
+        halifax_frame = attach_identity(
+            _read_training_data(halifax_training_path, REQUIRED_HALIFAX_COLUMNS, "Halifax"),
+            "halifax_maritimes",
+        )
         quality_rows.extend(_quality_rows(halifax_frame, "halifax_maritimes"))
-    else:
-        message = f"Halifax training extract not found at {halifax_training_path}; building Vancouver-only warehouse."
+        contract_checks.extend(_identity_contracts(halifax_frame, "halifax_maritimes"))
+        contract_checks.append(_join_contract())
+        contract_checks.append(_sale_identity_contract(halifax_frame))
+    elif "halifax_maritimes" in selected:
+        message = f"Halifax training extract not found at {halifax_training_path}."
         print(f"WARNING: {message}")
         if strict:
             raise RuntimeError(message)
+    elif not halifax_training_path.exists() and "vancouver" in selected:
+        message = f"Halifax training extract not found at {halifax_training_path}; building Vancouver-only warehouse."
+        print(f"WARNING: {message}")
 
+    snapshot_entries: list[tuple[str, Path, pd.DataFrame, str]] = []
+    if vancouver_frame is not None:
+        snapshot_entries.append(
+            (
+                "vancouver_processed_training_csv",
+                vancouver_training_path,
+                vancouver_frame,
+                "Legacy processed Vancouver listing extract. No source listing id or listing date is in this file. The listing-row fingerprint is not a durable property id, and raw lineage is not recovered.",
+            )
+        )
+    if halifax_frame is not None:
+        raw_backed = os.environ.get("CVH_JOIN_AUDIT_PATH")
+        snapshot_entries.append(
+            (
+                "halifax_training_extract",
+                halifax_training_path,
+                halifax_frame,
+                (
+                    "Halifax extract built from the raw PVSC/HRM snapshot named by the join audit. "
+                    "Sale identity is whatever assign_sale_identity labelled; aan is the account."
+                    if raw_backed
+                    else "Legacy processed Halifax extract. Raw PVSC bytes are not an input to this warehouse build."
+                ),
+            )
+        )
     warehouse_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
+    partial_warehouse = warehouse_path.with_name(warehouse_path.name + ".partial")
+    if partial_warehouse.exists():
+        partial_warehouse.unlink()
 
-    connection = duckdb.connect(str(warehouse_path))
+    connection = duckdb.connect(str(partial_warehouse))
     try:
         connection.execute(_read_sql(WAREHOUSE_SQL_DIR / "schema.sql"))
 
-        connection.register("vancouver_training_source", vancouver_frame)
-        connection.execute("CREATE OR REPLACE TABLE stg_vancouver_listings AS SELECT * FROM vancouver_training_source")
-
         connection.execute(_read_sql(MART_SQL_DIR / "fact_property_training_mart.sql"))
-        connection.execute(_read_sql(MART_SQL_DIR / "fact_property_training_mart_insert_vancouver.sql"))
+        if vancouver_frame is not None:
+            connection.register("vancouver_training_source", vancouver_frame)
+            connection.execute("CREATE OR REPLACE TABLE stg_vancouver_listings AS SELECT * FROM vancouver_training_source")
+            connection.execute(_read_sql(MART_SQL_DIR / "fact_property_training_mart_insert_vancouver.sql"))
 
         if halifax_frame is not None:
             connection.register("halifax_training_source", halifax_frame)
@@ -299,7 +565,8 @@ def build_property_warehouse(
         summary = WarehouseBuildSummary(
             warehouse_path=warehouse_path,
             report_path=report_path,
-            source_rows=len(vancouver_frame) + (len(halifax_frame) if halifax_frame is not None else 0),
+            source_rows=(len(vancouver_frame) if vancouver_frame is not None else 0)
+            + (len(halifax_frame) if halifax_frame is not None else 0),
             training_mart_rows=_scalar(connection, "SELECT COUNT(*) FROM fact_property_training_mart"),
             model_ready_rows=_scalar(connection, "SELECT COUNT(*) FROM fact_property_training_mart WHERE is_model_ready"),
             market_summary_rows=_scalar(connection, "SELECT COUNT(*) FROM fact_market_feature_summary"),
@@ -312,10 +579,18 @@ def build_property_warehouse(
 
     gate_failures = enforce_quality_gates(quality_rows, strict=strict)
     if gate_failures:
+        partial_warehouse.unlink(missing_ok=True)
         details = "; ".join(gate_failures)
         raise RuntimeError(f"Warehouse quality gates failed ({'strict' if strict else 'critical'}): {details}")
 
+    os.replace(partial_warehouse, warehouse_path)
+    Path(str(partial_warehouse) + ".wal").unlink(missing_ok=True)
     write_warehouse_report(summary)
+    _record_processed_snapshots(
+        snapshot_entries,
+        contract_checks,
+        outputs=[warehouse_path, report_path],
+    )
     return summary
 
 
@@ -323,7 +598,7 @@ def write_warehouse_report(summary: WarehouseBuildSummary) -> Path:
     lines = [
         "# Analytics Warehouse Report",
         "",
-        f"Warehouse: `{_display_path(Path(summary.warehouse_path))}`",
+        "Warehouse: `warehouse/property_analytics.duckdb`",
         "",
         "## Build Summary",
         "",
@@ -352,7 +627,12 @@ def write_warehouse_report(summary: WarehouseBuildSummary) -> Path:
 
     for check in summary.data_quality_checks:
         observed = check["observed_value"]
-        observed_text = f"{observed:.2%}" if 0 <= observed <= 1 else f"{observed:,.0f}"
+        if check.get("value_kind") == "count":
+            observed_text = f"{observed:,.0f}"
+        elif check.get("value_kind") == "rate":
+            observed_text = f"{observed:.2%}"
+        else:
+            observed_text = f"{observed:.2%}" if 0 <= observed <= 1 else f"{observed:,.0f}"
         lines.append(
             f"| {check['check_name']} | {check.get('market_id', 'vancouver')} | {check['severity']} "
             f"| {observed_text} | {check['threshold']} | {check['status']} |"
@@ -364,14 +644,14 @@ def write_warehouse_report(summary: WarehouseBuildSummary) -> Path:
             "## Why This Matters",
             "",
             "- The project now has a database-backed training mart shape instead of only ad hoc CSV consumption.",
-            "- Vancouver (listing-price target) and Halifax/Maritimes (time-adjusted real sale-price target) share one model-ready contract.",
+            "- Vancouver (listing-price target) and Halifax (HRM) (time-adjusted real sale-price target) share one model-ready contract.",
             "- The mart separates source lineage, data readiness, market summaries, and model-ready observations.",
             "- The next modelling step is to compare local Vancouver, local Halifax, pooled, and hybrid models on the same feature contract.",
             "",
         ]
     )
 
-    summary.report_path.write_text("\n".join(lines))
+    atomic_write_text(summary.report_path, "\n".join(lines))
     return summary.report_path
 
 
@@ -380,16 +660,25 @@ if __name__ == "__main__":
     import os
 
     parser = argparse.ArgumentParser(description="Build the analytics property warehouse.")
-    default_strict = os.environ.get("CI", "").lower() in {"1", "true", "yes"}
     parser.add_argument(
         "--strict",
         action=argparse.BooleanOptionalAction,
-        default=default_strict,
-        help="Fail on critical quality checks (default: on in CI).",
+        default=strict_from_env(False),
+        help="Fail on critical quality checks, and on warnings when strict. CVH_STRICT=0 or 1 overrides the CI default.",
     )
+    parser.add_argument("--warehouse", default=None)
+    parser.add_argument("--report", default=None)
     cli_args = parser.parse_args()
+    warehouse_path = Path(cli_args.warehouse) if cli_args.warehouse else DEFAULT_WAREHOUSE_PATH
+    report_path = Path(cli_args.report) if cli_args.report else DEFAULT_REPORT_PATH
+    refuse_legacy_write(warehouse_path)
+    refuse_legacy_write(report_path)
 
-    build_summary = build_property_warehouse(strict=cli_args.strict)
+    build_summary = build_property_warehouse(
+        warehouse_path=warehouse_path,
+        report_path=report_path,
+        strict=cli_args.strict,
+    )
     print(f"Wrote {build_summary.warehouse_path}")
     print(f"Wrote {build_summary.report_path}")
     for market, rows in sorted(build_summary.market_rows.items()):

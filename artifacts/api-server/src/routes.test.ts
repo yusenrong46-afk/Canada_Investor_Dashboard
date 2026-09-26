@@ -84,6 +84,11 @@ describe("runtime provenance and live insights", () => {
     expect(response.status).toBe(200);
     expect(body.mode).toBe("live-model");
     expect(body.modelServiceReady).toBe(false);
+    expect(body.release.role).toBe("retained_legacy");
+    expect(body.release.validated).toBe(false);
+    expect(body.release.productDataValidated).toBe(false);
+    expect(body.release.releaseId).toBe("legacy-processed-20260726");
+    expect(body.release.summary).toContain("not a validated product dataset");
     expect(response.headers.get("x-powered-by")).toBeNull();
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("x-frame-options")).toBe("DENY");

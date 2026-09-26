@@ -25,13 +25,14 @@ describe("trendFromExportFile (demo/public path)", () => {
     }
   });
 
-  it("serves the committed Halifax / Maritimes trend", () => {
+  it("serves the committed Halifax CMA trend", () => {
     const response = trendFromExportFile("halifax_maritimes");
 
     expect(marketTrendResponseSchema.safeParse(response).success).toBe(true);
     expect(response.status).toBe("ready");
     if (response.status === "ready") {
       expect(response.market).toBe("halifax_maritimes");
+      expect(response.marketLabel).toBe("Halifax CMA");
     }
   });
 

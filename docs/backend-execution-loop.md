@@ -6,7 +6,7 @@ Use this prompt to continue the backend work across Codex turns without losing t
 
 ```text
 You are continuing the Canadian Investor Dashboard backend reliability program in:
-/Users/thomas/Documents/canadian-investor-dashboard
+local checkout (machine path redacted)
 
 Objective
 Complete Goals G1-G3 in docs/backend-execution-goals.md, in order:

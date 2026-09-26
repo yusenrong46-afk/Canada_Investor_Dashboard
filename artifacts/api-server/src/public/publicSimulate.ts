@@ -79,7 +79,7 @@ function buildHalifaxObservedSimulate(request: SimulateRequest, estimate: Estima
       limitations: ["Observational permit-linked repeat-sale summary; broad renovation categories are not causal or separately measured effects."],
     }),
     status: "ready",
-    message: "Public interactive mode: Halifax / Maritimes uplift comes from the committed local repeat-sale evidence export.",
+    message: "Public interactive mode: Halifax (HRM) uplift comes from the committed local repeat-sale evidence export.",
     modelVersion: "public-halifax-observed-uplift-v1",
     trainingMode: "public-interactive-estimator",
     modelFamily: estimate.modelFamily,

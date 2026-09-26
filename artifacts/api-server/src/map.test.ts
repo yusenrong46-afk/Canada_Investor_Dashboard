@@ -32,7 +32,7 @@ describe("buildMapResponse from the committed export", () => {
     }
   });
 
-  it("returns a ready Halifax / Maritimes payload", () => {
+  it("returns a ready Halifax (HRM) payload", () => {
     const response = buildMapResponse("halifax_maritimes");
 
     expect(response.status).toBe("ready");

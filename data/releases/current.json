@@ -1,0 +1,17 @@
+{
+  "releaseId": "legacy-processed-20260726",
+  "relativePath": "published/legacy-processed-20260726",
+  "validated": false,
+  "role": "retained_legacy",
+  "lineageClass": "legacy_processed_snapshot",
+  "rawLineageRecovered": false,
+  "profileId": "retained_legacy",
+  "validationScope": "retained_legacy",
+  "productDataValidated": false,
+  "dataChecksPassed": false,
+  "markets": {
+    "halifax_maritimes": "legacy_unvalidated",
+    "vancouver": "legacy_unvalidated"
+  },
+  "selectedAt": "2026-09-25T01:08:02+00:00"
+}

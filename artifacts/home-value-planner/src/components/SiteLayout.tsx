@@ -71,7 +71,7 @@ function modeOneLiner(apiMode: string | null | undefined): string {
 }
 
 export function SiteLayout({ children }: PropsWithChildren) {
-  const { property, propertyValidation, apiMode, modelServiceReady } = usePropertySession();
+  const { property, propertyValidation, apiMode, modelServiceReady, releaseSummary } = usePropertySession();
   const [navOpen, setNavOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const location = useLocation();
@@ -255,6 +255,11 @@ export function SiteLayout({ children }: PropsWithChildren) {
               {modeLabel(apiMode, modelServiceReady)}
             </span>
             <span className="hidden shrink-0 text-xs text-muted xl:inline">{modeOneLiner(apiMode)}</span>
+            {releaseSummary ? (
+              <span className="hidden max-w-sm truncate text-xs text-muted xl:inline" title={releaseSummary}>
+                {releaseSummary}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -297,6 +302,7 @@ export function SiteLayout({ children }: PropsWithChildren) {
           <div>
             <div className="font-display text-lg text-ink">Canada Value Lab</div>
             <div className="text-xs text-muted">{modeOneLiner(apiMode)}</div>
+            {releaseSummary ? <div className="text-xs text-muted">{releaseSummary}</div> : null}
           </div>
           <button
             ref={closeButtonRef}

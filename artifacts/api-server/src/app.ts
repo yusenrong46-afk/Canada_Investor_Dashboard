@@ -25,6 +25,7 @@ import { buildMapResponse } from "./map";
 import { buildMarketsResponse, resolveApiMode } from "./marketsRoute";
 import { modelServiceIsReady, ModelServiceError } from "./model";
 import { dealAnalyzeRequestSchema, estimateRequestSchema, planRequestSchema, simulateRequestSchema } from "./schemas";
+import { readReleaseIdentity } from "./repoFiles";
 import { getMarketTrend } from "./trend";
 
 const app = express();
@@ -116,6 +117,7 @@ app.get(["/health", "/api/health"], async (_req, res) => {
     mode,
     contractVersion: API_CONTRACT_VERSION,
     ...(mode === "live-model" ? { modelServiceReady: await modelServiceIsReady() } : {}),
+    release: readReleaseIdentity(),
   }));
 });
 

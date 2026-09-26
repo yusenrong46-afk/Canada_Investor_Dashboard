@@ -47,7 +47,8 @@ def _load_synthetic_training_frame(data_path: str):
     from base_model import core
 
     frame = pd.read_csv(data_path)
-    frame["listingDate"] = pd.Timestamp("2024-03-01")
+    start = pd.Timestamp("2020-01-01")
+    frame["listingDate"] = [start + pd.DateOffset(days=int(index) * 8) for index in range(len(frame))]
     usable = frame[frame["propertyType"].isin(core.PROPERTY_TYPES)].copy()
     row_counts = {
         "totalRows": len(frame),

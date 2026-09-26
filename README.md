@@ -1,6 +1,6 @@
 # Canada Investor Dashboard
 
-A full-stack, multi-market real estate analytics dashboard that estimates property value in Vancouver and Halifax/Maritimes, evaluates renovation upside, and generates investor-facing action plans through an Estimate -> Improve -> Plan workflow.
+A full-stack, multi-market real estate analytics dashboard that estimates property value in Vancouver and Halifax (HRM), evaluates renovation upside, and generates investor-facing action plans through an Estimate -> Improve -> Plan workflow.
 
 GitHub: https://github.com/yusenrong46-afk/Canada_Investor_Dashboard
 
@@ -24,11 +24,11 @@ I built it as a portfolio project for Data Analyst, BI Analyst, Analytics Engine
 
 ## What It Does
 
-1. Estimates current property value from structured property features in two markets: Vancouver (V5/V6 postal codes, listing-price target) and Halifax/Maritimes (B-prefix postal codes, time-adjusted real sale-price target from PVSC parcel sales).
+1. Estimates current property value from structured property features in two markets: Vancouver (V5/V6 postal codes, listing-price target) and Halifax (HRM) (B-prefix postal codes observed in the HRM extract, time-adjusted real sale-price target from PVSC parcel sales). The internal market id remains `halifax_maritimes`.
 2. Shows calibrated uncertainty: 80%-target split conformal intervals with *measured* empirical coverage, plus SHAP per-prediction driver attributions in live mode.
 3. Backs every estimate with a warehouse evidence panel: real FSA-level training rows, medians, and $/sqft exported from the DuckDB analytics warehouse.
-4. Maps both markets: an interactive H3 choropleth (802 hex cells, $/sqft medians, observation counts) built from the warehouse mart.
-5. Shows where the market is heading: Statistics Canada NHPI history with a 12-month ETS forecast band and backtested MAPE per market.
+4. Maps both markets: an interactive H3 choropleth (717 hex cells: 553 Halifax (HRM) and 164 Vancouver, $/sqft medians, observation counts) built from the warehouse mart.
+5. Shows where the market is heading: Statistics Canada NHPI history with a 12-month ETS forecast band and backtested MAPE per market. The Halifax series is the StatCan geography `Halifax, Nova Scotia` (the CMA), labeled Halifax CMA. That boundary is not the HRM municipal boundary used by the sale model.
 6. Simulates renovation value uplift from observed repeat-sale data: Seattle/King County proxy for Vancouver, and a *local* HRM layer for Halifax (PVSC repeat-sale pairs joined to geolocated building permits — 12.1% median excess uplift for Renovation from 131 treated pairs; Addition reported as insufficient-data at 37 pairs, contributing zero).
 7. Stress-tests every deal with 5,000 seeded triangular draws through the stated estimate and uplift ranges, reporting the share of assumption-based scenarios with positive upside or an achievable target plus P10/P50/P90 upside. These shares are diagnostics, not calibrated probabilities.
 8. Compares local vs pooled vs hybrid valuation models across markets in a model experiment lab (warehouse `fact_model_experiments` + leaderboard on the Model page, with honestly derived conclusions).
@@ -81,10 +81,10 @@ Python model service
   /health    per-market bundle status
 
 Analytics warehouse
-  DuckDB training mart shared by both markets (21,483 model-ready observations)
+  DuckDB training mart shared by both markets (21,220 mart rows, 19,133 model-ready observations)
   Per-market staging + insert scripts, H3 cells, market summaries, per-market quality checks
   fact_market_trend (StatCan NHPI history + forecasts), fact_model_experiments (model lab runs)
-  One-command rebuild: scripts/build_all.py
+  One-command candidate rebuild: scripts/build_all.py (writes under data/releases/candidates and does not publish)
 ```
 
 Main folders:
@@ -199,45 +199,19 @@ Use `docs/demo-script.md` for the interview walkthrough. The live app is the pri
 
 ## Reports
 
-Generate the model report:
+Candidate rebuilds write under `data/releases/candidates/<id>/` and do not replace the selected release:
 
 ```bash
-.venv/bin/python scripts/generate_model_report.py
+.venv/bin/python scripts/build_all.py --strict
 ```
 
-Generate the data-quality report:
+Direct export and warehouse commands refuse to write `data/exports/`, `data/warehouse/`, or `reports/` unless `CVH_ALLOW_LEGACY_OUTPUT=1`. That flag is for an explicit legacy-path regeneration, not for publication.
 
-```bash
-.venv/bin/python scripts/generate_data_quality_report.py
-```
-
-Build the local analytics warehouse (both markets):
-
-```bash
-.venv/bin/python scripts/build_property_warehouse.py
-```
-
-Download and rebuild the Halifax open data + training extract (PVSC datazONE + HRM open data):
+Download Halifax open data (PVSC datazONE + HRM). A strict extract requires an explicit reference date:
 
 ```bash
 .venv/bin/python scripts/setup_halifax_data.py --download-pvsc --download-hrm
-.venv/bin/python scripts/setup_halifax_data.py --build-training
-```
-
-Rebuild the market trend forecast (StatCan NHPI) and the committed exports:
-
-```bash
-.venv/bin/python scripts/build_market_trend.py --download
-.venv/bin/python scripts/export_market_evidence.py
-.venv/bin/python scripts/export_market_map.py
-.venv/bin/python scripts/build_halifax_uplift.py
-.venv/bin/python scripts/run_model_experiments.py
-```
-
-Or rebuild everything that has inputs available, in dependency order, with one command:
-
-```bash
-.venv/bin/python scripts/build_all.py
+.venv/bin/python scripts/setup_halifax_data.py --build-training --reference-date 2026-07-26
 ```
 
 Model training is offline-only. To rebuild approved Vancouver, Halifax, and Seattle uplift artifacts directly from real source data:
@@ -248,7 +222,13 @@ Model training is offline-only. To rebuild approved Vancouver, Halifax, and Seat
 
 The inference service only loads the resulting versioned artifacts; it never trains or silently repairs a model during a request or service startup.
 
-The warehouse is written to `data/warehouse/property_analytics.duckdb`, a build summary to `reports/analytics_warehouse_report.md`, and the committed exports to `data/exports/` (these power the evidence panel and trend chart in every mode, including the public Vercel deployment).
+Readers pin `data/releases/current.json` once per process and load every export from that release. A pointer change is picked up by a restarted process. A missing file in the pinned release is an error; readers do not borrow it from another release or from `data/exports/`. If no pointer exists at startup, they use `data/exports/` directly. The static Vercel bundle includes `data/releases/` with the committed pointer; a local pointer change does not update a deployment that was already built.
+
+Publication uses an explicit profile (required artifacts, required checks, and the build step that owns each artifact). An empty checks list or a missing warehouse/evidence export cannot be published. `validated` and `productDataValidated` stay false: a fixture can pass its own checks without claiming production data, and a scoped HRM data candidate would not claim that Vancouver or the fitted models are validated. `/health` reports the pinned release role and that summary.
+
+The selected release `legacy-processed-20260726` is a retained legacy processed snapshot. `validated` is false. Raw PVSC and Vancouver listing bytes are not in this checkout, so it does not claim recovered raw lineage. A candidate of the same processed files fails the hard contracts (duplicate Vancouver listing-row fingerprints, and join/raw-lineage checks that are `not_applicable` without the raw snapshots). The 0.90 sale-to-dwelling threshold was not lowered to make it pass.
+
+Publication copies one complete candidate directory into `data/releases/published/` and then replaces `current.json`. It does not swap the database and the JSON files as separate writes. A second publisher is rejected while `data/releases/.publish.lock` exists. The previous published directory is left in place. Power loss during the directory rename or the pointer replace is not a tested guarantee.
 
 The scripts do not invent missing metrics. If a model artifact or data file is missing, the report says exactly what is missing.
 

@@ -53,7 +53,7 @@ describe("api schemas", () => {
     expect(plan.targetPrice).toBe(850000);
   });
 
-  it("accepts a Halifax / Maritimes postal code", () => {
+  it("accepts a Halifax (HRM) postal code", () => {
     const parsed = propertyInputSchema.parse({
       postalCode: "B3H 1A1",
       propertyType: "Detached",
@@ -120,7 +120,7 @@ describe("marketEvidenceFileSchema", () => {
       builtFrom: "scripts/build_property_warehouse.py",
       sourceDatasets: [{ id: "pvsc_parcels", market: "halifax_maritimes", name: "PVSC assessed parcels" }],
     },
-    markets: [{ marketId: "halifax_maritimes", label: "Halifax / Maritimes", region: "NS" }],
+    markets: [{ marketId: "halifax_maritimes", label: "Halifax (HRM)", region: "NS" }],
     rows: [
       {
         marketId: "halifax_maritimes",

@@ -6,7 +6,7 @@
   "outputDirectory": "artifacts/home-value-planner/dist",
   "functions": {
     "api/[...path].js": {
-      "includeFiles": "{demo,data/exports}/**",
+      "includeFiles": "{demo,data/exports,data/releases}/**",
       "maxDuration": 10
     }
   },

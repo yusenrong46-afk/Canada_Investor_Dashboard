@@ -99,6 +99,42 @@ def test_missing_csv_fails_clearly_and_writes_no_export(tmp_path: Path):
     assert not export_path.exists()
 
 
+def test_trend_reader_keeps_the_pinned_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.release_store import reset_release_pin
+
+    repo = tmp_path / "repo"
+    releases = repo / "data" / "releases"
+
+    def write_release(release_id: str, marker: str) -> None:
+        export_dir = releases / "published" / release_id / "exports"
+        export_dir.mkdir(parents=True)
+        payload = {"markets": {"vancouver": {"status": "ready", "market": "vancouver", "marker": marker}}}
+        (export_dir / "market_trend.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    write_release("release-a", "from-a")
+    write_release("release-b", "from-b")
+    pointer = releases / "current.json"
+    pointer.write_text(
+        json.dumps({"releaseId": "release-a", "relativePath": "published/release-a", "role": "fixture", "validated": False}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(trend_service, "REPO_ROOT", repo)
+    trend_service._EXPORT_CACHE.clear()
+    reset_release_pin()
+
+    assert trend_service.market_trend_payload("vancouver")["marker"] == "from-a"
+    pointer.write_text(
+        json.dumps({"releaseId": "release-b", "relativePath": "published/release-b", "role": "fixture", "validated": False}),
+        encoding="utf-8",
+    )
+    assert trend_service.market_trend_payload("vancouver")["marker"] == "from-a"
+
+    reset_release_pin()
+    assert trend_service.market_trend_payload("vancouver")["marker"] == "from-b"
+    reset_release_pin()
+    trend_service._EXPORT_CACHE.clear()
+
+
 def test_trend_service_reports_missing_export(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("MARKET_TREND_EXPORT_PATH", str(tmp_path / "missing.json"))
 

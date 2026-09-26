@@ -29,7 +29,7 @@ export function buildHalifaxPublicEstimate(property: PropertyInput): EstimateRes
 
   if (property.propertyType === "Condo") {
     throw publicInputError(
-      "Condo estimates are not available for Halifax / Maritimes: PVSC open data does not cover condo unit characteristics. Supported property types are Detached, Townhouse, and Duplex.",
+      "Condo estimates are not available for Halifax (HRM): PVSC open data does not cover condo unit characteristics. Supported property types are Detached, Townhouse, and Duplex.",
       property.postalCode,
     );
   }
@@ -40,7 +40,7 @@ export function buildHalifaxPublicEstimate(property: PropertyInput): EstimateRes
 
   if (!area || !city) {
     throw publicInputError(
-      "Halifax / Maritimes public estimates need the committed evidence export (data/exports/market_evidence.json), which is missing or has no Halifax rows - run live mode for B-prefix postal codes.",
+      "Halifax (HRM) public estimates need the committed evidence export (data/exports/market_evidence.json), which is missing or has no Halifax rows - run live mode for B-prefix postal codes.",
       property.postalCode,
     );
   }
@@ -72,14 +72,14 @@ export function buildHalifaxPublicEstimate(property: PropertyInput): EstimateRes
     0.22,
   );
   const driverRows: EstimateResponse["drivers"] = [
-    { label: `${area.label} evidence $/sqft vs Halifax / Maritimes market`, value: roundMoney(marketGapDriver), source: "heuristic" },
+    { label: `${area.label} evidence $/sqft vs Halifax (HRM) market`, value: roundMoney(marketGapDriver), source: "heuristic" },
     { label: `${property.bedrooms} bedroom layout`, value: roundMoney(bedroomDriver), source: "heuristic" },
     { label: `${property.bathrooms} bathroom count`, value: roundMoney(bathroomDriver), source: "heuristic" },
     { label: property.yearBuilt ? `Built in ${property.yearBuilt}` : "Year built not provided", value: roundMoney(ageDriver), source: "heuristic" },
   ];
   const drivers = driverRows.sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
   const missingnessNotes = [
-    "Halifax / Maritimes public estimates come from PVSC sale-price evidence medians in data/exports/market_evidence.json, not a saved Halifax model.",
+    "Halifax (HRM) public estimates come from PVSC sale-price evidence medians in data/exports/market_evidence.json, not a saved Halifax model.",
     "Live Halifax model validation metrics are intentionally not assigned to this separate public rules estimator.",
     "Halifax evidence medians are time-adjusted sale prices, not listing prices.",
     property.yearBuilt ? "Year built was provided by the user." : "Year built was missing, so a small uncertainty penalty was applied.",
@@ -131,7 +131,7 @@ export function buildHalifaxPublicEstimate(property: PropertyInput): EstimateRes
     explanationMethod: "heuristic",
     marketFreshness: {
       status: "not-applied",
-      message: "Public interactive mode: Halifax / Maritimes values come from committed PVSC evidence medians plus transparent adjustments. It is not a live MLS feed or appraisal.",
+      message: "Public interactive mode: Halifax (HRM) values come from committed PVSC evidence medians plus transparent adjustments. It is not a live MLS feed or appraisal.",
     },
   };
 }
