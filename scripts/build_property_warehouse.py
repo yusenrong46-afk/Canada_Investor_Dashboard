@@ -399,7 +399,8 @@ def _sale_identity_contract(frame: pd.DataFrame) -> dict[str, Any]:
     kinds = sorted({str(value) for value in frame["identityKind"].dropna().unique()})
     matches = sorted({str(value) for value in frame["crossSnapshotMatch"].dropna().unique()})
     overclaim = "supported" in matches and kinds != ["source:sale_transaction_id"]
-    if bool(blank.any()) or not matches or overclaim:
+    price_correction_without_date_key = "price_correction" in matches and "snapshot_observation:aan|sale_date" not in kinds
+    if bool(blank.any()) or not matches or overclaim or price_correction_without_date_key:
         return {
             "name": name,
             "severity": "hard",
@@ -409,20 +410,26 @@ def _sale_identity_contract(frame: pd.DataFrame) -> dict[str, Any]:
             "detail": "Sale identity was missing or claimed cross-snapshot support without sale_transaction_id.",
         }
     supported = matches == ["supported"]
+    price_correction = matches == ["price_correction"]
+    if supported:
+        detail = "aan stays the account id. crossSnapshotMatch is supported because sale_transaction_id is present."
+    elif price_correction:
+        detail = (
+            "aan stays the account id. The observation id is aan and sale date, so a price correction keeps the same id. "
+            "It is not a source transaction id."
+        )
+    else:
+        detail = (
+            "aan stays the account id. Rows with a unique aan and sale date keep that id when the price changes. "
+            "Rows that share an account and a day still include the price, and full cross-snapshot replacement matching is unsupported."
+        )
     return {
         "name": name,
         "severity": "hard",
         "status": "pass",
         "observed": matches[0] if len(matches) == 1 else ",".join(matches),
         "identityKind": kinds[0] if len(kinds) == 1 else ",".join(kinds),
-        "detail": (
-            "aan stays the account id. crossSnapshotMatch is supported because sale_transaction_id is present."
-            if supported
-            else (
-                "aan stays the account id. The published PVSC sales schema has no sale_transaction_id, "
-                "so this snapshot uses a labelled observation id and cross-snapshot matching is unsupported."
-            )
-        ),
+        "detail": detail,
     }
 
 

@@ -197,8 +197,8 @@ def replay_sale_identity(sales_path: Path) -> dict:
     shuffled = assign_sale_identity(sales.sample(frac=1, random_state=11))
     return {
         "rows": int(len(first)),
-        "identityKind": str(first["identityKind"].iloc[0]),
-        "crossSnapshotMatch": str(first["crossSnapshotMatch"].iloc[0]),
+        "identityKind": sorted({str(value) for value in first["identityKind"].dropna().unique()}),
+        "crossSnapshotMatch": sorted({str(value) for value in first["crossSnapshotMatch"].dropna().unique()}),
         "unique": bool(first["saleObservationId"].is_unique),
         "shuffleMatches": sorted(first["saleObservationId"]) == sorted(shuffled["saleObservationId"]),
         "accountRepeats": int(first["accountId"].duplicated().sum()),

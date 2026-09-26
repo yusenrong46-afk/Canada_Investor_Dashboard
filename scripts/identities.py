@@ -12,10 +12,12 @@ Socrata `:id` and `sale_id` are snapshot row identifiers. They can label one
 extract, but they are not verified to survive a dataset replacement, so
 cross-snapshot matching stays unsupported.
 
-Without one of those columns the observation id is
-`aan|sale_date|sale_price`. That key changes when the price is corrected and
-does not support cross-snapshot matching. A collision is rejected instead of
-being merged by guesswork.
+Without one of those columns the observation id is `aan|sale_date` when that
+pair is unique. A later price correction keeps the same id. The label is
+`price_correction`: the id survives a price change, and it is not a
+source-issued transaction id. When the same account has more than one sale on
+the same day, those rows keep `aan|sale_date|sale_price` and stay unsupported.
+A collision on that fuller key is rejected instead of being merged by row position.
 
 Vancouver listing rows in the processed extract have no source property id.
 The listing-row fingerprint is a hash of mutable listing fields. It is not a
@@ -62,6 +64,8 @@ SNAPSHOT_ROW_ID_COLUMNS = (":id", "sale_id")
 
 CROSS_SNAPSHOT_SUPPORTED = "supported"
 CROSS_SNAPSHOT_UNSUPPORTED = "unsupported"
+CROSS_SNAPSHOT_PRICE_CORRECTION = "price_correction"
+PRICE_CORRECTION_KIND = "snapshot_observation:aan|sale_date"
 
 
 def _is_missing(value: object) -> bool:
@@ -135,13 +139,27 @@ def assign_sale_identity(frame: pd.DataFrame) -> pd.DataFrame:
         prices = pd.to_numeric(frame[price_column], errors="coerce")
         if prices.isna().any():
             raise ValueError("Snapshot Halifax sale key needs sale_price on every row")
-        sale_id = account + "|" + dates.dt.strftime("%Y-%m-%d") + "|" + prices.map(canonical_token)
-        kind = "snapshot_observation:aan|sale_date|sale_price"
-        cross_snapshot = CROSS_SNAPSHOT_UNSUPPORTED
+        date_key = account + "|" + dates.dt.strftime("%Y-%m-%d")
+        price_key = date_key + "|" + prices.map(canonical_token)
+        if price_key.duplicated().any():
+            raise ValueError(
+                "Halifax sale observation key (snapshot_observation:aan|sale_date|sale_price) is not unique. "
+                "Refusing to invent a tie-breaker from row position."
+            )
+        shared_day = date_key.duplicated(keep=False)
+        sale_id = date_key.where(~shared_day, price_key)
+        kind = pd.Series(
+            PRICE_CORRECTION_KIND,
+            index=frame.index,
+            dtype="object",
+        )
+        kind.loc[shared_day] = "snapshot_observation:aan|sale_date|sale_price"
+        cross_snapshot = pd.Series(CROSS_SNAPSHOT_PRICE_CORRECTION, index=frame.index, dtype="object")
+        cross_snapshot.loc[shared_day] = CROSS_SNAPSHOT_UNSUPPORTED
 
     if sale_id.duplicated().any():
         raise ValueError(
-            f"Halifax sale observation key ({kind}) is not unique. "
+            "Halifax sale observation key is not unique. "
             "Refusing to invent a tie-breaker from row position."
         )
 
@@ -154,6 +172,23 @@ def assign_sale_identity(frame: pd.DataFrame) -> pd.DataFrame:
         },
         index=frame.index,
     )
+
+
+def _default_cross_snapshot_match(kind: object) -> str:
+    if kind == "source:sale_transaction_id":
+        return CROSS_SNAPSHOT_SUPPORTED
+    if kind == PRICE_CORRECTION_KIND:
+        return CROSS_SNAPSHOT_PRICE_CORRECTION
+    return CROSS_SNAPSHOT_UNSUPPORTED
+
+
+def _reconcile_cross_snapshot(kind: pd.Series, claimed: pd.Series) -> pd.Series:
+    """Keep a cross-snapshot label only when the identity kind actually supports it."""
+    reconciled = pd.Series(CROSS_SNAPSHOT_UNSUPPORTED, index=kind.index, dtype="object")
+    reconciled.loc[kind.eq(PRICE_CORRECTION_KIND)] = CROSS_SNAPSHOT_PRICE_CORRECTION
+    supported = kind.eq("source:sale_transaction_id") & claimed.astype(str).eq(CROSS_SNAPSHOT_SUPPORTED)
+    reconciled.loc[supported] = CROSS_SNAPSHOT_SUPPORTED
+    return reconciled
 
 
 def _populated_column(frame: pd.DataFrame, columns: tuple[str, ...]) -> str | None:
@@ -182,13 +217,8 @@ def attach_identity(frame: pd.DataFrame, market: str) -> pd.DataFrame:
             enriched["identityKind"] = "unverified_sale_observation"
         kind = enriched["identityKind"].map(canonical_token)
         if "crossSnapshotMatch" not in enriched.columns:
-            enriched["crossSnapshotMatch"] = kind.map(
-                lambda value: CROSS_SNAPSHOT_SUPPORTED
-                if value == "source:sale_transaction_id"
-                else CROSS_SNAPSHOT_UNSUPPORTED
-            )
-        else:
-            enriched.loc[kind != "source:sale_transaction_id", "crossSnapshotMatch"] = CROSS_SNAPSHOT_UNSUPPORTED
+            enriched["crossSnapshotMatch"] = kind.map(_default_cross_snapshot_match)
+        enriched["crossSnapshotMatch"] = _reconcile_cross_snapshot(kind, enriched["crossSnapshotMatch"])
         enriched["propertyObservationId"] = "halifax:sale:" + enriched["sourceObservationId"]
         return enriched
 

@@ -64,6 +64,15 @@ def test_sale_identity_pass_does_not_mean_cross_snapshot_support() -> None:
     overclaimed["crossSnapshotMatch"] = "supported"
     assert _sale_identity_contract(overclaimed)["status"] == "fail"
 
+    price_correction = pd.DataFrame(
+        {
+            "identityKind": ["snapshot_observation:aan|sale_date"],
+            "crossSnapshotMatch": ["price_correction"],
+        }
+    )
+    assert _sale_identity_contract(price_correction)["status"] == "pass"
+    assert _sale_identity_contract(price_correction)["observed"] == "price_correction"
+
 
 def test_hrm_profile_rejects_an_unmeasured_join(tmp_path: Path) -> None:
     releases = tmp_path / "releases"

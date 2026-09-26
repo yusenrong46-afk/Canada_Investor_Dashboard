@@ -556,8 +556,10 @@ def build_training_extract(
     sales["aan"] = sales["aan"].map(lambda value: str(value).strip())
     # Identify every sale before keeping the latest sale per account. aan is not unique.
     sales = sales.join(assign_sale_identity(sales))
-    identity_kind = str(sales["identityKind"].iloc[0]) if len(sales) else "none"
-    cross_snapshot = str(sales["crossSnapshotMatch"].iloc[0]) if len(sales) else "unsupported"
+    identity_kinds = sorted({str(value) for value in sales["identityKind"].dropna().unique()}) if len(sales) else []
+    cross_values = sorted({str(value) for value in sales["crossSnapshotMatch"].dropna().unique()}) if len(sales) else []
+    identity_kind = identity_kinds[0] if len(identity_kinds) == 1 else ",".join(identity_kinds) or "none"
+    cross_snapshot = cross_values[0] if len(cross_values) == 1 else ",".join(cross_values) or "unsupported"
 
     factors, index_latest_month = _time_adjustment_factors(sales)
     sales["timeAdjustmentFactor"] = factors

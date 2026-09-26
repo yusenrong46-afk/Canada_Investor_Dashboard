@@ -30,8 +30,9 @@ def test_fallback_sale_key_allows_repeat_accounts_and_rejects_collisions() -> No
     identity = assign_sale_identity(sales)
     assert list(identity["accountId"]) == ["100", "100"]
     assert identity["saleObservationId"].is_unique
-    assert identity["identityKind"].iloc[0] == "snapshot_observation:aan|sale_date|sale_price"
-    assert identity["crossSnapshotMatch"].iloc[0] == "unsupported"
+    assert identity["identityKind"].iloc[0] == "snapshot_observation:aan|sale_date"
+    assert identity["crossSnapshotMatch"].iloc[0] == "price_correction"
+    assert identity["saleObservationId"].iloc[0] == "100|2024-01-01"
 
     collided = pd.DataFrame(
         [
@@ -108,10 +109,24 @@ def test_snapshot_row_id_and_price_fallback_do_not_claim_stable_matching() -> No
 
     fallback_before = assign_sale_identity(pd.DataFrame([_sale(aan="55", sale_price=100000)]))
     fallback_after = assign_sale_identity(pd.DataFrame([_sale(aan="55", sale_price=125000)]))
-    assert fallback_before["crossSnapshotMatch"].iloc[0] == "unsupported"
-    assert fallback_before["identityKind"].iloc[0] == "snapshot_observation:aan|sale_date|sale_price"
-    assert fallback_before["saleObservationId"].iloc[0] != fallback_after["saleObservationId"].iloc[0]
+    assert fallback_before["crossSnapshotMatch"].iloc[0] == "price_correction"
+    assert fallback_before["identityKind"].iloc[0] == "snapshot_observation:aan|sale_date"
+    assert fallback_before["saleObservationId"].iloc[0] == fallback_after["saleObservationId"].iloc[0]
     assert fallback_before["accountId"].iloc[0] == fallback_after["accountId"].iloc[0] == "55"
+
+    same_day = pd.DataFrame(
+        [
+            _sale(aan="55", sale_date="2024-05-01", sale_price=100000),
+            _sale(aan="55", sale_date="2024-05-01", sale_price=125000),
+        ]
+    )
+    same_day_identity = assign_sale_identity(same_day)
+    assert set(same_day_identity["identityKind"]) == {"snapshot_observation:aan|sale_date|sale_price"}
+    assert set(same_day_identity["crossSnapshotMatch"]) == {"unsupported"}
+    corrected_same_day = same_day.copy()
+    corrected_same_day.loc[0, "sale_price"] = 110000
+    corrected_identity = assign_sale_identity(corrected_same_day)
+    assert same_day_identity["saleObservationId"].iloc[0] != corrected_identity["saleObservationId"].iloc[0]
 
 
 def test_non_key_correction_keeps_the_attached_sale_id() -> None:
@@ -137,6 +152,26 @@ def test_non_key_correction_keeps_the_attached_sale_id() -> None:
     assert original["propertyObservationId"].iloc[0] == "halifax:sale:tx-55"
     assert original["crossSnapshotMatch"].iloc[0] == "supported"
     assert updated["crossSnapshotMatch"].iloc[0] == "supported"
+
+    dated = {
+        "accountId": "55",
+        "saleObservationId": "55|2024-05-01",
+        "identityKind": "snapshot_observation:aan|sale_date",
+        "crossSnapshotMatch": "price_correction",
+        "saleDate": "2024-05-01",
+        "postalCode": "B3H1A1",
+        "salePrice": 100000,
+        "livingAreaSqft": 1200,
+        "latitude": 44.65,
+        "longitude": -63.6,
+        "propertyType": "Detached",
+    }
+    priced = attach_identity(pd.DataFrame([dated]), "halifax_maritimes")
+    dated["salePrice"] = 140000
+    dated["crossSnapshotMatch"] = "supported"
+    repriced = attach_identity(pd.DataFrame([dated]), "halifax_maritimes")
+    assert priced["propertyObservationId"].iloc[0] == repriced["propertyObservationId"].iloc[0]
+    assert repriced["crossSnapshotMatch"].iloc[0] == "price_correction"
 
 
 def test_vancouver_fingerprint_is_not_stable_when_listing_fields_change() -> None:

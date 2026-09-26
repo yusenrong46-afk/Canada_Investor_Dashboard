@@ -17,12 +17,18 @@ from sklearn.cluster import KMeans
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
+from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import GroupKFold, KFold, StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-from common.conformal import ConformalCalibration, calibrate_split_conformal
+from common.conformal import (
+    ConformalCalibration,
+    calibrate_split_conformal,
+    conformal_ratio,
+    empirical_coverage,
+)
 from common.explain import shap_drivers
 from common.artifact_loader import build_manifest_entry, extended_bundle_validation_issues, load_approved_pickle, upsert_manifest_entry
 
@@ -268,9 +274,8 @@ def _resolve_feature_columns(frame: pd.DataFrame) -> tuple[list[str], list[str]]
     numeric_features = list(NUMERIC_FEATURES)
     categorical_features = list(CATEGORICAL_FEATURES)
 
-    if "assessedValue" in frame.columns and float(frame["assessedValue"].notna().mean()) >= 0.05:
-        numeric_features.append("assessedValue")
-
+    # Assessed value is omitted on purpose. Inference leaves it blank, so a model
+    # that trains on it is not the model that serves an estimate.
     if "h3Cell" in frame.columns and _h3_column_is_safe(frame["h3Cell"]):
         categorical_features.append("h3Cell")
 
@@ -306,6 +311,131 @@ def _time_adjustment_baseline_month() -> str | None:
 
     value = summary.get("timeAdjustmentBaselineMonth")
     return str(value) if value else None
+
+
+def _calendar_split_bounds(
+    dates: pd.Series,
+    holdout_months: int = TEMPORAL_HOLDOUT_MONTHS,
+    calibration_months: int = TEMPORAL_HOLDOUT_MONTHS,
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    latest_month = dates.dt.to_period("M").max()
+    test_start = (latest_month - (holdout_months - 1)).to_timestamp()
+    calibration_start = (latest_month - (holdout_months - 1) - calibration_months).to_timestamp()
+    return pd.Timestamp(calibration_start), pd.Timestamp(test_start)
+
+
+def _pre_holdout_sale_index(dates: pd.Series, prices: pd.Series) -> pd.Series:
+    market = pd.DataFrame({"sale_date": dates, "sale_price": prices})
+    market = market[market["sale_price"] >= 100_000]
+    if market.empty:
+        return pd.Series(dtype=float)
+    months = market["sale_date"].dt.to_period("M")
+    monthly = market.groupby(months)["sale_price"].median().sort_index()
+    return monthly.rolling(window=3, min_periods=1, center=True).median()
+
+
+def _index_factors(dates: pd.Series, index: pd.Series) -> pd.Series:
+    if index.empty:
+        return pd.Series(1.0, index=dates.index, dtype=float)
+    baseline = index.index.max()
+    baseline_value = float(index.loc[baseline])
+    months = pd.to_datetime(dates).dt.to_period("M")
+
+    def one(month: object) -> float:
+        if pd.isna(month) or month not in index.index:
+            return 1.0
+        level = float(index.loc[month])
+        if level <= 0:
+            return 1.0
+        return baseline_value / level
+
+    return months.map(one).astype(float).clip(lower=0.5, upper=2.0)
+
+
+def _rebuild_target_from_pre_holdout_sales(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Replace the extract's full-sample adjusted price with a pre-holdout index.
+
+    Holdout months are absent from the index. Their factor is 1, so the test
+    target stays the sale price. Earlier sales are adjusted to the last
+    pre-holdout month.
+    """
+    if "salePrice" not in frame.columns or "saleDate" not in frame.columns:
+        return frame, {"rebuilt": False}
+    work = frame.copy()
+    work["salePrice"] = pd.to_numeric(work["salePrice"], errors="coerce")
+    dated = work["saleDate"].notna() & work["salePrice"].gt(0)
+    if int(dated.sum()) < 60:
+        return frame, {"rebuilt": False}
+    _calibration_start, test_start = _calendar_split_bounds(work.loc[dated, "saleDate"])
+    pre_holdout = work.loc[dated & (work["saleDate"] < test_start)]
+    index = _pre_holdout_sale_index(pre_holdout["saleDate"], pre_holdout["salePrice"])
+    factors = _index_factors(work["saleDate"], index)
+    adjustable = dated & factors.notna()
+    work.loc[adjustable, "price"] = work.loc[adjustable, "salePrice"] * factors.loc[adjustable]
+    work["logPrice"] = np.log(work["price"].clip(lower=1))
+    work["pricePerSqft"] = work["price"] / work["livingAreaSqft"].replace(0, np.nan)
+    test_months = set(work.loc[work["saleDate"] >= test_start, "saleDate"].dt.to_period("M"))
+    overlap = sorted(str(month) for month in test_months & set(index.index))
+    return work, {
+        "rebuilt": True,
+        "fitOn": "pre_holdout_sales_only",
+        "baselineMonth": str(index.index.max()) if len(index) else None,
+        "testStart": str(test_start.date()),
+        "holdoutMonthsInIndex": overlap,
+    }
+
+
+def _serving_split_indices(
+    frame: pd.DataFrame,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, str]:
+    dates = pd.to_datetime(frame["saleDate"], errors="coerce") if "saleDate" in frame.columns else pd.Series(pd.NaT, index=frame.index)
+    dated = dates.notna()
+    if int(dated.sum()) < 60:
+        train_index, test_index, strategy = _temporal_holdout_indices(frame, "saleDate")
+        return train_index, np.array([], dtype=object), test_index, strategy
+    calibration_start, test_start = _calendar_split_bounds(dates.loc[dated])
+    train_index = frame.index[(dated & (dates < calibration_start)).to_numpy()].to_numpy()
+    calibration_index = frame.index[(dated & (dates >= calibration_start) & (dates < test_start)).to_numpy()].to_numpy()
+    test_index = frame.index[(dated & (dates >= test_start)).to_numpy()].to_numpy()
+    if len(train_index) < 20 or len(calibration_index) < 5 or len(test_index) < 5:
+        train_index, test_index, strategy = _temporal_holdout_indices(frame, "saleDate")
+        return train_index, np.array([], dtype=object), test_index, strategy
+    undated = int((~dated).sum())
+    strategy = (
+        f"temporal split: train before {calibration_start.date()}, "
+        f"calibration through {test_start.date()}, test from {test_start.date()}"
+    )
+    if undated:
+        strategy += f"; {undated} undated rows excluded from train, calibration, and test"
+    return train_index, calibration_index, test_index, strategy
+
+
+def serving_limitation(bundle: Any) -> str | None:
+    features = list(getattr(bundle, "numeric_features", []) or [])
+    if "assessedValue" not in features:
+        return None
+    return (
+        "This approved bundle trained on assessed value, which an estimate leaves blank, "
+        "and its target used the extract time adjustment. A new training run omits assessed value "
+        "and rebuilds the target from sales before the holdout."
+    )
+
+
+def _response_model_notes(bundle: Any) -> list[str]:
+    notes = list(MODEL_NOTES)
+    protocol = {}
+    summary = getattr(bundle, "evaluation_summary", None)
+    if isinstance(summary, dict):
+        protocol = summary.get("targetProtocol") or {}
+    if protocol.get("rebuilt") is True:
+        notes.append(
+            "The training target was rebuilt from sale price with a monthly index fit only on sales before the holdout. "
+            "Assessed value is not a model feature."
+        )
+    limitation = serving_limitation(bundle)
+    if limitation:
+        notes.append(limitation)
+    return notes
 
 
 def _random_holdout_indices(frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
@@ -372,8 +502,6 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
     usable = source[source["propertyType"].isin(PROPERTY_TYPES)].copy()
     for column in ["price", "livingAreaSqft", "bedrooms", "bathrooms", "latitude", "longitude", "ageYears"]:
         usable[column] = pd.to_numeric(usable[column], errors="coerce")
-    if "assessedValue" in usable.columns:
-        usable["assessedValue"] = pd.to_numeric(usable["assessedValue"], errors="coerce")
     if "h3Cell" in usable.columns:
         usable["h3Cell"] = usable["h3Cell"].astype(str).where(usable["h3Cell"].notna())
     usable["postalCode"] = usable["postalCode"].map(_normalize_postal_code)
@@ -387,8 +515,7 @@ def _load_training_frame(data_path: str) -> tuple[pd.DataFrame, dict[str, int], 
     usable = usable[usable["bedrooms"].isna() | usable["bedrooms"].between(1, 10)].copy()
     usable.loc[usable["ageYears"].notna() & ((usable["ageYears"] < 0) | (usable["ageYears"] > 150)), "ageYears"] = np.nan
     if "assessedValue" in usable.columns:
-        ratio = usable["price"] / usable["assessedValue"].replace(0, np.nan)
-        usable = usable[usable["assessedValue"].isna() | ratio.between(0.3, 3.0)].copy()
+        usable = usable.drop(columns=["assessedValue"])
     usable = usable[usable["postalCode"].notna()].copy()
     # Ignore any baked extract cluster labels; train_bundle refits on the train fold.
     if "submarketCluster" in usable.columns:
@@ -660,6 +787,29 @@ def _weighted_average(items: list[dict[str, float]]) -> float:
     return float(sum(item["weight"] * item["value"] for item in items) / total_weight)
 
 
+def _baseline_metrics(
+    train_frame: pd.DataFrame,
+    holdout_frame: pd.DataFrame,
+    feature_columns: list[str],
+    actual_prices: np.ndarray,
+) -> dict[str, dict[str, Any]]:
+    median_predicted = np.full(len(holdout_frame), float(train_frame["price"].median()))
+    numeric = [column for column in feature_columns if column not in CATEGORICAL_FEATURES and column != "h3Cell"]
+    categorical = [column for column in feature_columns if column not in numeric]
+    ridge = Pipeline(
+        [
+            ("prep", _build_preprocessor(numeric, categorical)),
+            ("model", Ridge(alpha=1.0)),
+        ]
+    )
+    ridge.fit(train_frame[feature_columns], train_frame["logPrice"].to_numpy(dtype=float))
+    ridge_predicted = np.exp(ridge.predict(holdout_frame[feature_columns]))
+    return {
+        "median": _evaluate_predictions(actual_prices, median_predicted),
+        "ridge": _evaluate_predictions(actual_prices, ridge_predicted),
+    }
+
+
 def _train_property_type_model(
     property_type: str,
     frame: pd.DataFrame,
@@ -667,6 +817,7 @@ def _train_property_type_model(
     feature_columns: list[str],
     pipeline_builders: dict[str, Pipeline],
     temporal_train_index: np.ndarray,
+    temporal_calibration_index: np.ndarray,
     temporal_test_index: np.ndarray,
     temporal_split_strategy: str,
 ) -> tuple[Pipeline, str, dict[str, dict[str, Any]], ConformalCalibration, dict[str, Any]]:
@@ -752,8 +903,37 @@ def _train_property_type_model(
     selected_pipeline.fit(x_train, y_train)
 
     holdout_predictions = np.array(candidate_metrics[selected_family].pop("_holdoutPredictions"), dtype=float)
-    calibration = calibrate_split_conformal(actual_prices, holdout_predictions, alpha=CONFORMAL_ALPHA)
+    calibration_rows = frame.index.intersection(temporal_calibration_index)
+    if len(calibration_rows) >= 5 and len(holdout_frame) >= 5:
+        calibration_frame = frame.loc[calibration_rows]
+        calibration_predicted = np.exp(selected_pipeline.predict(calibration_frame[feature_columns]))
+        test_predicted = np.exp(selected_pipeline.predict(x_test))
+        ratio = conformal_ratio(
+            calibration_frame["price"].to_numpy(dtype=float),
+            calibration_predicted,
+            CONFORMAL_ALPHA,
+        )
+        coverage = empirical_coverage(actual_prices, test_predicted, ratio)
+        calibration = ConformalCalibration(
+            alpha=float(CONFORMAL_ALPHA),
+            target_coverage=float(1.0 - CONFORMAL_ALPHA),
+            ratio=float(ratio),
+            empirical_coverage=float(coverage),
+            calibration_rows=int(len(calibration_frame)),
+            coverage_rows=int(len(holdout_frame)),
+        )
+        holdout_predictions = test_predicted
+        uncertainty_note = (
+            f"conformal ratio fit on {len(calibration_frame)} calibration-month sales; "
+            f"coverage measured on {len(holdout_frame)} later test-month sales"
+        )
+    else:
+        calibration = calibrate_split_conformal(actual_prices, holdout_predictions, alpha=CONFORMAL_ALPHA)
+        uncertainty_note = (
+            f"split conformal calibration (alpha={CONFORMAL_ALPHA}) on the Halifax {property_type} temporal holdout predictions"
+        )
     bootstrap_summary = _bootstrap_metric_summary(actual_prices, holdout_predictions)
+    baselines = _baseline_metrics(train_frame, holdout_frame, feature_columns, actual_prices)
     spatial_cv = _spatial_cv_summary(
         pipeline_builders[selected_family],
         x_train,
@@ -783,6 +963,7 @@ def _train_property_type_model(
         "holdoutRows": int(selected_metrics["holdout"]["rows"]),
         "cv": selected_metrics["cv"],
         "holdout": selected_metrics["holdout"],
+        "baselines": baselines,
         "randomHoldout": {
             "rows": int(len(random_test_index)),
             "mae": random_holdout_metrics["mae"],
@@ -806,8 +987,8 @@ def _train_property_type_model(
             "randomHoldoutSplit": "secondary 80/20 stratified by price band",
             "bootstrap": f"{bootstrap_summary['repeats']} bootstrap resamples on the Halifax {property_type} temporal holdout predictions",
             "spatialValidation": f"GroupKFold by {SPATIAL_CV_GROUP_KEY} vs a matched random KFold on the Halifax {property_type} training split",
-            "uncertainty": f"split conformal calibration (alpha={CONFORMAL_ALPHA}) on the Halifax {property_type} temporal holdout predictions",
-            "shippedModel": "train-only fitted model; conformal calibration covers this model on unseen holdout rows",
+            "uncertainty": uncertainty_note,
+            "shippedModel": "train-only fitted model; the conformal ratio is fit on calibration months and coverage is measured on later test months",
         },
     }
 
@@ -819,11 +1000,14 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
     if usable.empty:
         raise ValueError("No Halifax training rows were found after cleaning the extract CSV")
 
+    usable, target_protocol = _rebuild_target_from_pre_holdout_sales(usable)
     numeric_features, categorical_features = _resolve_feature_columns(usable)
+    if "assessedValue" in numeric_features or "assessedValue" in categorical_features:
+        raise RuntimeError("assessedValue is not a serving-compatible Halifax feature")
     feature_columns = numeric_features + categorical_features
     pipeline_builders = _build_candidate_pipelines(numeric_features, categorical_features)
 
-    temporal_train_index, temporal_test_index, temporal_split_strategy = _temporal_holdout_indices(usable, "saleDate")
+    temporal_train_index, temporal_calibration_index, temporal_test_index, temporal_split_strategy = _serving_split_indices(usable)
     usable = _impute_age_years_train_only(usable, temporal_train_index)
     train_stats_frame = usable.loc[temporal_train_index].copy()
 
@@ -841,6 +1025,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
 
     for property_type, frame in usable.groupby("propertyType"):
         type_train_index = frame.index.intersection(temporal_train_index).to_numpy()
+        type_calibration_index = frame.index.intersection(temporal_calibration_index).to_numpy()
         type_test_index = frame.index.intersection(temporal_test_index).to_numpy()
         model, family, metrics, calibration, evaluation = _train_property_type_model(
             property_type,
@@ -848,6 +1033,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
             feature_columns=feature_columns,
             pipeline_builders=pipeline_builders,
             temporal_train_index=type_train_index,
+            temporal_calibration_index=type_calibration_index,
             temporal_test_index=type_test_index,
             temporal_split_strategy=temporal_split_strategy,
         )
@@ -912,6 +1098,20 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
                 for property_type, spatial in ready_spatial.items()
             ],
         ),
+        "baselineMedianMae": _weighted_average(
+            [
+                {"value": summary["baselines"]["median"]["mae"], "weight": summary["holdoutRows"]}
+                for summary in per_type_summary.values()
+                if summary.get("baselines")
+            ],
+        ),
+        "baselineRidgeMae": _weighted_average(
+            [
+                {"value": summary["baselines"]["ridge"]["mae"], "weight": summary["holdoutRows"]}
+                for summary in per_type_summary.values()
+                if summary.get("baselines")
+            ],
+        ),
     }
 
     evaluation_summary = {
@@ -923,11 +1123,12 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
             "randomHoldoutSplit": "secondary 80/20 stratified by price band per property type",
             "bootstrap": f"{BOOTSTRAP_REPEATS} bootstrap resamples on each selected temporal holdout prediction set",
             "spatialValidation": f"GroupKFold by {SPATIAL_CV_GROUP_KEY} vs matched random KFold per property type",
-            "uncertainty": f"split conformal calibration (alpha={CONFORMAL_ALPHA}) per property type",
-            "shippedModel": "train-only fitted models; conformal intervals cover the shipped models on unseen holdout rows",
+            "uncertainty": f"split conformal calibration (alpha={CONFORMAL_ALPHA}) per property type, fit on calibration months when that slice exists",
+            "shippedModel": "train-only fitted models; conformal intervals cover the shipped models on later test rows",
         },
         "perType": per_type_summary,
         "eda": eda_summary,
+        "targetProtocol": target_protocol,
     }
 
     global_age_median = _safe_median(train_stats_frame["ageYears"], 0.0)
@@ -995,7 +1196,7 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> HalifaxModelBundle:
         type_stats=type_stats,
         market_stats=market_stats,
         training_date_range=eda_summary["trainingDateRange"],
-        time_adjustment_baseline_month=_time_adjustment_baseline_month(),
+        time_adjustment_baseline_month=target_protocol.get("baselineMonth") or _time_adjustment_baseline_month(),
         numeric_features=numeric_features,
         categorical_features=categorical_features,
         conformal_coverage_waivers=conformal_coverage_waivers,
@@ -1336,7 +1537,7 @@ def estimate_property(payload: dict[str, Any]) -> dict[str, Any]:
         },
         "marketFreshness": _market_freshness_payload(bundle),
         "dataSources": DATA_SOURCES,
-        "modelNotes": MODEL_NOTES,
+        "modelNotes": _response_model_notes(bundle),
     }
 
 
@@ -1372,7 +1573,7 @@ def metrics_payload() -> dict[str, Any]:
         "locationFeatureVersion": bundle.location_feature_version,
         "clusterCount": bundle.cluster_count,
         "dataSources": DATA_SOURCES,
-        "modelNotes": MODEL_NOTES,
+        "modelNotes": _response_model_notes(bundle),
         "xgboostAvailable": bundle.xgboost_available,
         "xgboostImportError": bundle.xgboost_import_error,
     }
