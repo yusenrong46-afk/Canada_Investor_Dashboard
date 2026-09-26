@@ -373,6 +373,8 @@ def _join_contract() -> dict[str, Any]:
         "denominator": audit.get("denominator"),
         "denominatorName": audit.get("denominatorName"),
         "unmatchedAccounts": audit.get("unmatchedAccounts"),
+        "unmatchedAccountReasons": audit.get("unmatchedAccountReasons"),
+        "accountKey": audit.get("accountKey"),
         "eligibleSourcePopulation": audit.get("eligibleSourcePopulation"),
         "exclusions": audit.get("exclusions"),
         "fanOut": audit.get("fanOut"),

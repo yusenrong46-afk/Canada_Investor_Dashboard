@@ -183,6 +183,81 @@ def _download_arcgis_csv(service_url: str, label: str, destination: Path, out_fi
     print(f"Saved {len(combined):,} {label} rows to {destination}")
 
 
+def parse_arcgis_editing_info(payload: dict) -> dict | None:
+    """Read a FeatureServer layer's data edit time, or None when it is absent.
+
+    ArcGIS reports editingInfo.dataLastEditDate as epoch milliseconds. That is
+    the layer document's edit time, not a per-row observation time. A missing
+    field stays unknown.
+    """
+    editing = payload.get("editingInfo")
+    if not isinstance(editing, dict) or editing.get("dataLastEditDate") is None:
+        return None
+    try:
+        data_ms = int(editing["dataLastEditDate"])
+    except (TypeError, ValueError):
+        return None
+    source = datetime.fromtimestamp(data_ms / 1000, timezone.utc).isoformat()
+    schema = None
+    if editing.get("schemaLastEditDate") is not None:
+        try:
+            schema = datetime.fromtimestamp(int(editing["schemaLastEditDate"]) / 1000, timezone.utc).isoformat()
+        except (TypeError, ValueError):
+            schema = None
+    return {
+        "sourceUpdatedAt": source,
+        "sourceUpdateField": "editingInfo.dataLastEditDate",
+        "schemaLastEditDate": schema,
+        "dataAndSchemaTimestampsEqual": schema == source,
+    }
+
+
+def fetch_arcgis_source_update(service_url: str) -> dict | None:
+    payload = json.loads(_fetch(f"{service_url}?f=json"))
+    if "error" in payload:
+        raise RuntimeError(f"ArcGIS layer metadata error for {service_url}: {payload['error']}")
+    return parse_arcgis_editing_info(payload)
+
+
+def apply_arcgis_source_updates(manifest: dict, updates: dict[str, dict | None]) -> dict:
+    """Fill sourceUpdatedAt only for layers whose metadata actually has a data edit time."""
+    revised = json.loads(json.dumps(manifest))
+    for row in revised.get("snapshots", []):
+        info = updates.get(row.get("name"))
+        if not info:
+            continue
+        row["sourceUpdatedAt"] = info["sourceUpdatedAt"]
+        row["sourceUpdateField"] = info["sourceUpdateField"]
+        row["schemaLastEditDate"] = info["schemaLastEditDate"]
+        row["dataAndSchemaTimestampsEqual"] = info["dataAndSchemaTimestampsEqual"]
+        note = (
+            "sourceUpdatedAt is FeatureServer editingInfo.dataLastEditDate. "
+            "It is the layer document's data edit time, not a per-row observation time."
+        )
+        if info["dataAndSchemaTimestampsEqual"]:
+            note += " dataLastEditDate and schemaLastEditDate are the same instant."
+        row["sourceObservationPeriod"] = note
+    return revised
+
+
+ARCGIS_SOURCE_LAYERS = {
+    "hrm_civic_addresses": HRM_CIVIC_ADDRESS_SERVICE,
+    "hrm_permits": HRM_PERMITS_SERVICE,
+}
+
+
+def record_arcgis_source_updates(manifest_path: Path | None = None) -> dict:
+    """Refresh civic and permit source-update times on an existing acquisition manifest."""
+    manifest_path = manifest_path or (RAW_HALIFAX_DIR / "acquisition_manifest.json")
+    updates = {name: fetch_arcgis_source_update(url) for name, url in ARCGIS_SOURCE_LAYERS.items()}
+    if not manifest_path.is_file():
+        return {"updates": updates, "manifestWritten": False}
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    revised = apply_arcgis_source_updates(manifest, updates)
+    write_bytes_atomically(manifest_path, (json.dumps(revised, indent=2) + "\n").encode("utf-8"))
+    return {"updates": updates, "manifestWritten": True, "manifest": revised}
+
+
 def download_pvsc() -> None:
     hrm_filter = f"municipal_unit='{HRM_MUNICIPAL_UNIT}'"
     _download_datazone_csv(
@@ -220,6 +295,11 @@ def download_hrm() -> None:
         "HRM building permits (geolocated)",
         _path(DEFAULT_PERMITS_PATH),
     )
+    recorded = record_arcgis_source_updates()
+    if recorded["manifestWritten"]:
+        print("Recorded ArcGIS editingInfo.dataLastEditDate on the acquisition manifest.")
+    else:
+        print("ArcGIS source-update times were fetched. No acquisition manifest was present to update.")
 
 
 # Training extract configuration. See docs/halifax-data-recon.md for the measured
@@ -263,6 +343,109 @@ def _map_style_to_property_type(style: object) -> str | None:
         if token in lowered:
             return property_type
     return None
+
+
+def _zero_pad_match_delta(window_accounts: pd.Series, eligible_accounts: pd.Series) -> int:
+    """How many extra denominator accounts would match if both sides were zero-padded.
+
+    A non-zero delta means the join is dropping rows because of account-number
+    formatting. Zero means padding is not the miss.
+    """
+
+    def pad(series: pd.Series) -> pd.Series:
+        text = series.astype(str).str.replace(r"\.0$", "", regex=True)
+        return text.str.zfill(8)
+
+    raw_matches = int(window_accounts.astype(str).isin(set(eligible_accounts.astype(str))).sum())
+    padded_matches = int(pad(window_accounts).isin(set(pad(eligible_accounts))).sum())
+    return padded_matches - raw_matches
+
+
+def classify_unmatched_sale_accounts(
+    window_accounts: pd.Series,
+    dwellings: pd.DataFrame,
+    eligible_accounts: pd.Series,
+) -> dict:
+    """Partition denominator accounts that miss the eligible-dwelling join.
+
+    The denominator is unchanged. These counts explain the miss; they do not
+    remove accounts from it. An eligible dwelling row that still failed to join
+    is reported as eligibleRowNotJoined rather than being forced into a match.
+    """
+    unmatched = pd.Series(window_accounts, dtype="object").astype(str).drop_duplicates()
+    eligible = set(pd.Series(eligible_accounts, dtype="object").astype(str))
+    unmatched = unmatched[~unmatched.isin(eligible)]
+    reasons = {
+        "noDwellingRow": 0,
+        "eligibleRowNotJoined": 0,
+        "styleUnmapped": 0,
+        "underConstruction": 0,
+        "livingUnitsOutside1To4": 0,
+        "other": 0,
+    }
+    if unmatched.empty:
+        return {
+            "unmatchedAccounts": 0,
+            "reasons": reasons,
+            "styleUnmappedAccountStyles": {},
+            "reasonCountsSumToUnmatched": True,
+        }
+
+    dwell = dwellings.copy()
+    dwell["aan"] = dwell["aan"].astype(str)
+    related = dwell[dwell["aan"].isin(set(unmatched))].copy()
+    related["passesUnits"] = related["living_units"].between(1, 4)
+    related["passesConstruction"] = related["under_construction"].eq("N")
+    related["passesStyle"] = related["style"].map(_map_style_to_property_type).notna()
+    related["eligibleRow"] = related["passesConstruction"] & related["passesUnits"] & related["passesStyle"]
+    related["passesConstructionAndUnits"] = related["passesConstruction"] & related["passesUnits"]
+
+    if related.empty:
+        flags = pd.DataFrame(index=pd.Index([], name="aan"))
+    else:
+        flags = related.groupby("aan", sort=False).agg(
+            any_eligible=("eligibleRow", "any"),
+            any_construction_and_units=("passesConstructionAndUnits", "any"),
+            any_construction=("passesConstruction", "any"),
+            any_units=("passesUnits", "any"),
+        )
+    have_dwelling = set(flags.index.astype(str))
+
+    labels = []
+    for aan in unmatched:
+        if aan not in have_dwelling:
+            label = "noDwellingRow"
+        elif bool(flags.at[aan, "any_eligible"]):
+            label = "eligibleRowNotJoined"
+        elif bool(flags.at[aan, "any_construction_and_units"]):
+            label = "styleUnmapped"
+        elif not bool(flags.at[aan, "any_construction"]):
+            label = "underConstruction"
+        elif not bool(flags.at[aan, "any_units"]):
+            label = "livingUnitsOutside1To4"
+        else:
+            label = "other"
+        reasons[label] += 1
+        labels.append(label)
+
+    style_counts: dict[str, int] = {}
+    if not related.empty:
+        style_accounts = related[related["passesConstructionAndUnits"]].drop_duplicates("aan")
+        style_accounts = style_accounts[style_accounts["aan"].isin(
+            [aan for aan, label in zip(unmatched, labels) if label == "styleUnmapped"]
+        )]
+        style_labels = style_accounts["style"].map(lambda value: "null" if not isinstance(value, str) else value)
+        style_counts = {str(key): int(value) for key, value in style_labels.value_counts().items()}
+
+    partition_ok = sum(reasons.values()) == int(len(unmatched))
+    if not partition_ok:
+        raise RuntimeError("Unmatched-account reasons do not sum to the unmatched denominator accounts.")
+    return {
+        "unmatchedAccounts": int(len(unmatched)),
+        "reasons": reasons,
+        "styleUnmappedAccountStyles": style_counts,
+        "reasonCountsSumToUnmatched": True,
+    }
 
 
 def _h3_cell(latitude: float, longitude: float) -> str | None:
@@ -420,6 +603,11 @@ def build_training_extract(
     unmatched_accounts = join_denominator - matched_accounts
     joined_per_account_max = int(joined.groupby("aan").size().max()) if len(joined) else 0
     join_rate = join_numerator / join_denominator if join_denominator else 0.0
+    unmatched_classification = classify_unmatched_sale_accounts(
+        window_sales["aan"],
+        dwellings,
+        eligible["aan"],
+    )
     join_audit = {
         "inputCapability": "raw_sales_and_dwellings",
         "remeasured": True,
@@ -456,6 +644,12 @@ def build_training_extract(
         },
         "identityKind": identity_kind,
         "crossSnapshotMatch": cross_snapshot,
+        "unmatchedAccountReasons": unmatched_classification["reasons"],
+        "styleUnmappedAccountStyles": unmatched_classification["styleUnmappedAccountStyles"],
+        "accountKey": {
+            "comparison": "string aan on both sides; zero-pad to 8 digits does not redefine the denominator",
+            "zeroPadMatchDelta": _zero_pad_match_delta(window_sales["aan"], eligible["aan"]),
+        },
     }
     if join_rate < MIN_SALE_TO_DWELLING_JOIN_RATE:
         message = (
@@ -662,6 +856,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Download and validate the Halifax (HRM) open datasets.")
     parser.add_argument("--download-pvsc", action="store_true", help="Download the PVSC datazONE extracts for HRM.")
     parser.add_argument("--download-hrm", action="store_true", help="Download the HRM civic address and permit layers.")
+    parser.add_argument(
+        "--record-arcgis-source-updates",
+        action="store_true",
+        help="Read FeatureServer editingInfo.dataLastEditDate into the acquisition manifest when that file exists.",
+    )
     parser.add_argument("--build-training", action="store_true", help="Build the processed Halifax training extract.")
     parser.add_argument("--check", action="store_true", help="Report which raw files are present.")
     parser.add_argument(
@@ -681,6 +880,8 @@ def main() -> int:
         download_pvsc()
     if args.download_hrm:
         download_hrm()
+    elif args.record_arcgis_source_updates:
+        record_arcgis_source_updates()
     if args.build_training:
         build_training_extract(strict=args.strict, reference_date=args.reference_date)
         return 0

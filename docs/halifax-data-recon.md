@@ -31,6 +31,24 @@ Current code computes the rate on the inner join **before** the coordinate filte
 
 A new open-data snapshot was acquired on 2026-09-25 (not a recovery of the July extract). On that snapshot the same denominator — latest sale per `aan` on or after 2022-01-01 — had 26,698 accounts, of which 20,565 matched an eligible dwelling. The measured rate is 0.770282. It is below 0.90, so no HRM data candidate was published. Joined rows per account max was 1. Sale identity is `aan|sale_date|sale_price` because the published sales schema has no `sale_transaction_id`; cross-snapshot matching is unsupported.
 
+The 6,133 unmatched denominator accounts are a partition, measured with `classify_unmatched_sale_accounts` on that snapshot:
+
+| Reason | Accounts |
+|---|---:|
+| No dwelling row for the account | 2,760 |
+| Dwelling passes construction and living-units filters; style is unmapped | 3,017 |
+| Every dwelling row is under construction | 268 |
+| Living units fall outside 1–4 | 88 |
+| Eligible dwelling row existed and still failed to join | 0 |
+
+Of the 3,017 style-unmapped accounts, 2,785 have a null style and 232 are `Manufactured Home`. Both account columns are integers, and zero-padding both sides to 8 digits changes the match count by 0, so this is not a leading-zero join bug. Accounts with no dwelling row are spread across 2022–2026 (491 of them are after the dwelling file's source update on 2026-01-12). Their median sale price is $175,000, against $551,000 for matched accounts.
+
+The highest rate available without inventing a dwelling row is (26,698 − 2,760) / 26,698 = 0.896622, still below 0.90. Eligibility rules and the denominator were left as they are. The acceptance threshold remains 0.90.
+
+On 2026-09-26 the Parcel Sales History view (`6a95-ppg4`) was read again. Its columns are still `municipal_unit`, `aan`, the address fields, `sale_price`, `sale_date`, `parcels_in_sale`, `y_coord`, `x_coord`, and `location`. There is still no `sale_transaction_id`. Socrata `:id` remains a snapshot row id and is not treated as a durable transaction id.
+
+The same day, the ArcGIS FeatureServer layer documents supplied `editingInfo.dataLastEditDate` for the two layers whose source-update time had been unknown. Civic addresses: 2026-09-25T09:41:32.744Z. Geolocated permits: 2026-09-25T09:15:22.596Z. On both layers that instant equals `schemaLastEditDate`, so it is the layer document's edit time, not a per-row observation time. `scripts/setup_halifax_data.py --record-arcgis-source-updates` writes those values onto an existing acquisition manifest and leaves the field empty when the layer document has no `dataLastEditDate`.
+
 Earlier notes that were also not recomputed:
 
 - Joined rows with a 2026 assessed value: **100%** (summary `assessedValuePresent` is 1.0 on the cleaned extract).
