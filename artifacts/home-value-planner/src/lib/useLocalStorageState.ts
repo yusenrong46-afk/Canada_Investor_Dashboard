@@ -1,57 +1,61 @@
 import { useEffect, useState } from "react";
 
-interface LocalStorageOptions<T> {
-  migrate?: (raw: unknown) => T | null;
-  validate?: (value: T) => boolean;
+/** Turns parsed JSON back into a usable value, or returns null when nothing in it can be used. */
+export type StoredValueParser<T> = (raw: unknown) => T | null;
+
+export function storageBackupKey(key: string): string {
+  return `${key}:backup`;
 }
 
-function readStoredValue<T>(key: string, initialValue: T, options?: LocalStorageOptions<T>): T {
+// Every storage call is guarded: blocked cookies, some private modes, and full quotas make localStorage throw.
+function readItem(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeItem(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn(`[storage] failed to persist ${key}`, error);
+  }
+}
+
+export function readStoredValue<T>(key: string, initialValue: T, parse: StoredValueParser<T>): T {
   if (typeof window === "undefined") {
     return initialValue;
   }
 
-  const saved = window.localStorage.getItem(key);
+  const saved = readItem(key);
   if (!saved) {
     return initialValue;
   }
 
-  let raw: unknown;
+  let parsed: T | null = null;
   try {
-    raw = JSON.parse(saved);
+    parsed = parse(JSON.parse(saved));
   } catch {
-    window.localStorage.removeItem(key);
-    return initialValue;
+    parsed = null;
   }
 
-  if (options?.migrate) {
-    const migrated = options.migrate(raw);
-    if (migrated != null) {
-      if (options.validate && !options.validate(migrated)) {
-        window.localStorage.removeItem(key);
-        return initialValue;
-      }
-      return migrated;
-    }
+  // The value read back is written over the original on the next render. If reading rejected or changed
+  // anything, keep the original under a backup key first so nothing the user saved is silently lost.
+  if (parsed == null || JSON.stringify(parsed) !== saved) {
+    console.warn(`[storage] ${key} was invalid or migrated; original kept under ${storageBackupKey(key)}`);
+    writeItem(storageBackupKey(key), saved);
   }
 
-  const candidate = raw as T;
-  if (options?.validate && !options.validate(candidate)) {
-    window.localStorage.removeItem(key);
-    return initialValue;
-  }
-
-  return candidate;
+  return parsed ?? initialValue;
 }
 
-export function useLocalStorageState<T>(key: string, initialValue: T, options?: LocalStorageOptions<T>) {
-  const [value, setValue] = useState<T>(() => readStoredValue(key, initialValue, options));
+export function useLocalStorageState<T>(key: string, initialValue: T, parse: StoredValueParser<T>) {
+  const [value, setValue] = useState<T>(() => readStoredValue(key, initialValue, parse));
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
-      console.warn(`[storage] failed to persist ${key}`, error);
-    }
+    writeItem(key, JSON.stringify(value));
   }, [key, value]);
 
   return [value, setValue] as const;

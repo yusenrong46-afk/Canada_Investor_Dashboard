@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  improvementFlagValues,
   type ApiRuntimeMode,
   type EstimateResponse,
   type MarketsResponse,
@@ -15,7 +14,6 @@ import { validatePropertyInput, type PropertyFormValidation } from "../lib/prope
 import { buildRequestKey, isFreshResult } from "../lib/requestKey";
 import {
   cleanScenario,
-  isScenarioStore,
   migrateScenarioStore,
   newestFirst,
   type DealInputState,
@@ -23,13 +21,11 @@ import {
   type ScenarioRecord,
   type ScenarioStore,
 } from "../lib/scenarios";
+import { cleanPlannedFlags, cleanProperty, parseDealInputs, parsePlanInputs } from "../lib/storedSession";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { useLocalStorageState } from "../lib/useLocalStorageState";
 
 const estimateRoutes = new Set(["/estimate", "/improve", "/"]);
-
-const validPlannedFlags = [...improvementFlagValues];
-const validPlannedFlagSet = new Set(validPlannedFlags);
 
 export const defaultPlanInputs: PlanInputState = {
   targetPrice: 1_400_000,
@@ -42,22 +38,6 @@ export const defaultDealInputs: DealInputState = {
   budget: 85_000,
   timelineMonths: 9,
 };
-
-function cleanPlannedFlags(flags: PlannedFlag[]): PlannedFlag[] {
-  return flags.filter((flag) => validPlannedFlagSet.has(flag));
-}
-
-function cleanProperty(property: PropertyInput): PropertyInput {
-  return {
-    postalCode: property.postalCode ?? defaultProperty.postalCode,
-    propertyType: property.propertyType ?? defaultProperty.propertyType,
-    livingAreaSqft: property.livingAreaSqft ?? defaultProperty.livingAreaSqft,
-    bedrooms: property.bedrooms ?? defaultProperty.bedrooms,
-    bathrooms: property.bathrooms ?? defaultProperty.bathrooms,
-    yearBuilt: property.yearBuilt,
-    knownCurrentValue: property.knownCurrentValue,
-  };
-}
 
 export interface PropertySessionValue {
   property: PropertyInput;
@@ -90,15 +70,15 @@ type EstimateResult = EstimateResponse & { requestKey: string };
 
 export function PropertySessionProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const [savedProperty, setSavedProperty] = useLocalStorageState<PropertyInput>("vvl-base-price-property-v1", defaultProperty);
-  const [savedPlannedFlags, setSavedPlannedFlags] = useLocalStorageState<PlannedFlag[]>("vvl-uplift-flags-v1", []);
+  const [property, setSavedProperty] = useLocalStorageState<PropertyInput>("vvl-base-price-property-v1", defaultProperty, cleanProperty);
+  const [plannedFlags, setSavedPlannedFlags] = useLocalStorageState<PlannedFlag[]>("vvl-uplift-flags-v1", [], cleanPlannedFlags);
   const [savedScenarioStore, setSavedScenarioStore] = useLocalStorageState<ScenarioStore>(
     "vvl-scenarios-v1",
     { version: 1, data: [] },
-    { migrate: migrateScenarioStore, validate: isScenarioStore },
+    migrateScenarioStore,
   );
-  const [planInputs, setPlanInputs] = useLocalStorageState<PlanInputState>("vvl-plan-inputs-v1", defaultPlanInputs);
-  const [dealInputs, setDealInputs] = useLocalStorageState<DealInputState>("vvl-deal-inputs-v1", defaultDealInputs);
+  const [planInputs, setPlanInputs] = useLocalStorageState<PlanInputState>("vvl-plan-inputs-v1", defaultPlanInputs, parsePlanInputs);
+  const [dealInputs, setDealInputs] = useLocalStorageState<DealInputState>("vvl-deal-inputs-v1", defaultDealInputs, parseDealInputs);
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [estimateError, setEstimateError] = useState<string | null>(null);
@@ -108,7 +88,6 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
   const [modelServiceReady, setModelServiceReady] = useState<boolean | null>(null);
   const [propertyFormValidation, setPropertyFormValidation] = useState<PropertyFormValidation>(() => validatePropertyInput(defaultProperty));
 
-  const property = useMemo(() => cleanProperty(savedProperty), [savedProperty]);
   const debouncedProperty = useDebouncedValue(property, 400);
   const shouldFetchEstimate = estimateRoutes.has(location.pathname);
   const visibleEstimateKey = buildRequestKey(property);
@@ -121,7 +100,6 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
     }
     return propertyFormValidation.valid ? schemaPropertyValidation : propertyFormValidation;
   }, [propertyFormValidation, schemaPropertyValidation]);
-  const plannedFlags = useMemo(() => cleanPlannedFlags(savedPlannedFlags), [savedPlannedFlags]);
   const savedScenarios = savedScenarioStore.data;
 
   function setSavedScenarios(next: ScenarioRecord[] | ((current: ScenarioRecord[]) => ScenarioRecord[])) {
@@ -132,12 +110,12 @@ export function PropertySessionProvider({ children }: { children: ReactNode }) {
   }
 
   const setProperty = (nextProperty: PropertyInput) => {
-    const cleanedProperty = cleanProperty(nextProperty);
+    const cleanedProperty = cleanProperty(nextProperty) ?? defaultProperty;
     setSavedProperty(cleanedProperty);
     setPropertyFormValidation(validatePropertyInput(cleanedProperty));
   };
 
-  const setPlannedFlags = (nextFlags: PlannedFlag[]) => setSavedPlannedFlags(cleanPlannedFlags(nextFlags));
+  const setPlannedFlags = (nextFlags: PlannedFlag[]) => setSavedPlannedFlags(cleanPlannedFlags(nextFlags) ?? []);
   const scenarios = useMemo(() => newestFirst(savedScenarios.map(cleanScenario)), [savedScenarios]);
 
   function saveScenario(nextScenario: ScenarioRecord) {

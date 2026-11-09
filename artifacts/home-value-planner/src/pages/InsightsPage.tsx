@@ -143,7 +143,8 @@ export function InsightsPage() {
   const pricePerSqftRows = useMemo(() => (displayData ? buildPricePerSqftRows(displayData) : []), [displayData]);
   const hasSmallSavedSample = scenarios.length > 0 && scenarios.length < 3;
 
-  if (error) {
+  // Saved scenarios do not depend on the sample-insights request, so only an empty workspace shows its error.
+  if (error && !scenarios.length) {
     return <InlineAlert tone="error">{error}</InlineAlert>;
   }
 

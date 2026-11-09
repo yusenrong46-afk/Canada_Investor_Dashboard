@@ -49,31 +49,32 @@ export function MapPage() {
   const [selectedCell, setSelectedCell] = useState<MarketMapCell | null>(null);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     setSelectedCell(null);
+    // Drop the previous market's map so it is not shown under the newly selected market.
+    setResponse(null);
 
-    getMarketMap(market)
+    getMarketMap(market, controller.signal)
       .then((nextResponse) => {
-        if (active) {
+        if (!controller.signal.aborted) {
           setResponse(nextResponse);
         }
       })
       .catch((caughtError: Error) => {
-        if (active) {
-          setResponse(null);
+        if (!controller.signal.aborted) {
           setError(caughtError.message);
         }
       })
       .finally(() => {
-        if (active) {
+        if (!controller.signal.aborted) {
           setLoading(false);
         }
       });
 
     return () => {
-      active = false;
+      controller.abort();
     };
   }, [market]);
 

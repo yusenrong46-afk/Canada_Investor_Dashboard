@@ -51,6 +51,7 @@ export function DealAnalyzerPage() {
   });
 
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [dealInputErrors, setDealInputErrors] = useState(false);
 
   useEffect(() => {
     setSavedMessage(null);
@@ -69,12 +70,13 @@ export function DealAnalyzerPage() {
   );
 
   const validationMessage = propertyValidation.valid ? null : firstPropertyValidationMessage(propertyValidation);
-  const canSaveScenario = Boolean(result && !validationMessage);
+  // While a deal input shows an error, the result still reflects the last valid value, so saving waits.
+  const canSaveScenario = Boolean(result && !validationMessage && !dealInputErrors);
   const detectedMarket = detectMarket(property.postalCode);
   const currentMarketLabel = result?.estimate.marketLabel ?? (detectedMarket ? marketCatalog[detectedMarket].label : "supported-market");
 
   function handleSaveScenario() {
-    if (!result) {
+    if (!canSaveScenario || !result) {
       return;
     }
 
@@ -112,11 +114,11 @@ export function DealAnalyzerPage() {
           onDealInputsChange={setDealInputs}
           markets={markets}
           onPropertyValidationChange={setPropertyFormValidation}
+          onInputErrorsChange={setDealInputErrors}
         />
 
         <div className="space-y-6" aria-busy={loading}>
           <DealVerdictHero
-            variant="desktop"
             result={result}
             validationMessage={validationMessage}
             loading={loading}

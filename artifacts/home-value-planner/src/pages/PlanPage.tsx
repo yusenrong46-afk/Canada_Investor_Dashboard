@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bookmark } from "lucide-react";
 import { NavLink } from "react-router-dom";
-import { improvementCatalog } from "@vvl/shared";
+import { improvementCatalog, MAX_MONEY_INPUT } from "@vvl/shared";
 
 import { postPlan } from "../api/client";
 import { CostVsValueNote } from "../components/CostVsValueNote";
@@ -17,7 +17,7 @@ import { dataSourceLabels, shortDataPath } from "../lib/dataSources";
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
 import { updateNumberDraft } from "../lib/numberDraft";
 import { firstPropertyValidationMessage } from "../lib/propertyValidation";
-import { targetPriceLabel, upliftUnavailableMessage } from "../lib/marketLabels";
+import { resolveMarketId, targetPriceLabel, upliftUnavailableMessage } from "../lib/marketLabels";
 import { buildRequestKey } from "../lib/requestKey";
 import { createPlanScenario } from "../lib/scenarios";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
@@ -100,6 +100,8 @@ export function PlanPage() {
     setSavedMessage(null);
   }, [budget, plannedFlags, property, propertyValidation.valid, targetPrice, timelineMonths]);
 
+  // The estimate is not fetched on this page, so the market comes from the property itself.
+  const market = resolveMarketId(property);
   const dataMissing = freshResult?.status === "data-missing";
   const dataSources = Object.entries(freshResult?.dataSources ?? {});
   const asIsValue = freshResult?.baseValue ?? estimate?.baseValue;
@@ -172,10 +174,14 @@ export function PlanPage() {
                       setTargetPriceDraft,
                       (nextValue) => setPlanInputs({ ...planInputs, targetPrice: nextValue }),
                       100_000,
+                      MAX_MONEY_INPUT,
                     ),
                   )
                 }
-                onBlur={() => setTargetPriceDraft(String(targetPrice))}
+                onBlur={() => {
+                  setTargetPriceDraft(String(targetPrice));
+                  setTargetPriceError(null);
+                }}
               />
               {targetPriceError ? (
                 <p className="text-xs text-danger">{targetPriceError}</p>
@@ -192,10 +198,13 @@ export function PlanPage() {
                 value={budgetDraft}
                 onChange={(event) =>
                   setBudgetError(
-                    updateNumberDraft(event.target.value, setBudgetDraft, (nextValue) => setPlanInputs({ ...planInputs, budget: nextValue }), 1),
+                    updateNumberDraft(event.target.value, setBudgetDraft, (nextValue) => setPlanInputs({ ...planInputs, budget: nextValue }), 1, MAX_MONEY_INPUT),
                   )
                 }
-                onBlur={() => setBudgetDraft(String(budget))}
+                onBlur={() => {
+                  setBudgetDraft(String(budget));
+                  setBudgetError(null);
+                }}
               />
               {budgetError ? (
                 <p className="text-xs text-danger">{budgetError}</p>
@@ -222,7 +231,10 @@ export function PlanPage() {
                     ),
                   )
                 }
-                onBlur={() => setTimelineDraft(String(timelineMonths))}
+                onBlur={() => {
+                  setTimelineDraft(String(timelineMonths));
+                  setTimelineError(null);
+                }}
               />
               {timelineError ? <p className="text-xs text-danger">{timelineError}</p> : null}
             </label>
@@ -321,13 +333,13 @@ export function PlanPage() {
 
             {freshResult?.status === "ready" ? (
               <div className="space-y-4">
-                {estimate?.market === "halifax_maritimes" ? <HalifaxUpliftCaveat variant="plan" /> : null}
+                {market === "halifax_maritimes" ? <HalifaxUpliftCaveat variant="plan" /> : null}
                 {planUplift != null ? (
                   <CostVsValueNote
                     plannedFlags={freshResult?.items?.map((item) => item.flag) ?? debouncedFlags}
                     upliftValue={planUplift}
-                    market={estimate?.market}
-                    nonAdditiveUplift={estimate?.market === "halifax_maritimes"}
+                    market={market}
+                    nonAdditiveUplift={market === "halifax_maritimes"}
                   />
                 ) : null}
                 {(freshResult?.items ?? []).some((item) => item.valueRecoveryRate < 1) ? (

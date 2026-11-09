@@ -30,7 +30,8 @@ import type {
   SimulateResponse,
 } from "@vvl/shared";
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+// `||` rather than `??`: an empty VITE_API_BASE_URL (e.g. left blank in a hosting dashboard) means "unset".
+const apiBase = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
 
 export type MarketEvidenceScope = "fsa-property-type" | "fsa" | "market-property-type" | "market";
 
@@ -133,8 +134,8 @@ export async function getMarketTrend(market: string, signal?: AbortSignal): Prom
   return apiFetchValidated(`${apiBase}/trend?market=${encodeURIComponent(market)}`, marketTrendResponseSchema, { signal });
 }
 
-export async function getMarketMap(market: string): Promise<MarketMapResponse> {
-  return apiFetchValidated(`${apiBase}/map?market=${encodeURIComponent(market)}`, marketMapResponseSchema);
+export async function getMarketMap(market: string, signal?: AbortSignal): Promise<MarketMapResponse> {
+  return apiFetchValidated(`${apiBase}/map?market=${encodeURIComponent(market)}`, marketMapResponseSchema, { signal });
 }
 
 export async function getModelExperiments(): Promise<ModelExperimentsResponse> {

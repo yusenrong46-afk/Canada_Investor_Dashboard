@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { detectMarket, type MarketsResponse, type PlannedFlag, type PropertyInput } from "@vvl/shared";
+import { detectMarket, MAX_MONEY_INPUT, type MarketsResponse, type PlannedFlag, type PropertyInput } from "@vvl/shared";
 
 import { HalifaxUpliftCaveat } from "../HalifaxUpliftCaveat";
 import { ImprovementFlagPicker } from "../ImprovementFlagPicker";
@@ -19,6 +19,8 @@ interface DealInputsFormProps {
   onDealInputsChange: (inputs: DealInputState) => void;
   markets?: MarketsResponse["markets"] | null;
   onPropertyValidationChange: (validation: PropertyFormValidation) => void;
+  /** Reports whether a deal input currently holds text that was not applied, so saving can wait for a fix. */
+  onInputErrorsChange: (hasErrors: boolean) => void;
 }
 
 export function DealInputsForm({
@@ -30,6 +32,7 @@ export function DealInputsForm({
   onDealInputsChange,
   markets,
   onPropertyValidationChange,
+  onInputErrorsChange,
 }: DealInputsFormProps) {
   const { askingPrice, budget, timelineMonths } = dealInputs;
   const [askingPriceDraft, setAskingPriceDraft] = useState(String(dealInputs.askingPrice));
@@ -39,6 +42,11 @@ export function DealInputsForm({
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [timelineError, setTimelineError] = useState<string | null>(null);
   const detectedMarket = detectMarket(property.postalCode);
+  const hasInputErrors = Boolean(askingPriceError || budgetError || timelineError);
+
+  useEffect(() => {
+    onInputErrorsChange(hasInputErrors);
+  }, [hasInputErrors, onInputErrorsChange]);
 
   useEffect(() => {
     setAskingPriceDraft(String(askingPrice));
@@ -78,10 +86,14 @@ export function DealInputsForm({
                     setAskingPriceDraft,
                     (nextValue) => onDealInputsChange({ ...dealInputs, askingPrice: nextValue }),
                     100_000,
+                    MAX_MONEY_INPUT,
                   ),
                 );
               }}
-              onBlur={() => setAskingPriceDraft(String(askingPrice))}
+              onBlur={() => {
+                setAskingPriceDraft(String(askingPrice));
+                setAskingPriceError(null);
+              }}
             />
             {askingPriceError ? (
               <p className="text-xs text-danger">{askingPriceError}</p>
@@ -98,10 +110,13 @@ export function DealInputsForm({
               value={budgetDraft}
               onChange={(event) =>
                 setBudgetError(
-                  updateNumberDraft(event.target.value, setBudgetDraft, (nextValue) => onDealInputsChange({ ...dealInputs, budget: nextValue }), 1),
+                  updateNumberDraft(event.target.value, setBudgetDraft, (nextValue) => onDealInputsChange({ ...dealInputs, budget: nextValue }), 1, MAX_MONEY_INPUT),
                 )
               }
-              onBlur={() => setBudgetDraft(String(budget))}
+              onBlur={() => {
+                setBudgetDraft(String(budget));
+                setBudgetError(null);
+              }}
             />
             {budgetError ? (
               <p className="text-xs text-danger">{budgetError}</p>
@@ -128,7 +143,10 @@ export function DealInputsForm({
                   ),
                 )
               }
-              onBlur={() => setTimelineDraft(String(timelineMonths))}
+              onBlur={() => {
+                setTimelineDraft(String(timelineMonths));
+                setTimelineError(null);
+              }}
             />
             {timelineError ? <p className="text-xs text-danger">{timelineError}</p> : null}
           </label>

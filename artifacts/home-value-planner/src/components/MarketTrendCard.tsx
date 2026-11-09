@@ -23,6 +23,8 @@ export function MarketTrendCard({ market }: MarketTrendCardProps) {
 
     const controller = new AbortController();
     setLoading(true);
+    // Drop the previous market's trend so it is not shown while the new one loads.
+    setTrend(null);
 
     getMarketTrend(market, controller.signal)
       .then((response) => {

@@ -9,14 +9,6 @@ import { chartBarPrimary, chartBarSecondary, chartGridStroke, chartTickFill } fr
 import { formatCurrency, formatPercent, formatSignedCurrency } from "../lib/format";
 import { scenarioKeyDetails, summarizeScenarios, type ScenarioRecord, type ScenarioTag } from "../lib/scenarios";
 
-interface ScenarioWorkspacePageProps {
-  scenarios?: ScenarioRecord[];
-  onUseScenario?: (scenario: ScenarioRecord) => void;
-  onUpdateScenario?: (scenario: ScenarioRecord) => void;
-  onDeleteScenario?: (scenarioId: string) => void;
-  onClearScenarios?: () => void;
-}
-
 const scenarioTags: ScenarioTag[] = ["Shortlist", "Watch", "Pass", "Needs review"];
 
 function riskTone(riskLevel: ScenarioRecord["riskLevel"]): string {
@@ -73,18 +65,20 @@ function ScenarioNoteField({ scenario, onUpdateScenario }: { scenario: ScenarioR
       }}
       className="w-full rounded-field border border-line bg-surface px-3 py-2 text-xs text-body"
       placeholder="Add a short investment note"
+      aria-label={`Note for ${scenario.title}`}
       aria-describedby={`scenario-note-hint-${scenario.id}`}
     />
   );
 }
 
-export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
-  const session = usePropertySession();
-  const scenarios = props.scenarios ?? session.scenarios;
-  const onUseScenario = props.onUseScenario ?? session.useScenario;
-  const onUpdateScenario = props.onUpdateScenario ?? session.updateScenario;
-  const onDeleteScenario = props.onDeleteScenario ?? session.deleteScenario;
-  const onClearScenarios = props.onClearScenarios ?? session.clearScenarios;
+export function ScenarioWorkspacePage() {
+  const {
+    scenarios,
+    useScenario: onUseScenario,
+    updateScenario: onUpdateScenario,
+    deleteScenario: onDeleteScenario,
+    clearScenarios: onClearScenarios,
+  } = usePropertySession();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const summary = useMemo(() => summarizeScenarios(scenarios), [scenarios]);
   const latestScenario = scenarios[0];
@@ -164,7 +158,7 @@ export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
         <MetricCard label="Saved scenarios" value={String(summary.samplePropertyCount)} hint="User-created runs" />
         <MetricCard label="Average estimate" value={formatCurrency(summary.averageEstimatedValue)} hint="Average as-is value" />
         <MetricCard label="Median estimate" value={formatCurrency(summary.medianEstimatedValue)} hint="Middle saved scenario" />
-        <MetricCard label="Average upside" value={formatSignedCurrency(summary.averageUpside)} hint="After-plan value movement" />
+        <MetricCard label="Average net upside" value={formatSignedCurrency(summary.averageUpside)} hint="After-plan value minus entry price and spend" />
         <MetricCard label="Warnings" value={String(summary.warningCount)} hint="Risk and model review notes" />
       </div>
 
@@ -193,7 +187,7 @@ export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
             <div className="mt-1 whitespace-nowrap font-semibold tabular-nums text-ink">{formatCurrency(latestScenario.estimatedValue)}</div>
           </div>
           <div className="rounded-field bg-canvas px-4 py-3">
-            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Upside</div>
+            <div className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Net upside</div>
             <div className="mt-1 whitespace-nowrap font-semibold tabular-nums text-ink">{formatSignedCurrency(latestScenario.estimatedUpside)}</div>
           </div>
           <div className="rounded-field bg-canvas px-4 py-3">
@@ -241,7 +235,7 @@ export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                     <div>
-                      <div className="text-xs uppercase tracking-[0.14em] text-muted">Upside</div>
+                      <div className="text-xs uppercase tracking-[0.14em] text-muted">Net upside</div>
                       <div className="font-semibold tabular-nums text-ink">{formatSignedCurrency(scenario.estimatedUpside)}</div>
                     </div>
                     <div>
@@ -289,7 +283,7 @@ export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
       <SectionCard
         title="Saved scenarios"
         eyebrow="Workspace table"
-        description="Each row is a user-created scenario. Use scenario reloads the property, improvements, budget, timeline, and target or asking price."
+        description="Each row is a user-created scenario. Net upside is after-plan value minus planned spend and the entry price: asking price for deals, as-is value for plans. Use scenario reloads the property, improvements, budget, timeline, and target or asking price."
       >
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
@@ -299,7 +293,9 @@ export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
                 <th className="bg-surface py-3 pr-4 font-bold">Scenario</th>
                 <th className="bg-surface py-3 pr-4 font-bold">Estimate</th>
                 <th className="bg-surface py-3 pr-4 font-bold">Achievable</th>
-                <th className="bg-surface py-3 pr-4 font-bold">Upside</th>
+                <th className="bg-surface py-3 pr-4 font-bold" title="After-plan value minus entry price (asking for deals, as-is value for plans) minus planned spend">
+                  Net upside
+                </th>
                 <th className="bg-surface py-3 pr-4 font-bold">Budget</th>
                 <th className="bg-surface py-3 pr-4 font-bold">Spend</th>
                 <th className="bg-surface py-3 pr-4 font-bold">Risk</th>
@@ -339,6 +335,7 @@ export function ScenarioWorkspacePage(props: ScenarioWorkspacePageProps = {}) {
                   </td>
                   <td className="py-3 pr-4">
                     <select
+                      aria-label={`Tag for ${scenario.title}`}
                       value={scenario.tag}
                       onChange={(event) => onUpdateScenario({ ...scenario, tag: event.target.value as ScenarioTag })}
                       className="rounded-field border border-line bg-surface px-2 py-1.5 text-xs font-semibold text-body"

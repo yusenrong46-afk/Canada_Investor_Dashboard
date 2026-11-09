@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { SiteLayout } from "./components/SiteLayout";
 import { PropertySessionProvider } from "./context/PropertySessionContext";
 
@@ -14,23 +15,27 @@ const PlanPage = lazy(() => import("./pages/PlanPage").then((module) => ({ defau
 const ScenarioWorkspacePage = lazy(() => import("./pages/ScenarioWorkspacePage").then((module) => ({ default: module.ScenarioWorkspacePage })));
 
 function AppRoutes() {
+  const location = useLocation();
+
   return (
-    <Suspense fallback={<div className="card px-4 py-3 text-sm text-muted">Loading page...</div>}>
-      <Routes>
-        <Route path="/" element={<Navigate to="/estimate" replace />} />
-        <Route path="/estimate" element={<EstimatePage />} />
-        <Route path="/improve" element={<ImproveValuePage />} />
-        <Route path="/plan" element={<PlanPage />} />
-        <Route path="/deal-analyzer" element={<DealAnalyzerPage />} />
-        <Route path="/insights" element={<InsightsPage />} />
-        <Route path="/workspace" element={<ScenarioWorkspacePage />} />
-        <Route path="/map" element={<MapPage />} />
-        <Route path="/model-data-story" element={<ModelStoryPage />} />
-        <Route path="/simulate" element={<Navigate to="/improve" replace />} />
-        <Route path="/model-story" element={<Navigate to="/model-data-story" replace />} />
-        <Route path="*" element={<Navigate to="/estimate" replace />} />
-      </Routes>
-    </Suspense>
+    <RouteErrorBoundary resetKey={location.pathname}>
+      <Suspense fallback={<div className="card px-4 py-3 text-sm text-muted">Loading page...</div>}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/estimate" replace />} />
+          <Route path="/estimate" element={<EstimatePage />} />
+          <Route path="/improve" element={<ImproveValuePage />} />
+          <Route path="/plan" element={<PlanPage />} />
+          <Route path="/deal-analyzer" element={<DealAnalyzerPage />} />
+          <Route path="/insights" element={<InsightsPage />} />
+          <Route path="/workspace" element={<ScenarioWorkspacePage />} />
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/model-data-story" element={<ModelStoryPage />} />
+          <Route path="/simulate" element={<Navigate to="/improve" replace />} />
+          <Route path="/model-story" element={<Navigate to="/model-data-story" replace />} />
+          <Route path="*" element={<Navigate to="/estimate" replace />} />
+        </Routes>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }
 

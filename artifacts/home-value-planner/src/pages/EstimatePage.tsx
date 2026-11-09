@@ -66,6 +66,9 @@ export function EstimatePage() {
   const detectedMarket = detectMarket(property.postalCode);
   const marketLabel = estimate?.marketLabel ?? (detectedMarket ? marketCatalog[detectedMarket].label : "supported market");
   const validationMessage = propertyValidation.valid ? null : firstPropertyValidationMessage(propertyValidation);
+  // After a failed request, say the value is unavailable instead of showing "Loading" next to the error.
+  const estimateFailed = Boolean(error) && !loading;
+  const missingValueLabel = estimateFailed ? "Unavailable" : "Loading";
 
   return (
     <div className="space-y-6">
@@ -89,14 +92,16 @@ export function EstimatePage() {
               <div className="space-y-3">
                 <div className="eyebrow">Estimated current price</div>
                 <div className="metric-num text-4xl leading-none sm:text-5xl">
-                  {estimate ? formatCurrency(estimate.baseValue) : validationMessage ? "Paused" : "Loading"}
+                  {estimate ? formatCurrency(estimate.baseValue) : validationMessage ? "Paused" : missingValueLabel}
                 </div>
                 <p className="max-w-xl text-sm leading-6 text-muted">
                   {estimate
                     ? `Based on ${estimate.marketLabel} ${estimate.modelScope.toLowerCase()} ${basisNounFor(estimate.market)} near ${estimate.marketContext.localAreaLabel}.`
                     : validationMessage
                       ? "Fix the highlighted home details before the dashboard updates the estimate."
-                    : `Calculating from ${marketLabel} market patterns.`}
+                      : estimateFailed
+                        ? "The estimate could not be loaded. Adjust the inputs or try again shortly."
+                        : `Calculating from ${marketLabel} market patterns.`}
                 </p>
               </div>
               {loading && !validationMessage ? <span className="rounded-pill bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">Updating</span> : null}
@@ -105,12 +110,12 @@ export function EstimatePage() {
             <div className="mt-6 grid gap-4 md:grid-cols-3">
               <MetricCard
                 label="Confidence range"
-                value={estimate ? <CurrencyRangeValue low={estimate.confidenceLow} high={estimate.confidenceHigh} /> : validationMessage ? "Fix inputs" : "Loading"}
+                value={estimate ? <CurrencyRangeValue low={estimate.confidenceLow} high={estimate.confidenceHigh} /> : validationMessage ? "Fix inputs" : missingValueLabel}
                 hint={validationMessage ? "Estimate paused until inputs are valid" : confidenceHintFor(estimate)}
               />
               <MetricCard
                 label="Local median"
-                value={estimate ? formatCurrency(estimate.marketContext.localMedianValue) : validationMessage ? "Fix inputs" : "Loading"}
+                value={estimate ? formatCurrency(estimate.marketContext.localMedianValue) : validationMessage ? "Fix inputs" : missingValueLabel}
                 hint={validationMessage ? "Nearby market hidden while inputs need review" : estimate?.marketContext.localAreaLabel ?? "Nearby market"}
               />
               <MetricCard
@@ -180,7 +185,7 @@ export function EstimatePage() {
                   </div>
                   <p className="text-sm leading-6 text-muted">
                     {estimate.marketFreshness?.message ??
-                      "This is a listing-price model, so treat it as a planning estimate rather than an appraisal."}
+                      `This model is trained on ${basisNounFor(estimate.market) === "sales" ? "sale prices" : "listing prices"}, so treat it as a planning estimate rather than an appraisal.`}
                   </p>
                   {estimate.modelQuality.validationSummary.missingnessNotes.length ? (
                     <div className="rounded-field border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-5 text-warning">
@@ -193,7 +198,11 @@ export function EstimatePage() {
                 <ResultSkeleton rows={3} />
               ) : (
                 <div className="data-row text-sm text-muted">
-                  {validationMessage ? "Fix the highlighted home details to load local market context." : "Loading local market context..."}
+                  {validationMessage
+                    ? "Fix the highlighted home details to load local market context."
+                    : estimateFailed
+                      ? "Local market context is unavailable until the estimate loads."
+                      : "Loading local market context..."}
                 </div>
               )}
             </SectionCard>

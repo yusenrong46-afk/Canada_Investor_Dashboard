@@ -17,7 +17,6 @@ interface DealVerdictHeroProps {
   result: DealAnalyzeResponse | null;
   validationMessage: string | null;
   loading: boolean;
-  variant: "mobile" | "desktop";
   canSaveScenario: boolean;
   savedMessage: string | null;
   onSaveScenario: () => void;
@@ -27,26 +26,11 @@ export function DealVerdictHero({
   result,
   validationMessage,
   loading,
-  variant,
   canSaveScenario,
   savedMessage,
   onSaveScenario,
 }: DealVerdictHeroProps) {
   const verdictLabel = result ? result.dealLabel : validationMessage ? "Paused" : loading ? "Analyzing" : "Loading";
-
-  if (variant === "mobile") {
-    return (
-      <section className="hero-panel xl:hidden" aria-live="polite" aria-atomic="true">
-        <div className="eyebrow">Current deal verdict</div>
-        <div className="metric-num mt-2 text-4xl leading-none">{verdictLabel}</div>
-        <p className="mt-3 text-sm leading-6 text-muted">
-          {result
-            ? `${formatSignedCurrency(result.estimatedNetUpside)} modeled net upside after ${formatCurrency(result.plan.plannedSpend ?? 0)} of planned work, before other costs.`
-            : "The verdict updates after the property and deal inputs are valid."}
-        </p>
-      </section>
-    );
-  }
 
   return (
     <section className="hero-panel" aria-live="polite" aria-atomic="true">
