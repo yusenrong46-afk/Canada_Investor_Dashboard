@@ -5,9 +5,10 @@ import { marketValues, supportedPostalFsasByMarket } from "./markets";
 
 const postalCodePattern = /^(V[56]|B\d)[A-Z]\s?\d[A-Z]\d$/i;
 
-/** Upper bound for any dollar input. Above every real listing in the supported markets, and it keeps
+/** Upper bound for any dollar input. Matches the model service's MAX_PRICE_FIELD (routes.py) so live
+ * mode never accepts a value the model rejects; the priciest training row is ~$19.8M. It also keeps
  * pathological values (1e308) from overflowing to Infinity in downstream arithmetic. */
-export const MAX_MONEY_INPUT = 100_000_000;
+export const MAX_MONEY_INPUT = 25_000_000;
 const money = () => z.number().positive().max(MAX_MONEY_INPUT);
 
 export const propertyInputSchema = z.object({

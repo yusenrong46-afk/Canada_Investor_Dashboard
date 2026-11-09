@@ -86,6 +86,40 @@ describe("simulateScenario", () => {
     expect(result.upliftValue).toBe(35000);
   });
 
+  it("does not label an empty plan as fitted-model output, since no uplift model ran", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          status: "ready",
+          modelVersion: "seattle-observed-percent-uplift-v1",
+          trainingMode: "seattle-repeat-sale-observed-only",
+          evidenceLevel: "none",
+          baseValue: 1000000,
+          upliftPercent: 0,
+          upliftValue: 0,
+          finalValueRaw: 1000000,
+          finalValueGuardrailed: 1000000,
+          plannedFlags: [],
+          topUpliftDrivers: [],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    ) as typeof fetch;
+
+    const result = await simulateScenario({
+      postalCode: "V6B 1X9",
+      propertyType: "Condo",
+      livingAreaSqft: 708,
+      bedrooms: 1,
+      bathrooms: 1,
+      plannedFlags: [],
+    });
+
+    expect(result.evidenceLevel).toBe("none");
+    expect(result.provenance.engineType).toBe("rules");
+    expect(result.provenance.validationStatus).toBe("not-applicable");
+  });
+
   it("maps model-service timeouts to ModelServiceError with status 504", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new DOMException("The operation was aborted.", "TimeoutError");

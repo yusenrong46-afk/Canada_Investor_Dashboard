@@ -120,14 +120,17 @@ export async function simulateScenario(request: SimulateRequest): Promise<Simula
   const response = await requestModelService<RawSimulateResponse>("/uplift", request, rawSimulateResponseSchema);
   const halifax = request.postalCode.trim().toUpperCase().startsWith("B");
   const version = response.modelVersion ?? (halifax ? "halifax-uplift-unavailable" : "seattle-uplift-unavailable");
-  const evidenceLevel = response.status === "data-missing" ? "none" : halifax ? "observed" : "proxy";
+  // With no improvements selected, zero uplift is true by definition and no uplift model is consulted,
+  // so the result must not be labelled as fitted-model output (AGENTS.md).
+  const noImprovements = (request.plannedFlags ?? []).length === 0;
+  const evidenceLevel = response.status === "data-missing" || noImprovements ? "none" : halifax ? "observed" : "proxy";
   return {
     ...response,
     evidenceLevel,
     provenance: resultProvenance({
-      engineType: halifax ? "rules" : "fitted-model",
+      engineType: halifax || noImprovements ? "rules" : "fitted-model",
       evidenceLevel,
-      validationStatus: response.status === "data-missing" ? "not-applicable" : "descriptive",
+      validationStatus: response.status === "data-missing" || noImprovements ? "not-applicable" : "descriptive",
       version,
       dataAsOf: null,
       sourceIds: halifax
