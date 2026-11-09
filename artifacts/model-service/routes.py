@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-import traceback
+import math
 from typing import Any
 
 from flask import Flask, jsonify, request
-from werkzeug.exceptions import HTTPException
 
 from base_model import estimate_property, metrics_payload as vancouver_metrics_payload, slim_health_payload
 from halifax_model import estimate_property as estimate_halifax_property
@@ -59,9 +58,19 @@ def _validate_input_bounds(payload: dict[str, Any]) -> str | None:
 
     for field in ("knownCurrentValue", "price", "purchasePrice", "targetPrice"):
         value = _parse_numeric(payload.get(field))
-        if value is not None and value > MAX_PRICE_FIELD:
-            return f"{field} must be at most {MAX_PRICE_FIELD:,}"
+        # Python's json accepts -Infinity/Infinity, so finiteness must be checked explicitly.
+        if value is not None and (not math.isfinite(value) or not 0 <= value <= MAX_PRICE_FIELD):
+            return f"{field} must be between 0 and {MAX_PRICE_FIELD:,}"
 
+    return None
+
+
+def _validate_planned_flags(payload: dict[str, Any]) -> str | None:
+    planned_flags = payload.get("plannedFlags")
+    if planned_flags is None:
+        return None
+    if not isinstance(planned_flags, list) or not all(isinstance(flag, str) for flag in planned_flags):
+        return "plannedFlags must be a list of improvement flag strings"
     return None
 
 
@@ -70,8 +79,12 @@ def _market_health(name: str, loader) -> dict[str, Any]:
         payload = loader()
         payload.setdefault("ok", True)
         return payload
-    except Exception as error:
+    except ModelArtifactError as error:
         return {"ok": False, "market": name, "message": str(error)}
+    except Exception as error:
+        # Unexpected errors can carry server paths; log them and return a generic client message.
+        logging.exception("Health check failed for %s", name)
+        return {"ok": False, "market": name, "message": f"Model unavailable ({type(error).__name__})."}
 
 
 def register_routes(app: Flask) -> None:
@@ -137,7 +150,7 @@ def register_routes(app: Flask) -> None:
             return error_response
         assert payload is not None
 
-        bounds_error = _validate_input_bounds(payload)
+        bounds_error = _validate_input_bounds(payload) or _validate_planned_flags(payload)
         if bounds_error is not None:
             return jsonify({"error": {"code": "VALIDATION", "message": bounds_error}}), 400
 

@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from common.paths import display_path
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "market_trend.json"
 
@@ -36,7 +38,7 @@ def market_trend_payload(market_id: str) -> dict:
     if export is None:
         return {
             "status": "unavailable",
-            "message": f"Market trend export not found at {path}. Run scripts/build_market_trend.py to generate it.",
+            "message": f"Market trend export not found at {display_path(path)}. Run scripts/build_market_trend.py to generate it.",
         }
 
     markets = export.get("markets") or {}

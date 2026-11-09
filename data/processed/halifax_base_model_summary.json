@@ -39,9 +39,9 @@
     "Townhouse": 845
   },
   "sources": {
-    "dwellings": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_dwelling_characteristics_hrm.csv",
-    "sales": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_parcel_sales_hrm.csv",
-    "assessments": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/pvsc_assessed_values_hrm.csv",
-    "civicAddresses": "/Users/thomas/Documents/canadian-investor-dashboard/data/raw/halifax/hrm_civic_addresses.csv"
+    "dwellings": "data/raw/halifax/pvsc_dwelling_characteristics_hrm.csv",
+    "sales": "data/raw/halifax/pvsc_parcel_sales_hrm.csv",
+    "assessments": "data/raw/halifax/pvsc_assessed_values_hrm.csv",
+    "civicAddresses": "data/raw/halifax/hrm_civic_addresses.csv"
   }
 }

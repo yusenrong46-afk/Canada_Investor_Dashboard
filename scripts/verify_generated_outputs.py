@@ -16,6 +16,16 @@ REQUIRED_METRICS_ARTIFACTS = (
     MODELS_DIR / "vancouver_base_price_bundle_v5.pkl",
     MODELS_DIR / "halifax_base_price_bundle_v1.pkl",
 )
+# Committed generated outputs must never embed a developer's or server's absolute home path.
+PATH_SCAN_GLOBS = (
+    "data/exports/*.json",
+    "data/processed/*.json",
+    "data/processed/*.csv",
+    "reports/**/*.md",
+    "reports/**/*.json",
+    "reports/**/*.csv",
+)
+ABSOLUTE_HOME_PATH = re.compile(r"/Users/|/home/|\b[A-Za-z]:\\")
 
 
 def _display_path(path: Path) -> str:
@@ -101,6 +111,18 @@ def _git_diff(paths: list[Path]) -> None:
         raise RuntimeError(f"generated output drift detected for: {', '.join(changed)}")
 
 
+def find_absolute_paths(root: Path = REPO_ROOT) -> list[str]:
+    offenders = []
+    for pattern in PATH_SCAN_GLOBS:
+        for path in sorted(root.glob(pattern)):
+            for line_number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                match = ABSOLUTE_HOME_PATH.search(line)
+                if match:
+                    offenders.append(f"{path.relative_to(root)}:{line_number}: {match.group(0)!r}")
+                    break
+    return offenders
+
+
 def main() -> None:
     # Drift-check outputs rebuildable from committed public inputs.
     # Skip bit-matching for platform-noisy or private-artifact-dependent files;
@@ -178,6 +200,10 @@ def main() -> None:
     for path in optional_generated_files:
         if path.exists():
             drift_targets.append(path)
+
+    offenders = find_absolute_paths()
+    if offenders:
+        raise RuntimeError("absolute home paths found in generated outputs:\n" + "\n".join(offenders))
 
     _git_diff(drift_targets)
 

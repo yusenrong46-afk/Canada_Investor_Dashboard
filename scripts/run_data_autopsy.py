@@ -10,7 +10,6 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -19,15 +18,9 @@ DEFAULT_HAL_RAW = REPO_ROOT / "data" / "raw" / "halifax"
 DEFAULT_YVR_RAW = REPO_ROOT / "data" / "raw" / "vancouver" / "data_bc.csv"
 
 
-def _display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except ValueError:
-        resolved = path.resolve()
-        try:
-            return "~/" + str(resolved.relative_to(Path.home()))
-        except ValueError:
-            return resolved.name
+sys.path.insert(0, str(REPO_ROOT / "artifacts" / "model-service"))
+
+from common.paths import display_path as _display_path  # noqa: E402
 
 
 def _col_profile(series: pd.Series, name: str) -> dict:

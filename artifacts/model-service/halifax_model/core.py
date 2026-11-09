@@ -5,6 +5,7 @@ import math
 import os
 import pickle
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,7 @@ from sklearn.preprocessing import OneHotEncoder
 from common.conformal import ConformalCalibration, calibrate_split_conformal
 from common.explain import shap_drivers
 from common.artifact_loader import build_manifest_entry, extended_bundle_validation_issues, load_approved_pickle, upsert_manifest_entry
+from common.paths import display_path as _display_path
 
 try:
     from xgboost import XGBRegressor
@@ -131,14 +133,7 @@ class HalifaxModelBundle:
 
 
 _BUNDLE: HalifaxModelBundle | None = None
-
-
-def _display_path(value: str | Path) -> str:
-    path = Path(value).expanduser()
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except (OSError, ValueError):
-        return path.name
+_BUNDLE_LOCK = threading.Lock()
 
 
 def _safe_ohe() -> OneHotEncoder:
@@ -1030,16 +1025,15 @@ def _bundle_validation_issues(bundle: HalifaxModelBundle) -> list[str]:
 def load_bundle() -> HalifaxModelBundle:
     global _BUNDLE
 
-    if _BUNDLE is not None:
+    with _BUNDLE_LOCK:
+        if _BUNDLE is None:
+            _BUNDLE = load_approved_pickle(
+                ARTIFACT_PATH,
+                expected_type=HalifaxModelBundle,
+                artifact_label="Halifax base-model",
+                validate=_bundle_validation_issues,
+            )
         return _BUNDLE
-
-    _BUNDLE = load_approved_pickle(
-        ARTIFACT_PATH,
-        expected_type=HalifaxModelBundle,
-        artifact_label="Halifax base-model",
-        validate=_bundle_validation_issues,
-    )
-    return _BUNDLE
 
 
 def _resolve_centroid(bundle: HalifaxModelBundle, postal_code: str) -> tuple[float, float]:
@@ -1090,7 +1084,7 @@ def _market_freshness_payload(bundle: HalifaxModelBundle) -> dict[str, Any]:
             "status": "embedded-in-target",
             "message": (
                 "Sale prices were time-adjusted with the HRM monthly median sale-price index during training, "
-                f"but the baseline month is missing from {SUMMARY_PATH}."
+                f"but the baseline month is missing from {_display_path(SUMMARY_PATH)}."
             ),
             "dataSource": FRESHNESS_DATA_SOURCE,
         }
@@ -1377,6 +1371,3 @@ def metrics_payload() -> dict[str, Any]:
         "xgboostImportError": bundle.xgboost_import_error,
     }
 
-
-def halifax_health_payload() -> dict[str, Any]:
-    return slim_health_payload()

@@ -12,7 +12,6 @@ Warehouse: `data/warehouse/property_analytics.duckdb`
 | market feature summary rows | 186 |
 | halifax_maritimes mart rows | 17,702 |
 | vancouver mart rows | 3,518 |
-| staged HRM permit rows | 15,739 |
 
 ## Data Quality Checks
 

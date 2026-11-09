@@ -259,6 +259,9 @@ def test_zero_selected_improvements_returns_zero_without_training(monkeypatch) -
             "marketContext": {"practicalCeiling": 1_300_000},
         }
 
+    from uplift_model import core as uplift_core
+
+    original_core_estimate = uplift_core.estimate_property
     monkeypatch.setattr("uplift_service.estimate_property", estimate_stub)
 
     result = simulate_uplift({"plannedFlags": []})
@@ -266,3 +269,50 @@ def test_zero_selected_improvements_returns_zero_without_training(monkeypatch) -
     assert result["status"] == "ready"
     assert result["upliftPercent"] == 0
     assert result["upliftValue"] == 0
+    # The shim must not rebind uplift_model.core, or this stub would leak into every later test.
+    assert uplift_core.estimate_property is original_core_estimate
+
+
+def test_zero_uplift_does_not_claim_a_fitted_model_or_observed_evidence(monkeypatch) -> None:
+    from uplift_model import core as uplift_core
+
+    monkeypatch.setattr(uplift_core, "_UPLIFT_BUNDLE", None)
+    monkeypatch.setattr(uplift_core, "load_uplift_bundle", lambda: pytest.fail("zero uplift must not need the bundle"))
+    stub = lambda _payload: {"baseValue": 900_000, "marketContext": {"practicalCeiling": 1_200_000}}  # noqa: E731
+
+    result = uplift_core.simulate_uplift({"plannedFlags": []}, estimate=stub)
+
+    assert result["status"] == "ready"
+    assert "modelFamily" not in result
+    assert result["evidenceLevel"] == "none"
+    assert result["finalValueGuardrailed"] == 900_000
+
+
+def test_market_index_is_read_once_until_the_file_changes(tmp_path: Path, monkeypatch) -> None:
+    import os
+
+    from base_model import core
+
+    market_file = tmp_path / "market.csv"
+    market_file.write_text(
+        "Date,Region,Property Type,Benchmark Price\n2024-01-01,Vancouver,Condo,100\n2026-01-01,Vancouver,Condo,110\n",
+    )
+    bundle = SimpleNamespace(market_index_path=str(market_file), training_date_range={"latestListingDate": "2024-01-01"})
+    reads = []
+    real_read_csv = core.pd.read_csv
+    monkeypatch.setattr(core.pd, "read_csv", lambda *args, **kwargs: reads.append(args) or real_read_csv(*args, **kwargs))
+
+    first = _market_freshness_payload(bundle, "Condo")
+    first["multiplier"] = "mutated by caller"
+    second = _market_freshness_payload(bundle, "Condo")
+    assert len(reads) == 1
+    assert second["multiplier"] == 1.1
+
+    market_file.write_text(
+        "Date,Region,Property Type,Benchmark Price\n2024-01-01,Vancouver,Condo,100\n2026-01-01,Vancouver,Condo,120\n",
+    )
+    stat = market_file.stat()
+    os.utime(market_file, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    third = _market_freshness_payload(bundle, "Condo")
+    assert len(reads) == 2
+    assert third["multiplier"] == 1.2

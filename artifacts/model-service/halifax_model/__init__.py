@@ -1,6 +1,6 @@
+# Shared model-service utilities used by both the Vancouver and Halifax valuation models.
 from .core import (
     estimate_property,
-    halifax_health_payload,
     load_bundle,
     metrics_payload,
     slim_health_payload,
@@ -9,7 +9,6 @@ from .core import (
 
 __all__ = [
     "estimate_property",
-    "halifax_health_payload",
     "load_bundle",
     "metrics_payload",
     "slim_health_payload",

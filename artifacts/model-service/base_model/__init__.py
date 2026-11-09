@@ -1,8 +1,7 @@
-from .core import estimate_property, health_payload, load_bundle, metrics_payload, slim_health_payload, train_bundle
+from .core import estimate_property, load_bundle, metrics_payload, slim_health_payload, train_bundle
 
 __all__ = [
     "estimate_property",
-    "health_payload",
     "load_bundle",
     "metrics_payload",
     "slim_health_payload",

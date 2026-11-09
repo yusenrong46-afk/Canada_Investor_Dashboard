@@ -37,9 +37,8 @@ def _synthetic_training_frame(rows: int = 200) -> pd.DataFrame:
     frame = pd.DataFrame(records)
     frame["logPrice"] = np.log(frame["price"])
     frame["pricePerSqft"] = frame["price"] / frame["livingAreaSqft"]
-    frame["lat_x_lon"] = frame["latitude"] * frame["longitude"]
-    frame["lat_sq"] = frame["latitude"] ** 2
-    frame["lon_sq"] = frame["longitude"] ** 2
+    # Shaped like _load_training_frame output: no lat_x_lon/lat_sq/lon_sq/submarketCluster, so
+    # train_bundle must derive location features itself before computing train-split stats.
     return frame
 
 
@@ -49,6 +48,7 @@ def _load_synthetic_training_frame(data_path: str):
     frame = pd.read_csv(data_path)
     frame["listingDate"] = pd.Timestamp("2024-03-01")
     usable = frame[frame["propertyType"].isin(core.PROPERTY_TYPES)].copy()
+    assert not {"lat_x_lon", "lat_sq", "lon_sq", "submarketCluster"} & set(usable.columns)
     row_counts = {
         "totalRows": len(frame),
         "vancouverRows": len(frame),

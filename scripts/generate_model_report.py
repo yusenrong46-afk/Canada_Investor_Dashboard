@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,9 +9,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MODEL_SERVICE_DIR = REPO_ROOT / "artifacts" / "model-service"
 VANCOUVER_ARTIFACT = MODEL_SERVICE_DIR / "models" / "vancouver_base_price_bundle_v5.pkl"
 HALIFAX_ARTIFACT = MODEL_SERVICE_DIR / "models" / "halifax_base_price_bundle_v1.pkl"
-VANCOUVER_SUMMARY = REPO_ROOT / "data" / "processed" / "vancouver_base_model_summary.json"
-HALIFAX_SUMMARY = REPO_ROOT / "data" / "processed" / "halifax_base_model_summary.json"
 DEFAULT_OUTPUT_PATH = REPO_ROOT / "reports" / "model_metrics_report.md"
+
+sys.path.insert(0, str(MODEL_SERVICE_DIR))
+
+from common.paths import display_path  # noqa: E402
 
 
 def format_number(value: Any, digits: int = 2) -> str:
@@ -34,17 +35,10 @@ def format_percent(value: Any) -> str:
     return "not available"
 
 
-def load_json(path: Path) -> dict[str, Any] | None:
-  if not path.exists():
-    return None
-  return json.loads(path.read_text())
-
-
 def load_pickle_bundle(path: Path, expected_type: type, label: str) -> tuple[Any | None, str | None]:
   if not path.exists():
-    return None, f"Model artifact not found: {path}"
+    return None, f"Model artifact not found: {display_path(path)}"
 
-  sys.path.insert(0, str(MODEL_SERVICE_DIR))
   from common.artifact_loader import ModelArtifactError, load_approved_pickle
 
   try:
@@ -101,7 +95,8 @@ def metrics_from_bundle(bundle: Any) -> dict[str, Any] | None:
       "r2": overall.get("holdoutR2"),
       "n": sum(int(row.get("n") or 0) for row in rows),
       "random_mae": overall.get("randomHoldoutMae"),
-      "random_mape": overall.get("randomHoldoutMape"),
+      # Training publishes no weighted random-holdout MAPE; per-type rows carry their own.
+      "random_mape": None,
       "random_n": None,
     },
   )
@@ -159,6 +154,12 @@ def spatial_rows(bundle: Any) -> list[dict[str, Any]] | None:
   return rows or None
 
 
+def primary_split_label(strategy: dict[str, Any]) -> str:
+  """Name the primary holdout columns after the split the bundle actually used."""
+  split = str(strategy.get("trainHoldoutSplit") or "")
+  return "Temporal" if split.startswith("temporal holdout") else "Holdout"
+
+
 def append_market_section(lines: list[str], *, title: str, bundle: Any | None, error: str | None, valuation_basis: str) -> None:
   lines.extend([f"## {title}", "", f"Valuation basis: **{valuation_basis}**.", ""])
   metrics = metrics_from_bundle(bundle) if bundle is not None else None
@@ -171,9 +172,10 @@ def append_market_section(lines: list[str], *, title: str, bundle: Any | None, e
       lines.append(f"- Shipped model: `{strategy['shippedModel']}`")
     lines.append("")
 
+  label = primary_split_label(strategy)
   lines.extend(
     [
-      "| Segment | Model | Temporal MAE | Temporal MAPE | Temporal R2 | N | Random MAE | Random MAPE |",
+      f"| Segment | Model | {label} MAE | {label} MAPE | {label} R2 | N | Random MAE | Random MAPE |",
       "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
   )
@@ -236,7 +238,6 @@ def append_market_section(lines: list[str], *, title: str, bundle: Any | None, e
 
 
 def build_model_report() -> str:
-  sys.path.insert(0, str(MODEL_SERVICE_DIR))
   from base_model.core import VancouverModelBundle
   from halifax_model.core import HalifaxModelBundle
 
@@ -246,7 +247,7 @@ def build_model_report() -> str:
   lines = [
     "# Model Metrics Report",
     "",
-    "Generated from approved pickle artifacts. Temporal metrics are primary when the bundle was trained under Phase E.",
+    "Generated from approved pickle artifacts. Primary holdout columns are labelled Temporal only when the bundle's primary split was a temporal holdout; otherwise they are labelled Holdout.",
     "",
   ]
   append_market_section(
@@ -287,4 +288,4 @@ def write_model_report(output_path: Path = DEFAULT_OUTPUT_PATH) -> Path:
 
 if __name__ == "__main__":
   path = write_model_report()
-  print(f"Wrote {path}")
+  print(f"Wrote {display_path(path)}")

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import halifax_model
+from common.artifact_loader import ModelArtifactError
+from common.paths import display_path
 from halifax_model.core import HALIFAX_PREFIX_PATTERN, MARKET_LABEL, PROPERTY_TYPES, _normalize_postal_code
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -41,12 +43,16 @@ def load_uplift_export() -> dict[str, Any]:
     if cache_key in _EXPORT_CACHE:
         return _EXPORT_CACHE[cache_key]
 
+    # A missing or unreadable export is a server-side artifact problem (503), not a client validation error (400).
     if not path.is_file():
-        raise ValueError(
-            f"The committed Halifax uplift export is missing at {path}. "
+        raise ModelArtifactError(
+            f"The committed Halifax uplift export is missing: {display_path(path)}. "
             "Run scripts/build_halifax_uplift.py to rebuild it from PVSC repeat sales and HRM permits."
         )
-    export = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        export = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ModelArtifactError(f"The Halifax uplift export {display_path(path)} is not valid JSON.") from error
     _EXPORT_CACHE[cache_key] = export
     return export
 

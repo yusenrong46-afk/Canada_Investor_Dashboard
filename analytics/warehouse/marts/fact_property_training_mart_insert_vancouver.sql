@@ -1,8 +1,10 @@
 -- Vancouver listing-price observations from the processed training extract.
 
+-- IDs follow staging rowid (the processed CSV's row order) so they are stable across rebuilds;
+-- an empty OVER () lets DuckDB number rows in whatever order parallel execution produces.
 INSERT INTO fact_property_training_mart
 SELECT
-  'vancouver:' || CAST(row_number() OVER () AS VARCHAR) AS property_observation_id,
+  'vancouver:' || CAST(row_number() OVER (ORDER BY rowid) AS VARCHAR) AS property_observation_id,
   'vancouver' AS market_id,
   'Vancouver' AS city_name,
   'BC' AS province_state,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +16,9 @@ DEFAULT_EXPORT_PATH = REPO_ROOT / "data" / "exports" / "model_experiments.json"
 DEFAULT_REPORT_PATH = REPO_ROOT / "reports" / "model_experiments_report.md"
 
 
-def _display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
+sys.path.insert(0, str(REPO_ROOT / "artifacts" / "model-service"))
+
+from common.paths import display_path as _display_path  # noqa: E402
 
 
 EXPERIMENTS = ("local", "pooled", "hybrid")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,11 +20,9 @@ MART_SQL_DIR = WAREHOUSE_SQL_DIR / "marts"
 H3_RESOLUTION = 8
 
 
-def _display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
+sys.path.insert(0, str(REPO_ROOT / "artifacts" / "model-service"))
+
+from common.paths import display_path as _display_path  # noqa: E402
 
 
 REQUIRED_VANCOUVER_COLUMNS = [

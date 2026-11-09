@@ -126,15 +126,14 @@ def test_shap_drivers_collapse_one_hot_columns_per_source_feature() -> None:
     drivers, method = shap_drivers(pipeline, row, base_value)
 
     assert method == "shap"
-    postal_labels = [driver["label"] for driver in drivers if driver["label"].startswith("Postal area")]
-    cluster_labels = [driver["label"] for driver in drivers if driver["label"].startswith("Submarket cluster")]
-    assert len(postal_labels) <= 1
-    assert len(cluster_labels) <= 1
-    if postal_labels:
-        assert postal_labels == ["Postal area V6B"]
-    if cluster_labels:
-        assert cluster_labels == ["Submarket cluster 3"]
     labels = [driver["label"] for driver in drivers]
+    # The synthetic price applies a 35% V6B premium and a 5% cluster-3 premium to a ~$4M home, so both
+    # collapsed categorical drivers clear the $5,000 floor and must each appear exactly once.
+    assert labels.count("Postal area V6B") == 1
+    assert not any(label.startswith("Postal area") and label != "Postal area V6B" for label in labels)
+    assert labels.count("Neighbourhood pattern") == 1
+    # Cluster identifiers are implementation details and must never leak into driver labels.
+    assert not any("cluster" in label.lower() for label in labels)
     assert len(labels) == len(set(labels))
 
 
@@ -150,3 +149,25 @@ def test_shap_drivers_degrade_to_heuristic_for_non_tree_regressor() -> None:
 
     assert drivers is None
     assert method == "heuristic"
+
+
+def test_shap_explainer_is_reused_per_fitted_regressor(monkeypatch) -> None:
+    from common import explain
+
+    pipeline, _ = _fitted_tree_pipeline()
+    row = _query_row()
+    base_value = float(np.exp(pipeline.predict(row)[0]))
+    built = []
+    real_tree_explainer = explain.shap.TreeExplainer
+
+    def counting_tree_explainer(model):  # noqa: ANN001, ANN202
+        built.append(model)
+        return real_tree_explainer(model)
+
+    monkeypatch.setattr(explain.shap, "TreeExplainer", counting_tree_explainer)
+
+    first = shap_drivers(pipeline, row, base_value)
+    second = shap_drivers(pipeline, row, base_value)
+
+    assert first == second
+    assert built == [pipeline.named_steps["model"]]

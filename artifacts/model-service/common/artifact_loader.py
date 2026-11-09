@@ -4,8 +4,11 @@ import hashlib
 import json
 import pickle
 import sys
+import warnings
 from pathlib import Path
 from typing import Any, Callable, TypeVar
+
+from common.paths import display_path
 
 
 BundleT = TypeVar("BundleT")
@@ -14,6 +17,11 @@ MANIFEST_FILENAME = "MANIFEST.json"
 HOLDOUT_ROW_FLOOR = 10
 CONFORMAL_COVERAGE_FLOOR = 0.7
 CONFORMAL_COVERAGE_WAIVER_FLOOR = 0.65
+
+# Failed loads keyed by (path, expected type, label, validator) -> {"signature", "message"}. Without this, every
+# /health call against a bad artifact re-hashes and re-unpickles it. The signature (artifact and manifest
+# mtime/size) invalidates the entry as soon as either file changes.
+_FAILED_LOADS: dict[tuple[Any, ...], dict[str, Any]] = {}
 
 
 class ModelArtifactError(RuntimeError):
@@ -27,7 +35,7 @@ def manifest_path_for(artifact_path: Path) -> Path:
 def load_manifest(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.is_file():
         raise ModelArtifactError(
-            f"Artifact manifest is missing: {manifest_path}. "
+            f"Artifact manifest is missing: {display_path(manifest_path)}. "
             "Approved artifacts must be listed in MANIFEST.json with checksums."
         )
     try:
@@ -80,6 +88,21 @@ def verify_manifest_runtime_versions(entry: dict[str, Any], *, artifact_label: s
             raise ModelArtifactError(
                 f"Approved {artifact_label} artifact {entry.get('filename')} requires scikit-learn "
                 f"{expected_sklearn}, but the runtime has {sklearn_version}."
+            )
+
+    # XGBoost boosters stay loadable across minor versions, so a mismatch is surfaced rather than fatal.
+    expected_xgboost = entry.get("xgboostVersion")
+    if expected_xgboost:
+        try:
+            xgboost_version = _runtime_package_version("xgboost")
+        except Exception:
+            xgboost_version = "not installed"
+        if xgboost_version != expected_xgboost:
+            warnings.warn(
+                f"Approved {artifact_label} artifact {entry.get('filename')} was built with xgboost "
+                f"{expected_xgboost}, but the runtime has {xgboost_version}.",
+                RuntimeWarning,
+                stacklevel=2,
             )
 
 
@@ -202,6 +225,14 @@ def upsert_manifest_entry(artifact_path: Path, entry: dict[str, Any]) -> Path:
     return manifest_path
 
 
+def _file_signature(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
 def load_approved_pickle(
     path: Path,
     *,
@@ -211,6 +242,30 @@ def load_approved_pickle(
 ) -> BundleT:
     """Load and validate a trusted local artifact without training or repairing it."""
 
+    cache_key = (str(path), expected_type, artifact_label, validate)
+    signature = (_file_signature(path), _file_signature(manifest_path_for(path)))
+    failed = _FAILED_LOADS.get(cache_key)
+    if failed is not None and failed["signature"] == signature:
+        raise ModelArtifactError(failed["message"])
+
+    try:
+        bundle = _load_approved_pickle_uncached(
+            path, expected_type=expected_type, artifact_label=artifact_label, validate=validate
+        )
+    except ModelArtifactError as error:
+        _FAILED_LOADS[cache_key] = {"signature": signature, "message": str(error)}
+        raise
+    _FAILED_LOADS.pop(cache_key, None)
+    return bundle
+
+
+def _load_approved_pickle_uncached(
+    path: Path,
+    *,
+    expected_type: type[BundleT],
+    artifact_label: str,
+    validate: Callable[[BundleT], list[str]],
+) -> BundleT:
     if not path.is_file():
         raise ModelArtifactError(
             f"Approved {artifact_label} artifact is missing: {path.name}. "

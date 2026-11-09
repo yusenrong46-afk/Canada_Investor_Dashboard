@@ -2,9 +2,11 @@
 -- characteristics. Target is the time-adjusted real sale price; see
 -- docs/halifax-data-recon.md for the join and adjustment decisions.
 
+-- IDs follow staging rowid (the processed CSV's row order) so they are stable across rebuilds;
+-- an empty OVER () lets DuckDB number rows in whatever order parallel execution produces.
 INSERT INTO fact_property_training_mart
 SELECT
-  'halifax_maritimes:' || CAST(row_number() OVER () AS VARCHAR) AS property_observation_id,
+  'halifax_maritimes:' || CAST(row_number() OVER (ORDER BY rowid) AS VARCHAR) AS property_observation_id,
   'halifax_maritimes' AS market_id,
   'Halifax' AS city_name,
   'NS' AS province_state,

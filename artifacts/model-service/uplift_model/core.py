@@ -4,10 +4,11 @@ import math
 import os
 import pickle
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
 from common.artifact_loader import ModelArtifactError, load_approved_pickle
+from common.paths import display_path as _display_path
 from service import PROPERTY_TYPES, _parse_numeric, estimate_property
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -149,6 +151,7 @@ class UpliftModelBundle:
 
 
 _UPLIFT_BUNDLE: UpliftModelBundle | None = None
+_UPLIFT_BUNDLE_LOCK = threading.Lock()
 
 
 def _safe_ohe() -> OneHotEncoder:
@@ -164,14 +167,6 @@ def _data_paths() -> UpliftDataPaths:
         sales=Path(DEFAULT_SALES_PATH).expanduser(),
         buildings=Path(DEFAULT_BUILDINGS_PATH).expanduser(),
     )
-
-
-def _display_path(value: str | Path) -> str:
-    path = Path(value).expanduser()
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except (OSError, ValueError):
-        return path.name
 
 
 def _data_sources(paths: UpliftDataPaths) -> dict[str, str]:
@@ -592,16 +587,6 @@ def _market_factor_from_series(by_quarter: pd.Series, earlier: pd.Timestamp, lat
     return float(factor)
 
 
-def estimate_market_factor(sales: pd.DataFrame, property_type: str, earlier: pd.Timestamp, later: pd.Timestamp) -> float | None:
-    subset = sales.loc[sales["propertyType"].eq(property_type)].copy()
-    if len(subset) < MIN_MARKET_ROWS:
-        subset = sales.copy()
-    if len(subset) < MIN_MARKET_ROWS:
-        return None
-
-    return _market_factor_from_series(_quarter_market_series(subset), earlier, later)
-
-
 def calculate_uplift_percent(previous_price: float, next_price: float, market_factor: float) -> float:
     expected_next_price = previous_price * market_factor
     if expected_next_price <= 0:
@@ -809,21 +794,19 @@ def _bundle_validation_issues(bundle: UpliftModelBundle) -> list[str]:
 
 def load_uplift_bundle() -> UpliftModelBundle:
     global _UPLIFT_BUNDLE
-    paths = _data_paths()
 
-    if _UPLIFT_BUNDLE is not None:
+    with _UPLIFT_BUNDLE_LOCK:
+        if _UPLIFT_BUNDLE is None:
+            try:
+                _UPLIFT_BUNDLE = load_approved_pickle(
+                    UPLIFT_ARTIFACT_PATH,
+                    expected_type=UpliftModelBundle,
+                    artifact_label="Seattle uplift-model",
+                    validate=_bundle_validation_issues,
+                )
+            except ModelArtifactError as error:
+                _UPLIFT_BUNDLE = _missing_bundle(str(error), _data_paths())
         return _UPLIFT_BUNDLE
-
-    try:
-        _UPLIFT_BUNDLE = load_approved_pickle(
-            UPLIFT_ARTIFACT_PATH,
-            expected_type=UpliftModelBundle,
-            artifact_label="Seattle uplift-model",
-            validate=_bundle_validation_issues,
-        )
-    except ModelArtifactError as error:
-        _UPLIFT_BUNDLE = _missing_bundle(str(error), paths)
-    return _UPLIFT_BUNDLE
 
 
 def _planned_flags(payload: dict[str, Any]) -> list[str]:
@@ -865,14 +848,15 @@ def _treated_quantile_range(base_value: float, low_percent: float, high_percent:
 
 
 def _zero_uplift_response(payload: dict[str, Any], base_estimate: dict[str, Any], planned_flags: list[str]) -> dict[str, Any]:
+    # No improvements selected: zero uplift is definitional. The uplift bundle is neither loaded nor
+    # consulted, so this response must not claim a fitted model family or observed evidence.
     base_value = int(base_estimate["baseValue"])
     return {
         "status": "ready",
         "modelVersion": UPLIFT_MODEL_VERSION,
         "trainingMode": UPLIFT_TRAINING_MODE,
-        "modelFamily": "random-forest",
-        "evidenceLevel": "observed",
-        "evidenceSummary": "No selected improvements, so uplift is zero. The trained uplift path uses real Seattle repeat-sale records only.",
+        "evidenceLevel": "none",
+        "evidenceSummary": "No selected improvements, so uplift is zero by definition; the uplift model was not consulted.",
         "baseValue": base_value,
         "upliftPercent": 0.0,
         "treatedQuantileRange": _treated_quantile_range(base_value, 0.0, 0.0),
@@ -883,12 +867,16 @@ def _zero_uplift_response(payload: dict[str, Any], base_estimate: dict[str, Any]
         "plannedFlags": planned_flags,
         "topUpliftDrivers": [],
         "observedShare": 1.0,
-        "methodNotes": ["No synthetic rows, proxy labels, or rule-based uplift are used.", TRANSFER_LIMITATION],
+        "methodNotes": ["No improvements were selected, so no uplift model or uplift data was used."],
     }
 
 
-def simulate_uplift(payload: dict[str, Any]) -> dict[str, Any]:
-    base_estimate = estimate_property(payload)
+def simulate_uplift(
+    payload: dict[str, Any],
+    estimate: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    # `estimate` lets the legacy uplift_service shim supply its own base estimator without rebinding this module.
+    base_estimate = (estimate or estimate_property)(payload)
     planned_flags = _planned_flags(payload)
     if not planned_flags:
         return _zero_uplift_response(payload, base_estimate, planned_flags)
@@ -900,7 +888,7 @@ def simulate_uplift(payload: dict[str, Any]) -> dict[str, Any]:
             "message": bundle.message,
             "modelVersion": bundle.model_version,
             "trainingMode": bundle.training_mode,
-            "evidenceLevel": "observed",
+            "evidenceLevel": "none",
             "dataSources": bundle.data_sources,
             "rowCounts": bundle.row_counts,
             "methodNotes": ["The uplift model refuses to train without real Seattle permits, real King County sales, and real building records."],
@@ -970,7 +958,7 @@ def uplift_health_payload() -> dict[str, Any]:
         "rowCounts": bundle.row_counts,
         "modelFamily": "random-forest" if bundle.ready else None,
         "evaluationSummary": bundle.evaluation_summary,
-        "evidenceLevel": "observed",
+        "evidenceLevel": "observed" if bundle.ready else "none",
         "observedShare": 1.0 if bundle.ready else 0.0,
         "dataSources": bundle.data_sources,
         "availableFlags": bundle.available_flags,

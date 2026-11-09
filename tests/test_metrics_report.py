@@ -50,8 +50,9 @@ def test_metrics_report_handles_missing_artifact(tmp_path: Path, monkeypatch):
     write_model_report(output_path=output_path)
 
     report = output_path.read_text()
-    assert "Model artifact not found" in report
+    assert "Model artifact not found: missing_model.pkl" in report
     assert "Metrics unavailable" in report
+    assert str(tmp_path) not in report
 
 
 def test_metrics_report_writes_markdown(tmp_path: Path, monkeypatch):
@@ -62,7 +63,49 @@ def test_metrics_report_writes_markdown(tmp_path: Path, monkeypatch):
     report = build_model_report()
 
     assert report.startswith("# Model Metrics Report")
-    assert "| Segment | Model | Temporal MAE | Temporal MAPE | Temporal R2 | N | Random MAE | Random MAPE |" in report
+    assert "| Segment | Model | Holdout MAE | Holdout MAPE | Holdout R2 | N | Random MAE | Random MAPE |" in report
+    assert "Temporal MAE" not in report
+
+
+def _bundle_with_primary_split(split: str) -> VancouverModelBundle:
+    return _v5_bundle(
+        evaluation_summary={
+            "perType": {
+                "Condo": {
+                    "selectedModel": "xgboost",
+                    "holdout": {"mae": 100_000.0, "rmse": 150_000.0, "mape": 0.12, "r2": 0.8, "rows": 200},
+                    "randomHoldout": {"mae": 90_000.0, "mape": 0.11, "rows": 180},
+                },
+            },
+            "overallWeightedMetrics": {"holdoutMae": 100_000.0, "holdoutMape": 0.12, "holdoutR2": 0.8, "randomHoldoutMae": 90_000.0},
+            "selectedModels": {"Condo": "xgboost"},
+            "validationStrategy": {"trainHoldoutSplit": split},
+        },
+    )
+
+
+def test_metrics_report_labels_columns_from_actual_split(tmp_path: Path, monkeypatch):
+    missing = tmp_path / "missing_halifax.pkl"
+    monkeypatch.setattr(report_module, "HALIFAX_ARTIFACT", missing)
+
+    temporal = _write_report_fixture(
+        tmp_path, "temporal.pkl", _bundle_with_primary_split("temporal holdout: last 6 months of listingDate")
+    )
+    monkeypatch.setattr(report_module, "VANCOUVER_ARTIFACT", temporal)
+    assert "| Temporal MAE | Temporal MAPE | Temporal R2 |" in build_model_report()
+
+    # The temporal fallback says "temporal" but is a random split, so it must not be labelled Temporal.
+    for index, split in enumerate(
+        ["80/20 stratified by price band within each property type", "random 80/20 stratified by price band (temporal holdout too small)"]
+    ):
+        random_split = _write_report_fixture(tmp_path, f"random_{index}.pkl", _bundle_with_primary_split(split))
+        monkeypatch.setattr(report_module, "VANCOUVER_ARTIFACT", random_split)
+        vancouver_section = build_model_report().split("## Halifax")[0]
+        assert "| Holdout MAE | Holdout MAPE | Holdout R2 |" in vancouver_section
+        assert "Temporal MAE" not in vancouver_section
+        # Overall row: no weighted random MAPE is published, per-type random MAPE is.
+        assert "| All supported property types | selected by property type | $100,000 | 12.00% | 0.800 | 200 | $90,000 | not available |" in vancouver_section
+        assert "| Condo | xgboost | $100,000 | 12.00% | 0.800 | 200 | $90,000 | 11.00% |" in vancouver_section
 
 
 def test_metrics_report_marks_conformal_and_spatial_unavailable_without_v5_bundle(tmp_path: Path, monkeypatch):

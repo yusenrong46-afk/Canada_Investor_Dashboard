@@ -15,6 +15,7 @@ DEFAULT_RAW_PATH = Path.home() / "Downloads" / "data_bc.csv"
 sys.path.insert(0, str(MODEL_SERVICE_DIR))
 
 from base_model.core import CATEGORICAL_FEATURES, NUMERIC_FEATURES, _load_training_frame  # noqa: E402
+from common.paths import display_path  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,7 +67,7 @@ def main() -> None:
     summary_path.write_text(
         json.dumps(
             {
-                "sourcePath": str(source_path),
+                "sourcePath": display_path(source_path),
                 "rowCounts": {
                     **row_counts,
                     "datedRows": dated_rows,

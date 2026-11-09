@@ -40,12 +40,13 @@ def test_health_returns_200_when_required_markets_load(flask_client) -> None:
 
 
 def test_health_returns_503_when_required_market_fails(flask_client) -> None:
-    with patch("routes.slim_health_payload", side_effect=RuntimeError("artifact missing")):
+    with patch("routes.slim_health_payload", side_effect=RuntimeError("cannot open /srv/app/models/x.pkl")):
         response = flask_client.get("/health")
     assert response.status_code == 503
     payload = response.get_json()
     assert payload["ok"] is False
     assert payload["markets"]["vancouver"]["ok"] is False
+    assert "/srv/app" not in payload["markets"]["vancouver"]["message"]
 
 
 def test_invalid_json_returns_400(flask_client) -> None:
@@ -114,18 +115,65 @@ def test_metrics_exposes_full_evaluation_payload(flask_client) -> None:
     assert "evaluationSummary" in payload["markets"]["vancouver"]
 
 
-def test_missing_artifact_returns_503_json(flask_client, monkeypatch, tmp_path: Path) -> None:
-    from base_model import core
-    from common.artifact_loader import ModelArtifactError
+HALIFAX_PAYLOAD = {
+    "postalCode": "B3H 1A1",
+    "propertyType": "Detached",
+    "livingAreaSqft": 1800,
+    "bedrooms": 3,
+    "bathrooms": 2,
+}
+VANCOUVER_PAYLOAD = {**HALIFAX_PAYLOAD, "postalCode": "V6B 1X9", "propertyType": "Condo"}
 
-    monkeypatch.setattr(core, "ARTIFACT_PATH", tmp_path / "missing.pkl")
-    monkeypatch.setattr(core, "_BUNDLE", None)
-    (tmp_path / "MANIFEST.json").write_text(json.dumps({"schemaVersion": 1, "artifacts": []}))
 
-    def _fail_load():
-        raise ModelArtifactError("Approved Vancouver base-model artifact is missing: missing.pkl.")
+def test_missing_halifax_uplift_export_returns_503_without_server_path(flask_client, monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HALIFAX_UPLIFT_EXPORT_PATH", str(tmp_path / "missing_halifax_uplift.json"))
 
-    monkeypatch.setattr("routes.slim_health_payload", _fail_load)
+    response = flask_client.post("/uplift", json={**HALIFAX_PAYLOAD, "plannedFlags": ["renovatedKitchen"]})
 
-    response = flask_client.get("/health")
     assert response.status_code == 503
+    error = response.get_json()["error"]
+    assert error["code"] == "ARTIFACT_UNAVAILABLE"
+    assert "missing_halifax_uplift.json" in error["message"]
+    assert str(tmp_path) not in error["message"]
+
+
+@pytest.mark.parametrize(
+    "planned_flags",
+    ["renovatedKitchen", 5, {"renovatedKitchen": True}, [["renovatedKitchen"]], [{"flag": "x"}], [1]],
+)
+@pytest.mark.parametrize("payload", [HALIFAX_PAYLOAD, VANCOUVER_PAYLOAD])
+def test_malformed_planned_flags_return_400(flask_client, payload, planned_flags) -> None:
+    with patch("routes.simulate_uplift", side_effect=AssertionError("must validate first")), patch(
+        "routes.simulate_halifax_uplift", side_effect=AssertionError("must validate first")
+    ):
+        response = flask_client.post("/uplift", json={**payload, "plannedFlags": planned_flags})
+
+    assert response.status_code == 400
+    assert response.get_json()["error"]["code"] == "VALIDATION"
+
+
+@pytest.mark.parametrize("route", ["/estimate", "/uplift"])
+@pytest.mark.parametrize("raw_value", ["-1", "-250000", "-Infinity", "Infinity", "1e400"])
+def test_invalid_known_current_value_returns_400(flask_client, route, raw_value) -> None:
+    # Python's json module accepts -Infinity/Infinity, so these reach the route as non-finite floats.
+    body = json.dumps(VANCOUVER_PAYLOAD)[:-1] + f', "knownCurrentValue": {raw_value}}}'
+    with patch("routes.estimate_property", side_effect=AssertionError("must validate first")), patch(
+        "routes.simulate_uplift", side_effect=AssertionError("must validate first")
+    ):
+        response = flask_client.post(route, data=body, content_type="application/json")
+
+    assert response.status_code == 400
+    error = response.get_json()["error"]
+    assert error["code"] == "VALIDATION"
+    assert "knownCurrentValue" in error["message"]
+
+
+def test_missing_trend_export_message_has_no_server_path(flask_client, monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MARKET_TREND_EXPORT_PATH", str(tmp_path / "market_trend.json"))
+
+    response = flask_client.get("/trend?market=vancouver")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "unavailable"
+    assert str(tmp_path) not in payload["message"]

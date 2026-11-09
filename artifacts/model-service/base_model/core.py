@@ -4,6 +4,7 @@ import math
 import os
 import pickle
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ from sklearn.preprocessing import OneHotEncoder
 from common.conformal import ConformalCalibration, calibrate_split_conformal
 from common.explain import shap_drivers
 from common.artifact_loader import extended_bundle_validation_issues, load_approved_pickle, upsert_manifest_entry, build_manifest_entry
+from common.paths import display_path as _display_path
 
 try:
     from xgboost import XGBRegressor
@@ -110,15 +112,9 @@ class VancouverModelBundle:
 
 
 _BUNDLE: VancouverModelBundle | None = None
-
-
-def _display_path(value: str | Path) -> str:
-    """Return provenance without leaking a developer's absolute machine path."""
-    path = Path(value).expanduser()
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except (OSError, ValueError):
-        return path.name
+_BUNDLE_LOCK = threading.Lock()
+# (path, propertyType, latestListingDate) -> {"signature": (mtime_ns, size), "payload": dict}
+_MARKET_FRESHNESS_CACHE: dict[tuple[str, str, str | None], dict[str, Any]] = {}
 
 
 def _safe_ohe() -> OneHotEncoder:
@@ -896,11 +892,12 @@ def train_bundle(data_path: str = DEFAULT_DATA_PATH) -> VancouverModelBundle:
         raise ValueError("No Vancouver training rows were found after cleaning the CSV")
 
     temporal_train_index, temporal_test_index, temporal_split_strategy = _temporal_holdout_indices(usable, "listingDate")
-    train_stats_frame = usable.loc[temporal_train_index].copy()
     clusterer = KMeans(n_clusters=CLUSTER_COUNT, random_state=42, n_init=20)
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         clusterer.fit(usable.loc[temporal_train_index, ["latitude", "longitude"]].to_numpy(dtype=float))
     usable, _ = _engineer_location_features(usable, clusterer)
+    # Snapshot train-split stats only after location features exist: NUMERIC_FEATURES includes lat_x_lon/lat_sq/lon_sq.
+    train_stats_frame = usable.loc[temporal_train_index].copy()
 
     models: dict[str, Pipeline] = {}
     model_families: dict[str, str] = {}
@@ -1077,18 +1074,16 @@ def _bundle_validation_issues(bundle: VancouverModelBundle) -> list[str]:
 def load_bundle() -> VancouverModelBundle:
     global _BUNDLE
 
-    if _BUNDLE is not None:
+    with _BUNDLE_LOCK:
+        if _BUNDLE is None:
+            _BUNDLE = load_approved_pickle(
+                ARTIFACT_PATH,
+                expected_type=VancouverModelBundle,
+                artifact_label="Vancouver base-model",
+                validate=_bundle_validation_issues,
+            )
         _BUNDLE.market_index_path = DEFAULT_MARKET_INDEX_PATH
         return _BUNDLE
-
-    _BUNDLE = load_approved_pickle(
-        ARTIFACT_PATH,
-        expected_type=VancouverModelBundle,
-        artifact_label="Vancouver base-model",
-        validate=_bundle_validation_issues,
-    )
-    _BUNDLE.market_index_path = DEFAULT_MARKET_INDEX_PATH
-    return _BUNDLE
 
 
 def _resolve_centroid(bundle: VancouverModelBundle, postal_code: str) -> tuple[float, float]:
@@ -1153,12 +1148,25 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
             "dataSource": _display_path(path),
         }
 
+    # The index CSV changes rarely; re-read and re-aggregate it only when the file changes.
+    stat = path.stat()
+    signature = (stat.st_mtime_ns, stat.st_size)
+    latest_listing_date = bundle.training_date_range.get("latestListingDate")
+    cache_key = (str(path), property_type, latest_listing_date)
+    cached = _MARKET_FRESHNESS_CACHE.get(cache_key)
+    if cached is None or cached["signature"] != signature:
+        cached = {"signature": signature, "payload": _compute_market_freshness(path, latest_listing_date, property_type)}
+        _MARKET_FRESHNESS_CACHE[cache_key] = cached
+    return dict(cached["payload"])
+
+
+def _compute_market_freshness(path: Path, latest_listing_date: str | None, property_type: str) -> dict[str, Any]:
     try:
         source = pd.read_csv(path, low_memory=False)
     except Exception as exc:
         return {
             "status": "not-applied",
-            "message": f"Could not read the real market index CSV: {exc}",
+            "message": f"Could not read the real market index CSV ({type(exc).__name__}).",
             "dataSource": _display_path(path),
         }
 
@@ -1208,7 +1216,7 @@ def _market_freshness_payload(bundle: VancouverModelBundle, property_type: str) 
         }
 
     market = market.groupby("period", as_index=False)["value"].mean().sort_values("period")
-    baseline_period = _parse_date(bundle.training_date_range.get("latestListingDate"))
+    baseline_period = _parse_date(latest_listing_date)
     if baseline_period is None:
         return {
             "status": "not-applied",
@@ -1519,6 +1527,3 @@ def metrics_payload() -> dict[str, Any]:
         "xgboostImportError": bundle.xgboost_import_error,
     }
 
-
-def health_payload() -> dict[str, Any]:
-    return slim_health_payload()

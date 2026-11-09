@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,11 +12,9 @@ DEFAULT_DATA_PATH = REPO_ROOT / "data" / "processed" / "vancouver_base_model_tra
 DEFAULT_OUTPUT_PATH = REPO_ROOT / "reports" / "data_quality_report.md"
 
 
-def _display_path(path: Path) -> str:
-  try:
-    return str(path.resolve().relative_to(REPO_ROOT))
-  except ValueError:
-    return str(path)
+sys.path.insert(0, str(REPO_ROOT / "artifacts" / "model-service"))
+
+from common.paths import display_path as _display_path  # noqa: E402
 
 
 KEY_COLUMNS = ["price", "propertyType", "postalCode", "livingAreaSqft", "bedrooms", "bathrooms"]

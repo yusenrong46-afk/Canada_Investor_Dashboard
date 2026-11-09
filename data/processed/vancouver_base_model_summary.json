@@ -1,5 +1,5 @@
 {
-  "sourcePath": "/Users/thomas/Downloads/CanadaHousingData/data_bc.csv",
+  "sourcePath": "data_bc.csv",
   "rowCounts": {
     "totalRows": 24382,
     "vancouverRows": 3949,

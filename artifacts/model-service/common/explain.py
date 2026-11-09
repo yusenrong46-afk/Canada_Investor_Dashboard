@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import weakref
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,11 @@ REGRESSOR_STEP = "model"
 
 MIN_DRIVER_DOLLARS = 5_000
 MAX_DRIVERS = 6
+
+# Building a TreeExplainer walks every tree in the ensemble, so reuse one per fitted regressor object.
+# Keys are weak so an unreferenced XGBoost model drops its entry; shap keeps a reference to sklearn forests,
+# so those entries live as long as the process, which matches bundles being loaded once per process.
+_EXPLAINER_CACHE: "weakref.WeakKeyDictionary[Any, Any]" = weakref.WeakKeyDictionary()
 
 # Friendly labels mirror NUMERIC_FEATURES / CATEGORICAL_FEATURES in base_model/core.py,
 # phrased to read like the heuristic _driver_candidates labels.
@@ -88,6 +94,17 @@ def _label_for(kind: str, source: str, category: str | None) -> str:
     return _clean_raw_name(source)
 
 
+def _tree_explainer(regressor: Any) -> Any:
+    try:
+        explainer = _EXPLAINER_CACHE.get(regressor)
+    except TypeError:  # pragma: no cover - regressor cannot be weakly referenced
+        return shap.TreeExplainer(regressor)
+    if explainer is None:
+        explainer = shap.TreeExplainer(regressor)
+        _EXPLAINER_CACHE[regressor] = explainer
+    return explainer
+
+
 def shap_drivers(
     pipeline: Pipeline,
     feature_frame: pd.DataFrame,
@@ -126,7 +143,7 @@ def shap_drivers(
         transformed = np.asarray(transformed, dtype=float)
         feature_names = [str(name) for name in preprocessor.get_feature_names_out()]
 
-        explainer = shap.TreeExplainer(regressor)
+        explainer = _tree_explainer(regressor)
         try:
             shap_values = explainer.shap_values(transformed, check_additivity=False)
         except TypeError:  # pragma: no cover - older shap without the keyword

@@ -6,5 +6,6 @@ for _name in dir(_core):
 
 
 def simulate_uplift(payload):  # type: ignore[no-untyped-def]
-    _core.estimate_property = globals().get("estimate_property", _core.estimate_property)
-    return _core.simulate_uplift(payload)
+    # Look up this shim's estimate_property at call time (so tests can monkeypatch it here) and pass it
+    # through, instead of rebinding uplift_model.core.estimate_property for every later caller.
+    return _core.simulate_uplift(payload, estimate=globals()["estimate_property"])

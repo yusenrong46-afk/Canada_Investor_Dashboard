@@ -5,6 +5,7 @@ import io
 import json
 import math
 import os
+import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -18,6 +19,10 @@ RAW_HALIFAX_DIR = REPO_ROOT / "data" / "raw" / "halifax"
 PROCESSED_DIR = REPO_ROOT / "data" / "processed"
 DEFAULT_TRAINING_OUTPUT_PATH = PROCESSED_DIR / "halifax_base_model_training.csv"
 DEFAULT_TRAINING_SUMMARY_PATH = PROCESSED_DIR / "halifax_base_model_summary.json"
+
+sys.path.insert(0, str(REPO_ROOT / "artifacts" / "model-service"))
+
+from common.paths import display_path  # noqa: E402
 
 HRM_MUNICIPAL_UNIT = "HALIFAX REGIONAL MUNICIPALITY (HRM)"
 MIN_SALE_PRICE = 10_000
@@ -491,10 +496,10 @@ def build_training_extract(
         },
         "propertyTypeCounts": extract["propertyType"].value_counts().to_dict(),
         "sources": {
-            "dwellings": str(dwellings_path),
-            "sales": str(sales_path),
-            "assessments": str(assessments_path),
-            "civicAddresses": str(civic_addresses_path),
+            "dwellings": display_path(dwellings_path),
+            "sales": display_path(sales_path),
+            "assessments": display_path(assessments_path),
+            "civicAddresses": display_path(civic_addresses_path),
         },
     }
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
