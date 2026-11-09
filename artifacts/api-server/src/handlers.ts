@@ -17,7 +17,8 @@ export interface ApiHandlers {
   simulate: (request: SimulateRequest) => Promise<unknown> | unknown;
   plan: (request: PlanRequest) => Promise<unknown> | unknown;
   deal: (request: DealAnalyzeRequest) => Promise<unknown> | unknown;
-  insights: () => unknown;
+  /** Only demo mode has a server-side sample portfolio; other modes answer /api/insights with 409. */
+  insights?: () => unknown;
 }
 
 // Adding a new runtime mode requires updating this factory only.
@@ -38,9 +39,6 @@ export function resolveHandlers(): ApiHandlers {
       simulate: buildPublicSimulate,
       plan: buildPublicPlan,
       deal: buildPublicDealAnalyze,
-      insights: () => {
-        throw Object.assign(new Error("Public mode has no server-side portfolio."), { statusCode: 409 });
-      },
     };
   }
 
@@ -49,8 +47,5 @@ export function resolveHandlers(): ApiHandlers {
     simulate: simulateScenario,
     plan: buildSalePlan,
     deal: analyzeDeal,
-    insights: () => {
-      throw Object.assign(new Error("Live mode has no server-side sample portfolio."), { statusCode: 409 });
-    },
   };
 }

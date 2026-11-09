@@ -1,4 +1,4 @@
-import { marketCatalog, marketValues, propertyTypeValues, type MarketsResponse } from "@vvl/shared";
+import { marketCatalog, marketValues, type MarketsResponse } from "@vvl/shared";
 
 import { isDemoModeEnabled, isPublicModeEnabled } from "./config";
 import { hasEvidenceRows } from "./evidence";

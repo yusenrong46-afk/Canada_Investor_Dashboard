@@ -1,16 +1,12 @@
-import { WIDE_CONFIDENCE_RATIO, type DealAnalyzeRequest, type DealAnalyzeResponse, type DealLabel, type DealRiskFlag, type EstimateResponse, type PlanResponse } from "@vvl/shared";
+import { WIDE_CONFIDENCE_RATIO, type DealAnalyzeRequest, type DealAnalyzeResponse, type DealRiskFlag, type EstimateResponse, type PlanResponse } from "@vvl/shared";
 
 import { buildDealAnalyze, computeDealTargetPrice } from "./dealBuilder";
+import { percent } from "./public/utils";
+
+export { labelDeal } from "./dealBuilder";
 export { computeDealRobustness, ROBUSTNESS_DRAWS } from "./dealRobustness";
 export type { DealRobustnessInputs } from "./dealRobustness";
 import { buildSalePlan, estimateProperty } from "./model";
-
-function percent(numerator: number, denominator: number): number {
-  if (!Number.isFinite(denominator) || denominator <= 0) {
-    return 0;
-  }
-  return numerator / denominator;
-}
 
 function buildRiskFlags(
   request: DealAnalyzeRequest,
@@ -113,37 +109,10 @@ function buildRiskFlags(
   return flags;
 }
 
-export function labelDeal(netUpsidePercent: number, valueGapPercent: number, flags: DealRiskFlag[]): DealLabel {
-  const hasDanger = flags.some((flag) => flag.level === "danger");
-  const hasWarning = flags.some((flag) => flag.level === "warning");
-
-  if (netUpsidePercent < 0 || (hasDanger && netUpsidePercent < 0.06)) {
-    return "Pass for now";
-  }
-  if (hasDanger) {
-    return "Needs caution";
-  }
-  if (netUpsidePercent >= 0.08 && valueGapPercent >= -0.02 && !hasDanger && !hasWarning) {
-    return "Worth review";
-  }
-  if (netUpsidePercent >= 0.03 || valueGapPercent >= 0.02) {
-    return "Worth review";
-  }
-  return "Needs caution";
-}
-
 export async function analyzeDeal(request: DealAnalyzeRequest): Promise<DealAnalyzeResponse> {
   const estimate = await estimateProperty(request);
   const targetPrice = computeDealTargetPrice(request.askingPrice, estimate.baseValue);
-  const plan = await buildSalePlan({
-    ...request,
-    targetPrice,
-  });
-
-  const afterPlanValue = Math.round(plan.achievableValue ?? estimate.baseValue);
-  const modeledValueGap = Math.round(estimate.baseValue - request.askingPrice);
-  const valueGapPercent = Number(percent(modeledValueGap, request.askingPrice).toFixed(4));
-  const netUpsidePercent = Number(percent(Math.round(afterPlanValue - request.askingPrice) - (plan.plannedSpend ?? 0), request.askingPrice).toFixed(4));
+  const plan = await buildSalePlan({ ...request, targetPrice }, estimate);
 
   return buildDealAnalyze({
     request,
@@ -162,6 +131,5 @@ export async function analyzeDeal(request: DealAnalyzeRequest): Promise<DealAnal
     },
     buildRiskFlags: ({ plan: planResult, afterPlanValue: afterPlan, netUpsidePercent: netUpside }) =>
       buildRiskFlags(request, estimate, planResult, afterPlan, netUpside),
-    chooseLabel: (netUpside, valueGap, flags) => labelDeal(netUpside, valueGap, flags),
   });
 }

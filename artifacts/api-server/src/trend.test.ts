@@ -100,7 +100,7 @@ describe("trendFromModelService (live path)", () => {
 
     const response = await trendFromModelService("vancouver");
 
-    expect(response).toEqual({ status: "unavailable", message: "Model service GET /trend request failed: fetch failed" });
+    expect(response).toEqual({ status: "unavailable", message: "Model service GET /trend request failed: The live model service is unreachable. Start it or check MODEL_SERVICE_URL." });
   });
 });
 

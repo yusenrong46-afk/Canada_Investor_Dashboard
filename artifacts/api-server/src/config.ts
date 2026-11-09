@@ -9,6 +9,7 @@ export interface RuntimeConfig {
   modelRequestsPerMinute: number;
   apiHost: string;
   apiPort: number;
+  trustProxy: boolean;
 }
 
 function parseBooleanFlag(value: string | undefined): boolean {
@@ -42,6 +43,8 @@ export function getConfig(): RuntimeConfig {
     modelRequestsPerMinute: parseBoundedNumber(process.env.MODEL_REQUESTS_PER_MINUTE, 120, 10, 1_000),
     apiHost: process.env.API_HOST ?? "127.0.0.1",
     apiPort: parseBoundedNumber(process.env.API_PORT ?? process.env.PORT, 4000, 1, 65_535),
+    // Vercel always fronts the function with its own proxy and sets VERCEL=1.
+    trustProxy: parseBooleanFlag(process.env.TRUST_PROXY) || parseBooleanFlag(process.env.VERCEL),
   };
 
   return cachedConfig;

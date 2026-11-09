@@ -2,12 +2,12 @@ import path from "node:path";
 
 import { ZodError } from "zod/v4";
 
-import { detectMarket, marketCatalog, WIDE_CONFIDENCE_RATIO, resultProvenance, type DealAnalyzeResponse, type DealLabel, type DealRiskFlag, type DemoMetricsResponse, type EstimateResponse, type PlannedFlag, type PlanLineItem, type PlanPhase, type PlanRequest, type PlanResponse, type PropertyInput, type SimulateRequest, type SimulateResponse } from "@vvl/shared";
+import { detectMarket, marketCatalog, WIDE_CONFIDENCE_RATIO, resultProvenance, type DealAnalyzeResponse, type DealRiskFlag, type DemoMetricsResponse, type EstimateResponse, type PlannedFlag, type PlanLineItem, type PlanRequest, type PlanResponse, type PropertyInput, type SimulateRequest, type SimulateResponse } from "@vvl/shared";
 
 import { buildDealAnalyze, computeDealTargetPrice } from "./dealBuilder";
+import { phaseRows } from "./planBuilder";
 import { readRepoJson } from "./repoFiles";
 
-import { isDemoModeEnabled } from "./config";
 
 interface DemoProperty extends PropertyInput {
   id: string;
@@ -57,8 +57,18 @@ interface DemoPlansFile {
   plans: DemoPlanFileRow[];
 }
 
+// Demo samples are committed static files, so parse each one once per process instead of per request.
+const demoJsonCache = new Map<string, unknown>();
+
 function readDemoJson<T>(fileName: string): T {
-  return readRepoJson(path.join("demo", fileName)) as T;
+  if (!demoJsonCache.has(fileName)) {
+    demoJsonCache.set(fileName, readRepoJson(path.join("demo", fileName)));
+  }
+  return demoJsonCache.get(fileName) as T;
+}
+
+function normalizePostalCode(postalCode: string): string {
+  return postalCode.toUpperCase().replace(/\s+/g, "");
 }
 
 // Demo samples are Vancouver-only; ZodError keeps app.ts mapping this guard to a 400.
@@ -90,7 +100,8 @@ function demoPlans(): DemoPlanFileRow[] {
 function chooseDemoProperty(property: PropertyInput): DemoProperty {
   const samples = demoProperties();
   // Prefer postal-code matches, then property-type matches, so demo mode still reacts to user input.
-  const postalMatch = samples.find((sample) => sample.postalCode.replace(" ", "") === property.postalCode.replace(" ", ""));
+  const postalCode = normalizePostalCode(property.postalCode);
+  const postalMatch = samples.find((sample) => normalizePostalCode(sample.postalCode) === postalCode);
   const typeMatch = samples.find((sample) => sample.propertyType === property.propertyType);
   return postalMatch ?? typeMatch ?? samples[0];
 }
@@ -179,22 +190,6 @@ export function buildDemoEstimate(property: PropertyInput): EstimateResponse {
     explanationMethod: "heuristic",
     marketFreshness: demoMarketFreshness(),
   };
-}
-
-function phaseRows(items: PlanLineItem[]): PlanPhase[] {
-  const phases = new Map<string, PlanLineItem[]>();
-
-  for (const item of items) {
-    phases.set(item.phase, [...(phases.get(item.phase) ?? []), item]);
-  }
-
-  return Array.from(phases.entries()).map(([phase, phaseItems]) => ({
-    phase,
-    durationMonths: phaseItems.reduce((sum, item) => sum + item.months, 0),
-    plannedSpend: phaseItems.reduce((sum, item) => sum + item.cost, 0),
-    plannedUplift: phaseItems.reduce((sum, item) => sum + item.projectedUplift, 0),
-    items: phaseItems,
-  }));
 }
 
 function keepItemsInsideLimits(items: PlanLineItem[], budget: number, timelineMonths: number): PlanLineItem[] {
@@ -324,28 +319,6 @@ export function buildDemoPlan(request: PlanRequest): PlanResponse {
   };
 }
 
-function percent(numerator: number, denominator: number): number {
-  if (!Number.isFinite(denominator) || denominator <= 0) {
-    return 0;
-  }
-  return numerator / denominator;
-}
-
-function chooseDealLabel(netUpsidePercent: number, flags: DealRiskFlag[]): DealLabel {
-  const hasDanger = flags.some((flag) => flag.level === "danger");
-
-  if (netUpsidePercent < 0 || hasDanger) {
-    return "Pass for now";
-  }
-  if (netUpsidePercent >= 0.08) {
-    return "Worth review";
-  }
-  if (netUpsidePercent >= 0.03) {
-    return "Worth review";
-  }
-  return "Needs caution";
-}
-
 export function buildDemoDealAnalyze(
   request: PropertyInput & { askingPrice: number; budget: number; timelineMonths: number; plannedFlags?: PlannedFlag[] },
 ): DealAnalyzeResponse {
@@ -358,7 +331,6 @@ export function buildDemoDealAnalyze(
   });
 
   const modeledValueGap = Math.round(estimate.baseValue - request.askingPrice);
-  const valueGapPercent = Number(percent(modeledValueGap, request.askingPrice).toFixed(4));
 
   return buildDealAnalyze({
     request: { ...request, plannedFlags: request.plannedFlags ?? [] },
@@ -404,7 +376,6 @@ export function buildDemoDealAnalyze(
 
       return riskFlags;
     },
-    chooseLabel: (netUpsidePercent, _valueGapPercent, flags) => chooseDealLabel(netUpsidePercent, flags),
   });
 }
 

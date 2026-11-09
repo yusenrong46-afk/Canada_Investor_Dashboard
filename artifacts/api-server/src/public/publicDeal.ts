@@ -1,31 +1,9 @@
-import { WIDE_CONFIDENCE_RATIO, type DealLabel, type DealRiskFlag, type PlannedFlag, type PropertyInput } from "@vvl/shared";
+import { WIDE_CONFIDENCE_RATIO, type DealRiskFlag, type PlannedFlag, type PropertyInput } from "@vvl/shared";
 
 import { buildDealAnalyze, computeDealTargetPrice } from "../dealBuilder";
 import { buildPublicPlan } from "./publicPlan";
 import { buildPublicEstimate } from "./improvements";
-
-function percent(numerator: number, denominator: number): number {
-  if (!Number.isFinite(denominator) || denominator <= 0) {
-    return 0;
-  }
-  return numerator / denominator;
-}
-
-function chooseDealLabel(netUpsidePercent: number, flags: DealRiskFlag[]): DealLabel {
-  if (netUpsidePercent < 0) {
-    return "Pass for now";
-  }
-  if (flags.some((flag) => flag.level === "danger")) {
-    return "Needs caution";
-  }
-  if (netUpsidePercent >= 0.08 && !flags.some((flag) => flag.level === "warning")) {
-    return "Worth review";
-  }
-  if (netUpsidePercent >= 0.03) {
-    return "Worth review";
-  }
-  return "Needs caution";
-}
+import { percent } from "./utils";
 
 export async function buildPublicDealAnalyze(
   request: PropertyInput & { askingPrice: number; budget: number; timelineMonths: number; plannedFlags?: PlannedFlag[] },
@@ -112,6 +90,5 @@ export async function buildPublicDealAnalyze(
 
       return riskFlags;
     },
-    chooseLabel: (netUpsidePercent, _valueGapPercent, flags) => chooseDealLabel(netUpsidePercent, flags),
   });
 }

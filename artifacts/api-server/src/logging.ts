@@ -15,8 +15,10 @@ function resolveModeLabel(): string {
 }
 
 export function requestLoggingMiddleware(req: express.Request, res: express.Response, next: express.NextFunction): void {
-  const requestId = typeof req.headers["x-request-id"] === "string" && req.headers["x-request-id"].trim()
-    ? req.headers["x-request-id"].trim()
+  // Accept a caller's request id only if it is short and header-safe; it is echoed back and logged.
+  const incoming = req.headers["x-request-id"];
+  const requestId = typeof incoming === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(incoming.trim())
+    ? incoming.trim()
     : crypto.randomUUID();
 
   res.locals.requestId = requestId;

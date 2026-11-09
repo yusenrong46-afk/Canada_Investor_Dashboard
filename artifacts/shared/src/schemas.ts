@@ -4,7 +4,11 @@ import { improvementFlagValues, propertyTypeValues } from "./constants";
 import { marketValues, supportedPostalFsasByMarket } from "./markets";
 
 const postalCodePattern = /^(V[56]|B\d)[A-Z]\s?\d[A-Z]\d$/i;
-const currentYear = new Date().getFullYear();
+
+/** Upper bound for any dollar input. Above every real listing in the supported markets, and it keeps
+ * pathological values (1e308) from overflowing to Infinity in downstream arithmetic. */
+export const MAX_MONEY_INPUT = 100_000_000;
+const money = () => z.number().positive().max(MAX_MONEY_INPUT);
 
 export const propertyInputSchema = z.object({
   postalCode: z
@@ -15,8 +19,14 @@ export const propertyInputSchema = z.object({
   livingAreaSqft: z.number().min(250).max(10_000),
   bedrooms: z.number().min(0).max(10),
   bathrooms: z.number().min(0).max(10),
-  yearBuilt: z.number().int().min(1800).max(currentYear).optional(),
-  knownCurrentValue: z.number().positive().optional(),
+  // Evaluated per request, so a long-running server does not reject next year's builds.
+  yearBuilt: z
+    .number()
+    .int()
+    .min(1800)
+    .refine((year) => year <= new Date().getFullYear(), "Year built cannot be in the future")
+    .optional(),
+  knownCurrentValue: money().optional(),
 }).superRefine((value, context) => {
   const normalized = value.postalCode.toUpperCase().replace(/\s+/g, "");
   const fsa = normalized.slice(0, 3);
@@ -38,16 +48,16 @@ export const simulateRequestSchema = propertyInputSchema.safeExtend({
 });
 
 export const planRequestSchema = simulateRequestSchema.safeExtend({
-  targetPrice: z.number().positive(),
-  budget: z.number().positive(),
+  targetPrice: money(),
+  budget: money(),
   timelineMonths: z.number().min(3).max(18),
 });
 
 export const dealAnalyzeRequestSchema = propertyInputSchema.safeExtend({
   plannedFlags: z.array(z.enum(improvementFlagValues)).default([]),
   horizonMonths: z.number().min(3).max(18).optional(),
-  askingPrice: z.number().positive(),
-  budget: z.number().positive(),
+  askingPrice: money(),
+  budget: money(),
   timelineMonths: z.number().min(3).max(18),
 });
 

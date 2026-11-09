@@ -17,15 +17,11 @@ export function buildPublicEstimate(property: PropertyInput) {
   return buildVancouverPublicEstimate(property);
 }
 
-export function publicDataSources(estimate: EstimateResponse): Record<string, string> {
-  if (estimate.market === "halifax_maritimes") {
-    return {
-      evidence: "data/exports/market_evidence.json",
-      publicRules: "artifacts/api-server/src/public",
-    };
-  }
+// Public mode is a rules engine over committed evidence, so it cites only those inputs, never the
+// fitted-model metrics report (AGENTS.md: public output must not be presented as fitted ML).
+export function publicDataSources(_estimate: EstimateResponse): Record<string, string> {
   return {
-    modelSummary: "reports/model_metrics_report.md",
+    evidence: "data/exports/market_evidence.json",
     publicRules: "artifacts/api-server/src/public",
   };
 }

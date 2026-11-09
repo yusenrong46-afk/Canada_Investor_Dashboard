@@ -26,6 +26,7 @@ export type EvidenceResponse =
       scope: EvidenceScope;
       generatedAt: string;
       provenance: MarketEvidenceFile["provenance"];
+      markets: MarketEvidenceFile["markets"];
       rows: MarketEvidenceRow[];
     }
   | {
@@ -110,6 +111,7 @@ export function buildEvidenceResponse(market: MarketId, fsa?: string, propertyTy
     scope: selection.scope,
     generatedAt: file.generatedAt,
     provenance: file.provenance,
+    markets: file.markets,
     rows: selection.rows,
   };
 }

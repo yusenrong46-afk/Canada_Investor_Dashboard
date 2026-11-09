@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 
-const CONTRACT_VERSION = "2026-07-18.v1";
+import { readFileSync } from "node:fs";
+
+// Single source of truth: the deployed API must report the contract version this checkout defines.
+const CONTRACT_VERSION = readFileSync(new URL("../artifacts/shared/src/provenance.ts", import.meta.url), "utf8")
+  .match(/API_CONTRACT_VERSION = "([^"]+)"/)?.[1];
+if (!CONTRACT_VERSION) {
+  console.error("Could not read API_CONTRACT_VERSION from artifacts/shared/src/provenance.ts");
+  process.exit(2);
+}
 const TIMEOUT_MS = 20_000;
 
 function usage() {
@@ -20,9 +28,13 @@ const args = process.argv.slice(2);
 const rawBaseUrl = args.find((arg) => !arg.startsWith("--"));
 const apiOnly = args.includes("--api-only");
 
-if (!rawBaseUrl || args.includes("--help") || args.includes("-h")) {
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(usage());
+  process.exit(0);
+}
+if (!rawBaseUrl) {
   console.error(usage());
-  process.exit(rawBaseUrl ? 0 : 2);
+  process.exit(2);
 }
 
 let baseUrl;

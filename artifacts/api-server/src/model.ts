@@ -45,6 +45,7 @@ export async function requestModelService<TResponse>(path: string, payload?: obj
   const { modelServiceBaseUrl, modelServiceTimeoutMs } = getConfig();
 
   let response: Response;
+  let bodyText: string;
   try {
     response = await fetch(`${modelServiceBaseUrl}${path}`, {
       method: payload ? "POST" : "GET",
@@ -52,14 +53,16 @@ export async function requestModelService<TResponse>(path: string, payload?: obj
       body: payload ? JSON.stringify(payload) : undefined,
       signal: AbortSignal.timeout(modelServiceTimeoutMs),
     });
+    // Reading the body is covered by the same timeout signal, so it belongs inside this try.
+    bodyText = await response.text();
   } catch (error) {
     if (isTimeoutError(error)) {
       throw new ModelServiceError("Model service timed out", 504);
     }
-    throw error;
+    // Connection refused / DNS / reset: the model service is down or unreachable.
+    throw new ModelServiceError("The live model service is unreachable. Start it or check MODEL_SERVICE_URL.", 502);
   }
 
-  const bodyText = await response.text();
   let parsedBody: TResponse | { message?: string } | null = null;
   if (bodyText) {
     try {
@@ -137,8 +140,10 @@ export async function simulateScenario(request: SimulateRequest): Promise<Simula
   };
 }
 
-export async function buildSalePlan(request: PlanRequest): Promise<PlanResponse> {
-  const estimate = await estimateProperty(request);
+// Callers that already hold the estimate for this property (the deal analyzer) pass it in to skip a
+// second identical model call.
+export async function buildSalePlan(request: PlanRequest, knownEstimate?: EstimateResponse): Promise<PlanResponse> {
+  const estimate = knownEstimate ?? (await estimateProperty(request));
 
   return buildPlan({
     request: { ...request, horizonMonths: request.timelineMonths },

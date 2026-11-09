@@ -6,7 +6,12 @@ import {
   dealAnalyzeResponseSchema,
   estimateResponseSchema,
   insightsResponseSchema,
+  marketEvidenceApiResponseSchema,
+  marketMapResponseSchema,
   marketQuerySchema,
+  marketsResponseSchema,
+  marketTrendResponseSchema,
+  modelExperimentsResponseSchema,
   planResponseSchema,
   simulateResponseSchema,
 } from "@vvl/shared";
@@ -14,7 +19,7 @@ import cors from "cors";
 import express from "express";
 import { ZodError } from "zod/v4";
 
-import { getConfig, isDemoModeEnabled, isPublicModeEnabled } from "./config";
+import { getConfig, isPublicModeEnabled } from "./config";
 import { buildErrorBody } from "./errorEnvelope";
 import { buildEvidenceResponse, evidenceQuerySchema } from "./evidence";
 import { buildExperimentsResponse } from "./experiments";
@@ -43,7 +48,9 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 app.disable("x-powered-by");
-app.set("trust proxy", 1);
+// req.ip feeds the rate limiter. Only trust X-Forwarded-For when a proxy we control sets it (Vercel,
+// or TRUST_PROXY=1 behind your own load balancer); otherwise any client could spoof its IP.
+app.set("trust proxy", getConfig().trustProxy ? 1 : false);
 
 app.use((_req, res, next) => {
   res.setHeader("Content-Security-Policy", contentSecurityPolicy);
@@ -162,7 +169,7 @@ app.get("/api/evidence", (req, res, next) => {
   try {
     const query = evidenceQuerySchema.parse(req.query);
     setExportCacheHeaders(res);
-    res.json(buildEvidenceResponse(query.market, query.fsa, query.propertyType));
+    res.json(parseResponseOrThrow(marketEvidenceApiResponseSchema, buildEvidenceResponse(query.market, query.fsa, query.propertyType)));
   } catch (error) {
     next(error);
   }
@@ -172,7 +179,7 @@ app.get("/api/trend", async (req, res, next) => {
   try {
     const query = marketQuerySchema.parse(req.query);
     setExportCacheHeaders(res);
-    res.json(await getMarketTrend(query.market));
+    res.json(parseResponseOrThrow(marketTrendResponseSchema, await getMarketTrend(query.market)));
   } catch (error) {
     next(error);
   }
@@ -184,7 +191,7 @@ app.get("/api/map", (req, res, next) => {
   try {
     const query = marketQuerySchema.parse(req.query);
     setExportCacheHeaders(res);
-    res.json(buildMapResponse(query.market));
+    res.json(parseResponseOrThrow(marketMapResponseSchema, buildMapResponse(query.market)));
   } catch (error) {
     next(error);
   }
@@ -193,7 +200,7 @@ app.get("/api/map", (req, res, next) => {
 app.get("/api/experiments", (_req, res, next) => {
   try {
     setExportCacheHeaders(res);
-    res.json(buildExperimentsResponse());
+    res.json(parseResponseOrThrow(modelExperimentsResponseSchema, buildExperimentsResponse()));
   } catch (error) {
     next(error);
   }
@@ -202,7 +209,7 @@ app.get("/api/experiments", (_req, res, next) => {
 app.get("/api/markets", (_req, res, next) => {
   try {
     setExportCacheHeaders(res);
-    res.json(buildMarketsResponse());
+    res.json(parseResponseOrThrow(marketsResponseSchema, buildMarketsResponse()));
   } catch (error) {
     next(error);
   }
@@ -210,9 +217,9 @@ app.get("/api/markets", (_req, res, next) => {
 
 app.get("/api/insights", (_req, res, next) => {
   try {
-    const handlers = resolveHandlers();
-    if (isDemoModeEnabled()) {
-      return res.json(parseResponseOrThrow(insightsResponseSchema, handlers.insights()));
+    const { insights } = resolveHandlers();
+    if (insights) {
+      return res.json(parseResponseOrThrow(insightsResponseSchema, insights()));
     }
     const message = isPublicModeEnabled()
       ? "Public mode has no server-side portfolio. Save scenarios in this browser to build personal insights."
@@ -238,8 +245,34 @@ app.use((_req, res) => {
   res.status(404).json(buildErrorBody("NOT_FOUND", "Route not found."));
 });
 
-app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+// body-parser (via express.json) reports malformed JSON, oversized bodies, and bad charsets as
+// http-errors with a 4xx status and `expose: true`; those are client mistakes, not server failures.
+function clientRequestError(error: unknown): { status: number; message: string } | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  const { status, type, expose } = error as { status?: unknown; type?: unknown; expose?: unknown };
+  if (typeof status !== "number" || status < 400 || status >= 500 || expose !== true) {
+    return null;
+  }
+  if (type === "entity.too.large") {
+    return { status, message: "Request body is too large." };
+  }
+  if (type === "entity.parse.failed") {
+    return { status, message: "Request body is not valid JSON." };
+  }
+  return { status, message: "The request could not be read." };
+}
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const requestId = typeof res.locals.requestId === "string" ? res.locals.requestId : undefined;
+
+  const clientError = clientRequestError(error);
+  if (clientError) {
+    // Log only the classification: the error object carries the raw request body.
+    logError(requestId, "VALIDATION", clientError.message, { status: clientError.status });
+    return res.status(clientError.status).json(buildErrorBody("VALIDATION", clientError.message));
+  }
 
   if (error instanceof ZodError) {
     const issues = error.issues.map((issue) => ({

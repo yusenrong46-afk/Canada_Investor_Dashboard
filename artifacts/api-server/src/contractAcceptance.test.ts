@@ -9,9 +9,7 @@ vi.mock("./handlers", () => ({
     simulate: async () => ({ notAValidSimulate: true }),
     plan: async () => ({ notAValidPlan: true }),
     deal: async () => ({ notAValidDeal: true }),
-    insights: () => {
-      throw Object.assign(new Error("Public mode has no server-side portfolio."), { statusCode: 409 });
-    },
+    // Public mode has no server-side portfolio, so it exposes no insights handler.
   })),
 }));
 

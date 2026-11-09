@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { resultProvenance, type EstimateResponse, type SimulateResponse } from "@vvl/shared";
 
+import { computeDealRobustness } from "./dealRobustness";
 import { buildPlan } from "./planBuilder";
 
 const baseEstimate: EstimateResponse = {
@@ -209,5 +210,85 @@ describe("buildPlan", () => {
 
     expect(plan.status).toBe("data-missing");
     expect(plan.message).toContain("uplift unavailable");
+  });
+
+  it("reports no uplift band when nothing is planned, so the stress test cannot invent upside", async () => {
+    // The simulator still returns a non-zero band for the empty scenario, as the public engine does.
+    const simulate = vi.fn(async () => readySimulate(0));
+
+    const plan = await buildPlan({
+      request: {
+        postalCode: "V6B 1X9",
+        propertyType: "Condo",
+        livingAreaSqft: 708,
+        bedrooms: 1,
+        bathrooms: 1,
+        plannedFlags: [],
+        targetPrice: 900_000,
+        budget: 1, // too small for any candidate
+        timelineMonths: 12,
+      },
+      estimate: baseEstimate,
+      simulate,
+      dataSources: {},
+      provenance: { engineType: "rules", version: "test-plan", sourceIds: [], limitations: [] },
+      message: "test plan",
+    });
+
+    expect(plan.status).toBe("ready");
+    expect(plan.items).toEqual([]);
+    expect(plan.upliftConfidenceLow).toBeUndefined();
+    expect(plan.upliftConfidenceHigh).toBeUndefined();
+
+    // Buying at the point estimate and doing nothing must centre on zero upside, not skew positive.
+    const robustness = computeDealRobustness({
+      askingPrice: baseEstimate.baseValue,
+      baseValue: baseEstimate.baseValue,
+      confidenceLow: baseEstimate.confidenceLow,
+      confidenceHigh: baseEstimate.confidenceHigh,
+      afterPlanValue: plan.achievableValue ?? baseEstimate.baseValue,
+      upliftConfidenceLow: plan.upliftConfidenceLow,
+      upliftConfidenceHigh: plan.upliftConfidenceHigh,
+      plannedSpend: plan.plannedSpend,
+    });
+    // Seeded draws give P50 ~ +700 here; the old stray 0-10k band pushed it to ~+4,000.
+    expect(Math.abs(robustness.upsideP50)).toBeLessThan(2_000);
+  });
+
+  it("evaluates each round's candidates concurrently but picks deterministically", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const simulate = vi.fn(async (request) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      const flags: string[] = request.plannedFlags ?? [];
+      return readySimulate(flags.length * 15_000);
+    });
+    const request = {
+      postalCode: "V6B 1X9",
+      propertyType: "Condo" as const,
+      livingAreaSqft: 708,
+      bedrooms: 1,
+      bathrooms: 1,
+      plannedFlags: [],
+      targetPrice: 900_000,
+      budget: 200_000,
+      timelineMonths: 18,
+    };
+    const options = {
+      estimate: baseEstimate,
+      simulate,
+      dataSources: {},
+      provenance: { engineType: "rules" as const, version: "test-plan", sourceIds: [], limitations: [] },
+      message: "test plan",
+    };
+
+    const first = await buildPlan({ request, ...options });
+    const second = await buildPlan({ request, ...options });
+
+    expect(maxInFlight).toBeGreaterThan(1);
+    expect(first.items?.map((item) => item.flag)).toEqual(second.items?.map((item) => item.flag));
   });
 });

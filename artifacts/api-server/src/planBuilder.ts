@@ -14,12 +14,7 @@ import {
   type SimulateResponse,
 } from "@vvl/shared";
 
-function percent(numerator: number, denominator: number): number {
-  if (!Number.isFinite(denominator) || denominator <= 0) {
-    return 0;
-  }
-  return numerator / denominator;
-}
+import { percent } from "./public/utils";
 
 function byValueRecovery(items: PlanLineItem[]): PlanLineItem[] {
   return [...items].sort((left, right) => {
@@ -30,7 +25,7 @@ function byValueRecovery(items: PlanLineItem[]): PlanLineItem[] {
   });
 }
 
-function phaseRows(items: PlanLineItem[]): PlanPhase[] {
+export function phaseRows(items: PlanLineItem[]): PlanPhase[] {
   const phases = new Map<string, PlanLineItem[]>();
 
   for (const item of items) {
@@ -207,10 +202,17 @@ export async function buildPlan(options: PlanBuilderOptions): Promise<PlanRespon
 
   while (remainingBudget > 0 && remainingMonths > 0 && remainingCandidates.size > 0) {
     const candidateItems: PlanLineItem[] = [];
+    // Candidates within one greedy round are independent, so simulate them concurrently; results are
+    // still processed in candidate order below, which keeps the chosen plan deterministic.
+    const roundFlags = [...remainingCandidates];
+    const outcomes = await Promise.allSettled(
+      roundFlags.map((flag) => runSimulate(simulate, request, [...currentFlags, flag])),
+    );
 
-    for (const flag of remainingCandidates) {
-      try {
-        const scenario = await runSimulate(simulate, request, [...currentFlags, flag]);
+    for (const [index, outcome] of outcomes.entries()) {
+      const flag = roundFlags[index];
+      if (outcome.status === "fulfilled") {
+        const scenario = outcome.value;
         if (scenario.status !== "ready") {
           continue;
         }
@@ -218,7 +220,8 @@ export async function buildPlan(options: PlanBuilderOptions): Promise<PlanRespon
         if (item.projectedUplift > 0) {
           candidateItems.push(item);
         }
-      } catch (error) {
+      } else {
+        const error: unknown = outcome.reason;
         if (shouldSkipCandidate(error, flag)) {
           skippedCandidateNotes.push(
             `${improvementCatalog[flag].label} was not recommended because its observed evidence is not reportable for this market.`,
@@ -327,8 +330,10 @@ export async function buildPlan(options: PlanBuilderOptions): Promise<PlanRespon
     gapToTarget: request.targetPrice - achievableValue,
     plannedSpend,
     plannedMonths,
-    upliftConfidenceLow: finalScenario.treatedQuantileRange?.lowValue,
-    upliftConfidenceHigh: finalScenario.treatedQuantileRange?.highValue,
+    // With nothing planned there is no uplift to put a band around; a non-zero band here would make the
+    // deal stress test report positive upside for doing no work.
+    upliftConfidenceLow: items.length ? finalScenario.treatedQuantileRange?.lowValue : undefined,
+    upliftConfidenceHigh: items.length ? finalScenario.treatedQuantileRange?.highValue : undefined,
     items: reconciledItems,
     phases: phaseRows(reconciledItems),
   };

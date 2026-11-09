@@ -1,7 +1,6 @@
 import { WIDE_CONFIDENCE_RATIO, improvementCatalog, resultProvenance, type EstimateResponse, type PlannedFlag, type SimulateRequest, type SimulateResponse, type UpliftDriver } from "@vvl/shared";
 
 import { hasReadyUpliftCategory, loadHalifaxUplift, type HalifaxUpliftFile } from "../halifaxUplift";
-import { getVancouverSavedTrainingRows } from "../trainingRowsExport";
 import { buildPublicEstimate, buildItemsForFlags, publicDataSources } from "./improvements";
 import { percent, publicEvidenceDataAsOf, PUBLIC_RULES_SOURCE } from "./utils";
 
@@ -149,7 +148,6 @@ export function buildPublicSimulate(request: SimulateRequest): SimulateResponse 
   const upliftPercent = percent(upliftValue, estimate.baseValue);
   const finalValueRaw = estimate.baseValue + upliftValue;
   const finalValueGuardrailed = Math.min(finalValueRaw, estimate.marketContext.practicalCeiling);
-  const savedTrainingRows = getVancouverSavedTrainingRows();
 
   return {
     provenance: resultProvenance({
@@ -191,12 +189,7 @@ export function buildPublicSimulate(request: SimulateRequest): SimulateResponse 
     })),
     observedShare: 1,
     dataSources: publicDataSources(estimate),
-    rowCounts:
-      estimate.market === "halifax_maritimes"
-        ? { evidenceComparables: estimate.marketContext.comparableCount }
-        : savedTrainingRows != null
-          ? { savedTrainingRows }
-          : {},
+    rowCounts: {},
     methodNotes: [
       "Public mode is fully interactive and does not require private raw data.",
       "The Python model service remains available for live local mode.",

@@ -183,7 +183,10 @@ describe("Halifax public simulate with the local uplift export", () => {
 
     expect(response.modelVersion).toBe("public-uplift-screening-v1");
     expect(response.dataSources?.halifaxUplift).toBeUndefined();
-    expect(response.dataSources?.modelSummary).toBe("reports/model_metrics_report.md");
+    // Rules output must not cite fitted-model material as its source.
+    expect(response.dataSources?.modelSummary).toBeUndefined();
+    expect(response.dataSources?.evidence).toBe("data/exports/market_evidence.json");
+    expect(response.rowCounts?.savedTrainingRows).toBeUndefined();
   });
 });
 

@@ -1,13 +1,7 @@
 import { TARGET_MARKUP, resultProvenance, type DealAnalyzeRequest, type DealAnalyzeResponse, type DealLabel, type DealRiskFlag, type EstimateResponse, type PlanResponse } from "@vvl/shared";
 
 import { computeDealRobustness } from "./dealRobustness";
-
-function percent(numerator: number, denominator: number): number {
-  if (!Number.isFinite(denominator) || denominator <= 0) {
-    return 0;
-  }
-  return numerator / denominator;
-}
+import { percent } from "./public/utils";
 
 function roundPercent(value: number): number {
   return Number(value.toFixed(4));
@@ -37,11 +31,27 @@ export interface DealBuilderOptions {
     netUpsidePercent: number;
     valueGapPercent: number;
   }) => DealRiskFlag[];
-  chooseLabel: (netUpsidePercent: number, valueGapPercent: number, flags: DealRiskFlag[]) => DealLabel;
+}
+
+// One verdict rule for every runtime mode, so the same deal never gets a different label in
+// demo, public, and live mode.
+export function labelDeal(netUpsidePercent: number, valueGapPercent: number, flags: DealRiskFlag[]): DealLabel {
+  const hasDanger = flags.some((flag) => flag.level === "danger");
+
+  if (netUpsidePercent < 0 || (hasDanger && netUpsidePercent < 0.06)) {
+    return "Pass for now";
+  }
+  if (hasDanger) {
+    return "Needs caution";
+  }
+  if (netUpsidePercent >= 0.03 || valueGapPercent >= 0.02) {
+    return "Worth review";
+  }
+  return "Needs caution";
 }
 
 export function buildDealAnalyze(options: DealBuilderOptions): DealAnalyzeResponse {
-  const { request, estimate, plan, provenance, buildRiskFlags, chooseLabel } = options;
+  const { request, estimate, plan, provenance, buildRiskFlags } = options;
   const afterPlanValue = Math.round(plan.achievableValue ?? estimate.baseValue);
   const modeledValueGap = Math.round(estimate.baseValue - request.askingPrice);
   const estimatedGrossUpside = Math.round(afterPlanValue - request.askingPrice);
@@ -61,7 +71,7 @@ export function buildDealAnalyze(options: DealBuilderOptions): DealAnalyzeRespon
       sourceIds: [...new Set([...estimate.provenance.sourceIds, ...plan.provenance.sourceIds, ...provenance.sourceIds])],
       limitations: provenance.limitations,
     }),
-    dealLabel: chooseLabel(netUpsidePercent, valueGapPercent, riskFlags),
+    dealLabel: labelDeal(netUpsidePercent, valueGapPercent, riskFlags),
     modeledValueGap,
     valueGapPercent,
     afterPlanValue,
