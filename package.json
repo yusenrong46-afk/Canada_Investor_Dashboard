@@ -6,13 +6,6 @@
     "node": "24.x",
     "pnpm": ">=9"
   },
-  "pnpm": {
-    "overrides": {
-      "qs": "6.15.2",
-      "body-parser": "2.3.0",
-      "react-router": "8.3.0"
-    }
-  },
   "scripts": {
     "build": "pnpm -r build",
     "build:api": "pnpm --filter @vvl/api-server build",
